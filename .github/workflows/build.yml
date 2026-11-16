@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       bundle_id:
-        description: 'Bundle ID khi đóng gói (giữ mặc định cho 3105 hoặc đổi cho chứng chỉ cá nhân)'
+        description: 'Bundle ID khi đóng gói'
         required: false
         default: 'com.apple.mobile.MobileHouseArrest'
         type: string
@@ -30,7 +30,11 @@ jobs:
           python3 Tests/patch_v9_test.py
   ios:
     needs: source-checks
-    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-intel, macos-26-intel, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     env:
       NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.apple.mobile.MobileHouseArrest' }}
@@ -54,36 +58,9 @@ jobs:
           /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json
       - uses: actions/upload-artifact@v4
         with:
-          name: NiKSign-unsigned-IPA
+          name: NiKSign-unsigned-IPA-${{ matrix.runner }}
           path: |
             dist/NiKSign-unsigned.ipa
             dist/NiKSign-3.3-source.zip
             build/binary-info.txt
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: NiKSign-Web
-          path: web/
-      - name: Publish GitHub Release (Optional)
-        if: ${{ inputs.create_release_tag != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.create_release_tag }}
-        run: |
-          gh release create "$RELEASE_TAG" \
-            dist/NiKSign-unsigned.ipa \
-            dist/NiKSign-3.3-source.zip \
-            --title "NiKSign $RELEASE_TAG" \
-            --notes "Bản đóng gói tự động từ GitHub Actions (Bundle ID: $NIKSIGN_BUNDLE_ID)."
-      - name: Build evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: NiKSign-build-evidence
-          path: |
-            build/build.log
-            NiKSign.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
-            upstream-lock.json
-            dependencies-vendor-lock.json
-            Native/Licenses/components.json
-          if-no-files-found: warn
