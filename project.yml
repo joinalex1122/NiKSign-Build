@@ -22,6 +22,9 @@ packages:
   OpenSSL:
     url: https://github.com/krzyzanowskim/OpenSSL.git
     exactVersion: 3.6.5000
+  BitByteData:
+    url: https://github.com/tsolomko/BitByteData
+    exactVersion: 2.0.4
 targets:
   NiKSign:
     type: application
