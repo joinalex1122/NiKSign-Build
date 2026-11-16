@@ -1,0 +1,83 @@
+name: NiKSign
+options:
+  deploymentTarget:
+    iOS: '17.0'
+  developmentLanguage: en
+packages:
+  Zsign:
+    url: https://github.com/claration/zsign.git
+    revision: c4ba9da4283031c07efa03bce42c4b8602d22e73
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.20
+  MachOKit:
+    url: https://github.com/p-x9/MachOKit.git
+    revision: 86e3a0734c9f7fbb959ccbd4be233b378ed59815
+  ArArchiveKit:
+    url: https://github.com/LebJe/ArArchiveKit.git
+    revision: 12f86d0cf86ebfc50e0139c99e423b703848a65c
+  SWCompression:
+    url: https://github.com/tsolomko/SWCompression.git
+    revision: 390e0b0af8dd19a600005a242a89e570ff482e09
+  OpenSSL:
+    url: https://github.com/krzyzanowskim/OpenSSL.git
+    exactVersion: 3.6.5000
+targets:
+  NiKSign:
+    type: application
+    platform: iOS
+    sources:
+    - path: Native
+      excludes:
+      - Info.plist
+    - path: Vendor/3105/ThreeOneOSFive
+      excludes:
+      - App.swift
+      - Info.plist
+      - views/RepositoryHomeView.swift
+    - path: Vendor/minizip
+      excludes:
+      - MiniZip64_info.txt
+    - path: Vendor/GCDWebServer
+    dependencies:
+    - package: Zsign
+      product: Zsign
+    - package: ZIPFoundation
+    - sdk: libz.tbd
+    - package: MachOKit
+    - package: ArArchiveKit
+    - package: SWCompression
+    - package: OpenSSL
+    settings:
+      base:
+        NIKSIGN_BUNDLE_ID: com.apple.mobile.MobileHouseArrest
+        PRODUCT_BUNDLE_IDENTIFIER: $(NIKSIGN_BUNDLE_ID)
+        PRODUCT_NAME: NiKSign
+        SWIFT_VERSION: '5.0'
+        SWIFT_OBJC_BRIDGING_HEADER: Native/NiKSign-Bridging-Header.h
+        CLANG_ENABLE_MODULES: true
+        CLANG_ENABLE_OBJC_ARC: true
+        CLANG_CXX_LANGUAGE_STANDARD: gnu++20
+        GCC_C_LANGUAGE_STANDARD: gnu17
+        TARGETED_DEVICE_FAMILY: 1,2
+        ENABLE_USER_SCRIPT_SANDBOXING: false
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: Native/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ''
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: 3.3.0
+        CURRENT_PROJECT_VERSION: '330'
+        LD_RUNPATH_SEARCH_PATHS:
+        - $(inherited)
+        - '@executable_path/Frameworks'
+        HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Vendor/minizip
+        - $(SRCROOT)/Vendor/GCDWebServer/Core
+        - $(SRCROOT)/Vendor/GCDWebServer/Requests
+        - $(SRCROOT)/Vendor/GCDWebServer/Responses
+schemes:
+  NiKSign:
+    build:
+      targets:
+        NiKSign: all
