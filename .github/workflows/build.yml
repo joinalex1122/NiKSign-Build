@@ -1,0 +1,89 @@
+name: Build NiKSign
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: 'Bundle ID khi đóng gói (giữ mặc định cho 3105 hoặc đổi cho chứng chỉ cá nhân)'
+        required: false
+        default: 'com.apple.mobile.MobileHouseArrest'
+        type: string
+      create_release_tag:
+        description: 'Tạo GitHub Release với tag (để trống nếu chỉ xuất Artifact)'
+        required: false
+        default: ''
+        type: string
+  push:
+    branches:
+      - main
+permissions:
+  contents: write
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source, dependencies and Patch v9 rules
+        run: |
+          python3 scripts/check-integration.py
+          python3 scripts/check-dependencies.py
+          python3 Tests/minizip_test.py
+          python3 Tests/patch_v9_test.py
+  ios:
+    needs: source-checks
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.apple.mobile.MobileHouseArrest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Check source integration
+        run: python3 scripts/check-integration.py
+      - name: Codec and Patch v9 regression tests
+        run: |
+          xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Tests/CodecSmoke.swift -o /tmp/codec-test
+          /tmp/codec-test
+          xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9Smoke.swift -o /tmp/patch-v9-test
+          /tmp/patch-v9-test
+      - name: Build unsigned arm64 IPA
+        run: bash scripts/build-ios.sh
+      - name: Package source archive
+        run: |
+          mkdir -p dist
+          /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NiKSign-unsigned-IPA
+          path: |
+            dist/NiKSign-unsigned.ipa
+            dist/NiKSign-3.3-source.zip
+            build/binary-info.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NiKSign-Web
+          path: web/
+      - name: Publish GitHub Release (Optional)
+        if: ${{ inputs.create_release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.create_release_tag }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            dist/NiKSign-unsigned.ipa \
+            dist/NiKSign-3.3-source.zip \
+            --title "NiKSign $RELEASE_TAG" \
+            --notes "Bản đóng gói tự động từ GitHub Actions (Bundle ID: $NIKSIGN_BUNDLE_ID)."
+      - name: Build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NiKSign-build-evidence
+          path: |
+            build/build.log
+            NiKSign.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+            upstream-lock.json
+            dependencies-vendor-lock.json
+            Native/Licenses/components.json
+          if-no-files-found: warn
