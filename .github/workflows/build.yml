@@ -30,7 +30,7 @@ jobs:
           python3 Tests/patch_v9_test.py
   ios:
     needs: source-checks
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 40
     env:
       NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.apple.mobile.MobileHouseArrest' }}
