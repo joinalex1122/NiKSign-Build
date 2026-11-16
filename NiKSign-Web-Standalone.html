@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827"><meta name="apple-mobile-web-app-capable" content="yes">
+<title>NiKSign · Trình sửa tệp</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#0b1020;color:#e5e7eb}*{box-sizing:border-box}body{max-width:960px;margin:auto;padding:24px 18px;padding-top:max(24px,env(safe-area-inset-top))}header{display:flex;justify-content:space-between;align-items:center}h1{letter-spacing:-1px}small,.hint{color:#a8b4cf;line-height:1.6}.badge{font-size:12px;color:#67e8f9;border:1px solid #155e75;border-radius:24px;padding:8px}section{margin:20px 0;background:#131c30;border:1px solid #2a3754;border-radius:18px;padding:18px}button,.file{background:#4338ca;color:white;border:0;border-radius:10px;padding:12px 16px;font:inherit;cursor:pointer;display:inline-block;margin:4px}button.secondary{background:#293956}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #67e8f9;outline-offset:2px}input,select,textarea{font:inherit;background:#0b1020;color:#e5e7eb;border:1px solid #40506b;border-radius:8px;padding:10px;max-width:100%}textarea{width:100%;min-height:45vh;font:14px ui-monospace,monospace;line-height:1.6;resize:vertical}#notice{min-height:28px;color:#67e8f9;white-space:pre-wrap}label{display:block;margin:10px 0}input[type=file]{display:none}.row{display:flex;gap:8px;flex-wrap:wrap}a{color:#a5b4fc}summary{cursor:pointer}#filename{font-family:monospace;overflow-wrap:anywhere}footer{font-size:13px;color:#a8b4cf;line-height:1.8}
+</style></head><body>
+<header><div><h1>NiKSign</h1><small>Trình sửa tệp trên iPhone · 2.1</small></div><span class="badge">Xử lý tại máy</span></header>
+<section><p>Mở bản sao JSON hoặc XML plist từ ứng dụng Tệp, sửa và xuất lại. Không gửi nội dung lên máy chủ.</p>
+<div class="row"><label class="file" tabindex="0" role="button" id="openLabel">Mở tệp<input id="open" type="file" accept=".json,.plist,.3105,application/json,text/xml"></label><button id="new" class="secondary">Tệp mới</button><button id="format" class="secondary">Kiểm tra / Định dạng</button></div>
+<p id="filename">config.json</p><label for="editor">Nội dung tệp</label><textarea id="editor" spellcheck="false" autocapitalize="off" autocorrect="off" aria-describedby="notice">{
+  "appearance": "dark",
+  "enabled": true
+}</textarea>
+<p id="notice" role="status" aria-live="polite"></p><button id="save">Lưu vào Tệp</button><button id="share" class="secondary">Chia sẻ bản đã sửa</button>
+</section>
+<section><details><summary>Thêm / cập nhật key JSON ở cấp gốc</summary><label>Key <input id="key" placeholder="appearance"></label><label>Kiểu <select id="type"><option value="string">String</option><option value="boolean">Boolean</option><option value="number">Number</option><option value="json">Object / Array / null (JSON)</option></select></label><label>Giá trị <input id="value" value="dark"></label><button id="set">Cập nhật</button></details></section>
+<section><h2>Khả năng hiện tại</h2><p class="hint">Bản web sửa JSON và XML plist. Binary plist và gói mã hóa 3105PATCH cần bản native. Các tệp .3105 dạng JSON của bản NiKSign cũ được xuất lại thành .json, không coi là gói tương thích 3105.</p><p class="hint">Ký IPA cần app native đã cài, binary hợp lệ, chứng chỉ .p12 và provisioning profile. Bản web không ký, cài IPA hoặc truy cập container app khác.</p><label><input id="remember" type="checkbox"> Lưu bản nháp trên trình duyệt này (không dùng cho dữ liệu bí mật)</label><button id="forget" class="secondary">Xóa bản nháp</button></section>
+<footer>Nguồn tham khảo: <a href="https://github.com/YangJiiii/3105">3105</a> · <a href="https://github.com/claration/feather">Feather</a> · <a href="https://github.com/claration/zsign">Zsign</a>.<br>Mã sửa đổi GPL-3.0; bản web không chứa mã native của các dự án này. Mở từ HTTPS trong Safari để thêm vào Màn hình chính.</footer>
+<script>
+/* NiKSign 2.1 — GPL-3.0. Local document tools; no signing simulation. */
+(function(root) {
+  'use strict';
+  const api = {
+    parseJSON(text) {
+      const value = JSON.parse(text);
+      if (value === null || Array.isArray(value) || typeof value !== 'object')
+        throw new Error('Cần JSON object ở gốc.');
+      return value;
+    },
+    formatJSON(text) { return JSON.stringify(api.parseJSON(text), null, 2); },
+    outputName(name, kind) {
+      const base = String(name).split(/[\\/]/).pop().replace(/\.[^.]*$/, '') || 'config';
+      return base + (kind === 'plist' ? '.plist' : '.json');
+    },
+    is3105(bytes) {
+      const magic = [51,49,48,53,80,65,84,67,72,0];
+      return magic.every((b,i) => bytes[i] === b);
+    },
+    setField(text, key, type, raw) {
+      const object = api.parseJSON(text);
+      if (!key || key.length > 255) throw new Error('Tên key cần 1–255 ký tự.');
+      let value = raw;
+      if (type === 'number') {
+        if (!String(raw).trim() || !Number.isFinite(Number(raw))) throw new Error('Số không hợp lệ.');
+        value = Number(raw);
+      } else if (type === 'boolean') {
+        if (raw !== 'true' && raw !== 'false') throw new Error('Boolean phải là true hoặc false.');
+        value = raw === 'true';
+      } else if (type === 'json') { value = JSON.parse(raw); }
+      Object.defineProperty(object, key, {value, enumerable: true, configurable: true, writable: true});
+      return JSON.stringify(object, null, 2);
+    }
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.NiKCore = api;
+})(globalThis);
+
+</script><script>
+'use strict';
+const $ = id => document.getElementById(id);
+let filename = 'config.json', kind = 'json';
+const status = text => { $('notice').textContent = text; };
+const attempt = fn => { try { return fn(); } catch(e) { status(e.message); } };
+function validate() {
+  if (kind === 'json') return NiKCore.formatJSON($('editor').value);
+  const doc = new DOMParser().parseFromString($('editor').value, 'application/xml');
+  if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'plist' ||
+      doc.documentElement.children.length !== 1) throw new Error('XML plist không hợp lệ.');
+  const tags = new Set(['plist','dict','array','key','string','integer','real','true','false','date','data']);
+  for (const node of doc.getElementsByTagName('*')) {
+    if (!tags.has(node.nodeName)) throw new Error('Plist có thẻ không hỗ trợ: '+node.nodeName);
+    if (node.nodeName === 'dict') {
+      const c = [...node.children];
+      if (c.length % 2 || c.some((n,i) => i%2 === 0 ? n.nodeName !== 'key' : n.nodeName === 'key'))
+        throw new Error('Dictionary plist cần các cặp key / giá trị.');
+    }
+  }
+  return $('editor').value;
+}
+function persist() {
+  attempt(() => {
+    if ($('remember').checked) localStorage.setItem('niksign.draft', JSON.stringify({filename,kind,text:$('editor').value}));
+    else localStorage.removeItem('niksign.draft');
+  });
+}
+$('open').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    if (file.size > 8*1024*1024) throw new Error('Bản web nhận tệp tối đa 8 MB.');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (NiKCore.is3105(bytes)) throw new Error('Gói mã hóa 3105PATCH: hãy dùng trình nhập .3105 trong bản native.');
+    const content = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
+    const nextKind = content.trimStart().startsWith('<') ? 'plist' : 'json';
+    if (nextKind === 'json') NiKCore.parseJSON(content);
+    else {
+      const doc = new DOMParser().parseFromString(content,'application/xml');
+      if(doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'plist') throw new Error('Cần XML plist hợp lệ. Binary plist dùng bản native.');
+    }
+    kind = nextKind; filename = NiKCore.outputName(file.name,kind);
+    $('filename').textContent = filename; $('editor').value = content;
+    status('Đã mở bản sao. Tệp gốc không bị ghi đè.'); persist();
+  } catch(e) { status(e.message); }
+  e.target.value = '';
+});
+$('openLabel').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('open').click(); } });
+$('format').onclick = () => attempt(() => { $('editor').value = validate(); status('Cấu trúc hợp lệ.'); persist(); });
+$('set').onclick = () => attempt(() => {
+  if (kind !== 'json') throw new Error('Bảng key này chỉ sửa JSON. Sửa XML trực tiếp trong vùng nội dung.');
+  $('editor').value = NiKCore.setField($('editor').value,$('key').value,$('type').value,$('value').value); persist(); status('Đã cập nhật key.');
+});
+function output() { return new File([validate()],filename,{type:kind === 'json' ? 'application/json' : 'application/xml'}); }
+$('save').onclick = () => attempt(() => {
+  const file = output(); const url = URL.createObjectURL(file);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url),60000);
+  status('Đã yêu cầu tải tệp. Trong Safari, mở mục Tải về để lưu hoặc chia sẻ.');
+});
+$('share').onclick = async () => {
+  try {
+    const file = output();
+    if (!navigator.canShare?.({files:[file]})) throw new Error('Trình duyệt này không chia sẻ tệp được. Hãy dùng Lưu vào Tệp.');
+    await navigator.share({files:[file]}); status('Đã đóng bảng chia sẻ.');
+  } catch(e) { if(e.name !== 'AbortError') status(e.message); }
+};
+$('new').onclick = () => {
+  if (!confirm('Tạo tệp mới và bỏ nội dung đang sửa?')) return;
+  filename='config.json'; kind='json'; $('filename').textContent=filename;
+  $('editor').value='{\n  "enabled": true\n}'; persist(); status('Đã tạo bản nháp mới.');
+};
+let draftTimer;
+$('editor').addEventListener('input', () => { clearTimeout(draftTimer); draftTimer=setTimeout(persist,400); });
+$('remember').onchange = persist;
+$('forget').onclick = () => attempt(() => { localStorage.removeItem('niksign.draft'); $('remember').checked=false; status('Đã xóa bản nháp lưu trên trình duyệt. Nội dung đang sửa vẫn còn.'); });
+attempt(() => {
+  const saved=localStorage.getItem('niksign.draft'); if(!saved) return;
+  const d=JSON.parse(saved);
+  if(typeof d.text==='string' && ['json','plist'].includes(d.kind)) {
+    kind=d.kind; filename=NiKCore.outputName(d.filename,kind); $('editor').value=d.text;
+    $('filename').textContent=filename; $('remember').checked=true; status('Đã khôi phục bản nháp.');
+  }
+});
+
+</script></body></html>

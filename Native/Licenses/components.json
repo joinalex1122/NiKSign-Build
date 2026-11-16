@@ -1,0 +1,112 @@
+[
+  {
+    "name": "OpenSSL",
+    "repository": "https://github.com/krzyzanowskim/OpenSSL",
+    "ref": "3.6.5000",
+    "revision": "0a6149bff4fb00921ce0ec1811f726b166638095",
+    "license": "Apache-2.0",
+    "status": "linked",
+    "note": "Mật mã cho Zsign; ghim phiên bản 3.6.5000.",
+    "licenseFile": "OpenSSL-LICENSE.txt"
+  },
+  {
+    "name": "minizip",
+    "repository": "https://github.com/madler/zlib",
+    "ref": "v1.3.1",
+    "revision": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+    "license": "Zlib",
+    "status": "vendored",
+    "note": "Kiểm tra mục ZIP trước khi ký IPA.",
+    "licenseFile": "minizip-LICENSE.txt"
+  },
+  {
+    "name": "MachOKit",
+    "repository": "https://github.com/p-x9/MachOKit",
+    "ref": "main",
+    "revision": "86e3a0734c9f7fbb959ccbd4be233b378ed59815",
+    "license": "MIT",
+    "status": "linked",
+    "note": "Kiểm tra Mach-O và cờ mã hóa trước khi ký.",
+    "licenseFile": "MachOKit-LICENSE.txt"
+  },
+  {
+    "name": "TrollFools",
+    "repository": "https://github.com/Lessica/TrollFools",
+    "ref": "main",
+    "revision": "c5c87b859a9ee34d215548377273eddd34a7c7f6",
+    "license": "MIT",
+    "status": "reference",
+    "note": "Ứng dụng riêng phụ thuộc môi trường TrollStore; chưa tích hợp engine.",
+    "licenseFile": "TrollFools-LICENSE.txt"
+  },
+  {
+    "name": "ArArchiveKit",
+    "repository": "https://github.com/LebJe/ArArchiveKit",
+    "ref": "main",
+    "revision": "12f86d0cf86ebfc50e0139c99e423b703848a65c",
+    "license": "MIT",
+    "status": "linked",
+    "note": "Đọc danh mục tệp .deb/.ar dạng tên ngắn.",
+    "licenseFile": "ArArchiveKit-LICENSE.txt"
+  },
+  {
+    "name": "ellekit",
+    "repository": "https://github.com/tealbathingsuit/ellekit",
+    "ref": "main",
+    "revision": "1017a0d09606ea49ba8bc4d6cccc530d372e640e",
+    "license": "MIT",
+    "status": "reference",
+    "note": "Runtime hooking; chưa tích hợp hoặc inject vào ứng dụng.",
+    "licenseFile": "ellekit-LICENSE.txt"
+  },
+  {
+    "name": "ZIPFoundation",
+    "repository": "https://github.com/weichsel/ZIPFoundation",
+    "ref": "0.9.20",
+    "revision": "22787ffb59de99e5dc1fbfe80b19c97a904ad48d",
+    "license": "MIT",
+    "status": "linked",
+    "note": "Giải nén và đóng gói IPA.",
+    "licenseFile": "ZIPFoundation-LICENSE.txt"
+  },
+  {
+    "name": "SWCompression",
+    "repository": "https://github.com/tsolomko/SWCompression",
+    "ref": "4.8.6",
+    "revision": "390e0b0af8dd19a600005a242a89e570ff482e09",
+    "license": "MIT",
+    "status": "linked",
+    "note": "Đọc danh mục TAR. Giữ 4.8.6 để tương thích iOS 17.",
+    "licenseFile": "SWCompression-LICENSE.txt"
+  },
+  {
+    "name": "optool",
+    "repository": "https://github.com/alexzielenski/optool",
+    "ref": "master",
+    "revision": "2898b51da0c0f2f5d7302af5ec82b858ebd4013c",
+    "license": "BSD-2-Clause",
+    "status": "reference",
+    "note": "CLI sửa load command; chưa chạy/ghép vào bản iOS.",
+    "licenseFile": "optool-LICENSE.txt"
+  },
+  {
+    "name": "GCDWebServer",
+    "repository": "https://github.com/swisspol/GCDWebServer",
+    "ref": "master",
+    "revision": "c6d118f4ecc1d9c2c6130fe8522b50889e78524b",
+    "license": "BSD-3-Clause",
+    "status": "vendored",
+    "note": "Chia sẻ một IPA qua HTTP loopback; không phải OTA installer. Upstream đã archived.",
+    "licenseFile": "GCDWebServer-LICENSE.txt"
+  },
+  {
+    "name": "Zsign",
+    "repository": "https://github.com/claration/zsign",
+    "ref": "package",
+    "revision": "c4ba9da4283031c07efa03bce42c4b8602d22e73",
+    "license": "MIT",
+    "status": "linked",
+    "note": "Engine ký IPA hiện có; nhánh package vẫn ở cùng revision.",
+    "licenseFile": "Zsign-LICENSE.txt"
+  }
+]
