@@ -95,6 +95,7 @@ enum NiKCertificateKeychain {
 
 @MainActor
 final class NiKCertificateStore: ObservableObject {
+    static let shared = NiKCertificateStore()
     @Published private(set) var profiles: [NiKCertificateProfile] = []
     @Published var selectedProfileID: UUID?
 
@@ -129,8 +130,8 @@ final class NiKCertificateStore: ObservableObject {
 
     @discardableResult
     func importProfile(p12URL: URL, provisionURL: URL, password: String, customName: String = "") throws -> NiKCertificateProfile {
-        let p12Data = try Data(contentsOf: p12URL)
-        let provisionData = try Data(contentsOf: provisionURL)
+        let p12Data = try Self.readCertificateFile(p12URL)
+        let provisionData = try Self.readCertificateFile(provisionURL)
         let certInfo = try Self.inspectP12(data: p12Data, password: password)
         let provInfo = try Self.parseMobileProvision(data: provisionData)
 
@@ -139,6 +140,13 @@ final class NiKCertificateStore: ObservableObject {
         let folder = rootDirectory.appendingPathComponent(id.uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
+        var committed = false
+        defer {
+            if !committed {
+                try? FileManager.default.removeItem(at: folder)
+                NiKCertificateKeychain.deletePassword(for: id)
+            }
+        }
         let p12Dest = folder.appendingPathComponent("certificate.p12")
         let provDest = folder.appendingPathComponent("embedded.mobileprovision")
         try p12Data.write(to: p12Dest, options: .completeFileProtection)
@@ -167,21 +175,22 @@ final class NiKCertificateStore: ObservableObject {
             provisionFilename: "embedded.mobileprovision",
             createdAt: Date()
         )
-        profiles.insert(profile, at: 0)
+        let updated = [profile] + profiles
+        try persist(updated)
+        profiles = updated
         selectedProfileID = profile.id
-        saveProfiles()
+        committed = true
         return profile
     }
 
-    func removeProfile(_ profile: NiKCertificateProfile) {
-        let folder = rootDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
-        try? FileManager.default.removeItem(at: folder)
+    func removeProfile(_ profile: NiKCertificateProfile) throws {
+        let updated = profiles.filter { $0.id != profile.id }
+        try persist(updated)
+        profiles = updated
+        if selectedProfileID == profile.id { selectedProfileID = profiles.first?.id }
         NiKCertificateKeychain.deletePassword(for: profile.id)
-        profiles.removeAll { $0.id == profile.id }
-        if selectedProfileID == profile.id {
-            selectedProfileID = profiles.first?.id
-        }
-        saveProfiles()
+        let folder = rootDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
+        if FileManager.default.fileExists(atPath: folder.path) { try FileManager.default.removeItem(at: folder) }
     }
 
     private func loadProfiles() {
@@ -194,11 +203,19 @@ final class NiKCertificateStore: ObservableObject {
         selectedProfileID = decoded.first?.id
     }
 
-    private func saveProfiles() {
+    private func persist(_ profiles: [NiKCertificateProfile]) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(profiles) else { return }
-        try? data.write(to: indexURL, options: .completeFileProtection)
+        try encoder.encode(profiles).write(to: indexURL, options: [.atomic, .completeFileProtection])
+    }
+
+    nonisolated static func readCertificateFile(_ url: URL) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let limit = 16 * 1_048_576
+        let data = try handle.read(upToCount: limit + 1) ?? Data()
+        guard !data.isEmpty, data.count <= limit else { throw NiKError("Tệp chứng chỉ trống hoặc vượt 16 MB.") }
+        return data
     }
 
     nonisolated static func inspectP12(data: Data, password: String) throws -> (summary: String, derData: Data, sha1Hex: String) {
