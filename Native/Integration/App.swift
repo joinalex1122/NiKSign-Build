@@ -94,7 +94,9 @@ struct NiKSignApp: App {
                 NiKToolsSheet(initialURL: request.url)
             }
             .onOpenURL { url in
-                if url.isFileURL && ["ipa", "p12", "mobileprovision", "json", "plist", "dylib", "deb", "3105pass"].contains(url.pathExtension.lowercased()) {
+                if url.isFileURL && url.pathExtension.lowercased() == "ipa" {
+                    Task { await NiKLibrary.shared.receive(url) }
+                } else if url.isFileURL && [ "p12", "mobileprovision", "json", "plist", "dylib", "deb", "3105pass"].contains(url.pathExtension.lowercased()) {
                     toolImport = NiKToolImport(url: url)
                 } else if url.scheme?.lowercased() == "niksign" {
                     var components = URLComponents(url: url, resolvingAgainstBaseURL: false)

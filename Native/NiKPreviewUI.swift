@@ -16,7 +16,10 @@ struct NiKLibraryItem: Codable, Identifiable {
 @MainActor final class NiKLibrary: ObservableObject {
     @Published var items: [NiKLibraryItem] = []
     @Published var error = ""
-    static let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("IPALibrary")
+    static let shared = NiKLibrary()
+    nonisolated static var root: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("IPALibrary") }
+    @Published var receiving = false
+    @Published var notice = ""
     private var index: URL { Self.root.appendingPathComponent("library.json") }
     init() {
         do {
@@ -30,21 +33,36 @@ struct NiKLibraryItem: Codable, Identifiable {
         do { try JSONEncoder().encode(items).write(to: index, options: .atomic) }
         catch { self.error = error.localizedDescription }
     }
+    func receive(_ url: URL) async {
+        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return }
+        receiving = true
+        defer { receiving = false }
+        do {
+            let item = try await Task.detached { try Self.importIPA(url) }.value
+            save(item)
+            notice = "Đã nhập \(item.title) vào thư viện IPA."
+        } catch { self.error = error.localizedDescription }
+    }
     nonisolated static func importIPA(_ url: URL) throws -> NiKLibraryItem {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard url.pathExtension.lowercased() == "ipa" else { throw NiKError("Hãy chọn tệp IPA.") }
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let local = try NiKFileImport.copy(url, into: staging)
         var count: UInt64 = 0, size: UInt64 = 0
-        guard url.path.withCString({ NiKZipCheck($0, &count, &size) }) == 0 else { throw NiKError("IPA hỏng hoặc vượt giới hạn.") }
-        let zip = try Archive(url: url, accessMode: .read)
+        guard local.path.withCString({ NiKZipCheck($0, &count, &size) }) == 0 else { throw NiKError("IPA hỏng hoặc vượt giới hạn.") }
+        let zip = try Archive(url: local, accessMode: .read)
         let metadata = zip.filter { $0.path.hasPrefix("Payload/") && $0.path.split(separator: "/").count == 3 && $0.path.hasSuffix(".app/Info.plist") }
         guard metadata.count == 1, metadata[0].uncompressedSize <= 1_048_576 else { throw NiKError("Info.plist không hợp lệ.") }
         var data = Data()
-        let crc = try zip.extract(metadata[0]) { data.append($0) }
+        let crc = try zip.extract(metadata[0]) { chunk in
+            guard data.count + chunk.count <= 1_048_576 else { throw NiKError("Info.plist vượt 1 MB.") }
+            data.append(chunk)
+        }
         guard crc == metadata[0].checksum,
               let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { throw NiKError("Không đọc được IPA.") }
         let filename = UUID().uuidString + ".ipa"
-        try FileManager.default.copyItem(at: url, to: root.appendingPathComponent(filename))
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: local, to: root.appendingPathComponent(filename))
         return NiKLibraryItem(title: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? url.deletingPathExtension().lastPathComponent,
             version: info["CFBundleShortVersionString"] as? String ?? "?", bundleID: info["CFBundleIdentifier"] as? String ?? "?", filename: filename)
     }
@@ -62,7 +80,7 @@ struct NiKPreviewRoot: View {
     @AppStorage("nik.mode") private var mode = ""
     @AppStorage("nik.theme") private var theme = "system"
     @AppStorage("nik.certPrompted") private var certPrompted = false
-    @StateObject private var library = NiKLibrary()
+    @StateObject private var library = NiKLibrary.shared
     @StateObject private var certificates = NiKCertificateStore()
     @State private var choice = "both"
     @State private var tab = 0
@@ -79,7 +97,7 @@ struct NiKPreviewRoot: View {
                     }
                     if mode != "sign" { NiKHubPreview().tabItem { Label("3105", systemImage: "square.stack.3d.up") }.tag(1) }
                     NavigationStack {
-                        NiKLocalFiles(directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+                        NiKFilesHome()
                     }.tabItem { Label("Tệp", systemImage: "folder") }.tag(2)
                     settings.tabItem { Label("Cài đặt", systemImage: "gearshape") }.tag(3)
                 }
@@ -88,7 +106,8 @@ struct NiKPreviewRoot: View {
         .tint(.cyan)
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .onAppear { configure() }
-        .onChange(of: mode) { _ in configure() }
+        .onChange(of: mode) { _, _ in configure() }
+        .onChange(of: library.notice) { _, notice in if !notice.isEmpty && hasSigner { tab = 0 } }
         .alert("Thêm chứng chỉ ký?", isPresented: $prompt) {
             Button("Nhập chứng chỉ") { tab = 3 }
             Button("Để sau", role: .cancel) {}
@@ -149,7 +168,8 @@ struct NiKLibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                if busy { ProgressView("Đang nhập IPA…").padding() }
+                if library.receiving { ProgressView("Đang nhập IPA…").padding() }
+                if !library.notice.isEmpty { Text(library.notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal) }
                 if library.items.isEmpty { VStack(spacing: 16) { NiKBrand(); Text("Thư viện IPA trống").font(.title2.bold()); Text("Bấm + để nhập IPA từ Tệp.").foregroundStyle(.secondary) }.padding(40) }
                 LazyVGrid(columns: grid ? [GridItem(.adaptive(minimum: 150))] : [GridItem(.flexible())], spacing: 12) {
                     ForEach(filtered) { item in
@@ -167,17 +187,16 @@ struct NiKLibraryView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2") }.accessibilityLabel("Đổi danh sách/lưới")
-                    Button { importing = true } label: { Image(systemName: "plus") }.disabled(busy).accessibilityLabel("Nhập IPA")
+                    Button { importing = true } label: { Image(systemName: "plus") }.disabled(library.receiving).accessibilityLabel("Nhập IPA")
                 }
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
-                do { let url = try result.get(); busy = true
-                    Task {
-                        do { let item = try await Task.detached { try NiKLibrary.importIPA(url) }.value; library.save(item) }
-                        catch { library.error = error.localizedDescription }
-                        busy = false
+            .sheet(isPresented: $importing) {
+                NiKFilePicker { result in
+                    switch result {
+                    case .success(let url): Task { await library.receive(url) }
+                    case .failure(let error): library.error = error.localizedDescription
                     }
-                } catch { library.error = error.localizedDescription }
+                }
             }
             .alert("NiKSign", isPresented: Binding(get: { !library.error.isEmpty }, set: { if !$0 { library.error = "" } })) { Button("Đóng") { library.error = "" } } message: { Text(library.error) }
         }
@@ -349,6 +368,7 @@ struct NiKHubPreview: View {
 struct NiKLocalFiles: View {
     let directory: URL
     @State private var files: [URL] = []
+    @State private var preview: NiKPreviewDocument?
     @State private var query = ""
     @State private var importing = false
     @State private var message = ""
@@ -357,12 +377,15 @@ struct NiKLocalFiles: View {
     var body: some View {
         List {
             ForEach(files.filter { query.isEmpty || $0.lastPathComponent.localizedCaseInsensitiveContains(query) }, id: \.self) { url in
-                if url.hasDirectoryPath {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                     NavigationLink { NiKLocalFiles(directory: url) } label: { Label(url.lastPathComponent, systemImage: "folder") }
                 } else {
                     HStack {
-                        Label(url.lastPathComponent, systemImage: url.pathExtension == "ipa" ? "app" : "doc")
+                        Button { preview = NiKPreviewDocument(url: url) } label: { Label(url.lastPathComponent, systemImage: url.pathExtension == "ipa" ? "app" : "doc") }
                         Spacer(); ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                        if url.pathExtension.lowercased() == "ipa" {
+                            Button { Task { await NiKLibrary.shared.receive(url) } } label: { Image(systemName: "plus.app") }.accessibilityLabel("Thêm vào thư viện IPA")
+                        }
                     }
                 }
             }
@@ -374,6 +397,7 @@ struct NiKLocalFiles: View {
                 Button { createFolder = true } label: { Image(systemName: "folder.badge.plus") }
             }
         }
+        .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
         .onAppear { reload() }
         .refreshable { reload() }
         .alert("Thư mục mới", isPresented: $createFolder) {
@@ -388,14 +412,22 @@ struct NiKLocalFiles: View {
             Button("Hủy", role: .cancel) {}
         }
         .alert("Tệp", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) { Button("Đóng") { message = "" } } message: { Text(message) }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
-            do {
-                let url = try result.get(); let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                try FileManager.default.copyItem(at: url, to: directory.appendingPathComponent(url.lastPathComponent)); reload()
-            } catch { message = error.localizedDescription }
+        .sheet(isPresented: $importing) {
+            NiKFilePicker { result in
+                do {
+                    let url = try result.get()
+                    let target = directory
+                    Task {
+                        do {
+                            let imported = try await Task.detached { try NiKFileImport.copy(url, into: target) }.value
+                            reload(); message = "Đã nhập \(imported.lastPathComponent)."
+                        } catch { message = error.localizedDescription }
+                    }
+                } catch { message = error.localizedDescription }
+            }
         }
     }
+
     private func reload() {
         do {
             files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: .skipsHiddenFiles)
