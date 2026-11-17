@@ -51,7 +51,7 @@ jobs:
           /tmp/patch-v9-test
           xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9TransactionSmoke.swift -o /tmp/patch-v9-transaction-test
           /tmp/patch-v9-transaction-test
-          xcrun swiftc Native/NiKFileImport.swift Vendor/3105/ThreeOneOSFive/helpers/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/file-import-test
+          xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/file-import-test
           /tmp/file-import-test
       - name: File manager and certificate ZIP regression tests
         run: bash scripts/test-file-tools.sh

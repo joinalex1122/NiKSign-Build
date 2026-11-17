@@ -900,11 +900,7 @@ otaStatusMessage = error.localizedDescription
 private func saveToDocuments(_ url: URL) {
 do {
 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-let dest = docs.appendingPathComponent(url.lastPathComponent)
-if FileManager.default.fileExists(atPath: dest.path) {
-try FileManager.default.removeItem(at: dest)
-}
-try FileManager.default.copyItem(at: url, to: dest)
+let dest = try NiKFileImport.copy(url, into: docs)
 saveStatusMessage = t("Đã lưu vào Tệp: \(dest.lastPathComponent)", "Saved to Files: \(dest.lastPathComponent)")
 } catch {
 saveStatusMessage = error.localizedDescription

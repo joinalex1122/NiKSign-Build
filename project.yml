@@ -38,6 +38,7 @@ targets:
       - App.swift
       - Info.plist
       - views/RepositoryHomeView.swift
+      - helpers/SupportPolicy.swift
     - path: Vendor/minizip
       excludes:
       - MiniZip64_info.txt

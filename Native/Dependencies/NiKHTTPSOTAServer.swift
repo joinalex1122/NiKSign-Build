@@ -55,11 +55,15 @@ self.displayTitle = title
 }
 
 func start() throws {
+guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { throw OTAError.missingIPA }
 stop()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-let (secIdentity, certDER) = try Self.generateLocalIdentity()
-self.identity = secIdentity
-self.certificateDER = certDER
+if identity == nil || certificateDER == nil {
+    let generated = try Self.generateLocalIdentity()
+    identity = generated.0
+    certificateDER = generated.1
+}
+guard let secIdentity = identity else { throw OTAError.identityImportFailed }
 
 let tlsOptions = NWProtocolTLS.Options()
 if let secId = sec_identity_create(secIdentity) {
@@ -69,11 +73,12 @@ sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOpt
 
 let parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
 parameters.allowLocalEndpointReuse = true
+parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
 
 let newListener = try NWListener(using: parameters)
 newListener.stateUpdateHandler = { [weak self] state in
 Task { @MainActor [weak self] in
-guard let self else { return }
+guard let self, self.listener === newListener else { return }
 switch state {
 case .ready:
 self.port = newListener.port?.rawValue ?? 0
@@ -177,11 +182,11 @@ self.sendResponse(on: connection, status: "200 OK", contentType: "application/xm
 self.sendResponse(on: connection, status: "500 Internal Server Error", contentType: "text/plain", body: Data("Manifest error".utf8))
 }
 } else if path == ipaPath {
-guard let ipaURL = self.ipaURL, let ipaData = try? Data(contentsOf: ipaURL) else {
+guard let ipaURL = self.ipaURL else {
 self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("IPA not found".utf8))
 return
 }
-self.sendResponse(on: connection, status: "200 OK", contentType: "application/octet-stream", body: ipaData)
+self.sendFile(on: connection, url: ipaURL)
 } else {
 self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("Not Found".utf8))
 }
@@ -206,6 +211,34 @@ let manifest: [String: Any] = [
 ]]
 ]
 return try PropertyListSerialization.data(fromPropertyList: manifest, format: .xml, options: 0)
+}
+
+private func sendFile(on connection: NWConnection, url: URL) {
+    do {
+        let handle = try FileHandle(forReadingFrom: url)
+        let size = try handle.seekToEnd()
+        try handle.seek(toOffset: 0)
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size)\r\nConnection: close\r\n\r\n"
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { error in
+            guard error == nil else { try? handle.close(); connection.cancel(); return }
+            Self.sendNextChunk(on: connection, handle: handle, remaining: size)
+        })
+    } catch {
+        sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("IPA unavailable".utf8))
+    }
+}
+
+nonisolated private static func sendNextChunk(on connection: NWConnection, handle: FileHandle, remaining: UInt64) {
+    guard remaining > 0 else { try? handle.close(); connection.cancel(); return }
+    do {
+        guard let data = try handle.read(upToCount: Int(min(remaining, 65536))), !data.isEmpty else {
+            try? handle.close(); connection.cancel(); return
+        }
+        connection.send(content: data, completion: .contentProcessed { error in
+            guard error == nil else { try? handle.close(); connection.cancel(); return }
+            sendNextChunk(on: connection, handle: handle, remaining: remaining - UInt64(data.count))
+        })
+    } catch { try? handle.close(); connection.cancel() }
 }
 
 private func sendResponse(on connection: NWConnection, status: String, contentType: String, body: Data) {

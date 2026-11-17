@@ -25,7 +25,9 @@ import Foundation
         precondition(preserved == Data("original".utf8))
         let pending = try fm.contentsOfDirectory(atPath: destination.path).filter { $0.hasPrefix(".import-") }
         precondition(pending.isEmpty)
-        precondition(!ExploitSupportPolicy.isSupported(major: 27, minor: 2, patch: 0, build: "official"))
+        precondition(ExploitSupportPolicy.isSupported(major: 27, minor: 2, patch: 0, build: "official"))
+        precondition(!ExploitSupportPolicy.isSupported(major: 27, minor: 3, patch: 0, build: "unknown"))
+        precondition(!ExploitSupportPolicy.isSupported(major: 28, minor: 0, patch: 0, build: "unknown"))
         print("PASS: coordinated import, Unicode, duplicate names, same-directory copy, directory/missing/unwritable rejection, cleanup and iOS 27.2 support guard")
     }
     static func expectFailure(_ action: () throws -> Void) throws {
