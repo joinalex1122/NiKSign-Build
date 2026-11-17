@@ -504,6 +504,10 @@ return sortAscending ? cmp : !cmp
 }
 
 var body: some View {
+applyDialogsAndAlerts(applySheets(baseContentView))
+}
+
+private var baseContentView: some View {
 List {
 if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
 ForEach(filtered, id: \.self) { url in
@@ -513,7 +517,12 @@ rowItem(url)
 }
 .navigationTitle(directory.lastPathComponent)
 .searchable(text: $query, prompt: "Tìm tệp")
-.toolbar {
+.toolbar { toolbarMenuContent }
+.safeAreaInset(edge: .bottom) { selectionBottomBar }
+}
+
+@ToolbarContentBuilder
+private var toolbarMenuContent: some ToolbarContent {
 ToolbarItem(placement: .topBarTrailing) {
 Menu {
 Button {
@@ -554,7 +563,8 @@ Image(systemName: "ellipsis.circle")
 }
 }
 }
-.safeAreaInset(edge: .bottom) {
+@ViewBuilder
+private var selectionBottomBar: some View {
 if isSelecting {
 HStack {
 Button("Sao chép") { clipboard.set(Array(selectedURLs), isCut: false); isSelecting = false; selectedURLs.removeAll() }.disabled(selectedURLs.isEmpty)
@@ -573,6 +583,10 @@ Button("Xong") { isSelecting = false; selectedURLs.removeAll() }.bold()
 .background(.bar)
 }
 }
+
+private func applySheets<V: View>(_ view: V) -> some View {
+view
+    
    .onAppear { reload() }
 .refreshable { reload() }
 .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
@@ -591,6 +605,11 @@ NiKFilePicker(types: [.item]) { urls in
 Task { for url in urls { _ = try? NiKFileImport.copy(url, into: directory) }; reload() }
 }
 }
+}
+
+private func applyDialogsAndAlerts<V: View>(_ view: V) -> some View {
+view
+    
 .confirmationDialog(ipaTarget?.lastPathComponent ?? "IPA", isPresented: Binding(get: { ipaTarget != nil }, set: { if !$0 { ipaTarget = nil } }), titleVisibility: .visible, presenting: ipaTarget) { url in
 Button("Ký & Cài đặt") { Task { await NiKLibrary.shared.receive(url) } }
 Button("Giải nén thành App") { unzipIPA(url) }
