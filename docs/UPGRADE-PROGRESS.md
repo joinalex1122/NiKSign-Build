@@ -9,7 +9,7 @@ P0 của nhánh codex/niksign-handoff-final còn chờ workflow 44148347210; ch�
 |---|---|---|
 | P0 / 10C: 2-pass sạch | Đang chờ runner | Swift/Xcode/IPA thật |
 | P1: job/journal/đầu ra an toàn | Đã viết, chờ kiểm định | SigningJobsSmoke + output ZIP fixtures + build |
-| P2: 3B chứng chỉ + 1B queue | 1B đã nối UI; đang làm 3B | Fixture, UI, ký thiết bị |
+| P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
 | P3: 4B tệp + workspace | Chưa triển khai bổ sung | Editors/tab/trash/backup |
 | P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
@@ -36,3 +36,14 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Parser Swift của các file UI/queue/signer: PASS cú pháp, **không** thay kiểm tra type của SwiftUI/UIKit bằng Xcode.
 - ZIPFoundation 0.9.20 trên Linux có cảnh báo manifest về PrivacyInfo.xcprivacy chưa được khai báo resource. Giữ nguyên cảnh báo để đối chiếu; chưa đạt gate native 0 cảnh báo.
 - P0 workflow cũ bị hủy do cấp runner; phải chạy Xcode cho nhánh nâng cấp và xử lý lỗi nếu có.
+
+## Mốc 2 — phân tích chứng chỉ (đã viết, chưa hoàn tất gate Apple)
+
+- Tách certificate models; bổ sung validity của cert, loại phân phối, UDID và entitlements có kiểu. Sửa TeamIdentifier khác App ID prefix; không nhầm seed prefix với Team ID.
+- Compatibility core kiểm bundle exact/wildcard, profile/cert expiry, not-before, cert/profile mismatch, UDID và loại phân phối. Không biết UDID/không chọn IPA thì hiển thị chưa kiểm tra, không giả thông tin thiết bị.
+- Nối phân tích vào picker/chi tiết chứng chỉ, lỗi chặn hiển thị ở chi tiết IPA và signer kiểm tra lại từ p12/profile thật. Snapshot UDID vào options của job để đổi Settings không thay đổi công việc đã xếp hàng.
+- Signing options có schema/default decoding để đọc dữ liệu cũ, từ chối version chưa hỗ trợ. Store chứng chỉ bảo toàn index hỏng, chặn import/remove khi chưa đọc được, cho xuất index khôi phục.
+- CertificateCompatibilitySmoke trên Swift Linux: PASS; SigningJobsSmoke có migration options: PASS; parser UI/store: PASS cú pháp. Bổ sung fixture macOS kiểm ngày X509, prefix/Team ID, typed entitlements và index hỏng; các fixture Security này chờ runner.
+- NiKPlistValue giữ bool/integer/data/date/array/dictionary, round-trip binary plist; giới hạn 64 cấp/100.000 mục. Core tests round trip/bounds PASS.
+- Phân tích này offline, chưa xác minh Apple CMS/thu hồi; không tuyên bố cài được trước kiểm thử iPhone. P0 và gate hai lượt Xcode vẫn là điều kiện phát hành.
+- Tiếp theo: xử lý CI nếu có lỗi; triển khai 9B workspace/backup/diff rồi 4B editors/tab/trash, sau đó 2C.

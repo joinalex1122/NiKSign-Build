@@ -20,6 +20,8 @@ xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchP
 xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/nik-file-import-test
 /tmp/nik-file-import-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Tests/SigningJobsSmoke.swift -o /tmp/nik-signing-jobs-test
+xcrun swiftc Native/Models/NiKPlistValue.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKCertificateCompatibility.swift Tests/CertificateCompatibilitySmoke.swift -o /tmp/nik-cert-compat-test
+/tmp/nik-cert-compat-test
 /tmp/nik-signing-jobs-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh

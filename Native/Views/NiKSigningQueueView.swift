@@ -67,6 +67,7 @@ struct NiKBatchSigningView: View {
     @ObservedObject var certificates: NiKCertificateStore
     @ObservedObject private var queue = NiKSigningQueue.shared
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
+    @AppStorage("nik.deviceUDID") private var targetDeviceUDID = ""
     @AppStorage("nik.language") private var language = "vi"
     @State private var selected: Set<UUID> = []
     @State private var certificateChoice: UUID?
@@ -112,7 +113,9 @@ struct NiKBatchSigningView: View {
                 guard let id = item.certificateID ?? fallback, certificates.profiles.contains(where: { $0.id == id }) else {
                     throw NiKError(item.title + ": " + t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate."))
                 }
-                return NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: id, options: item.options)
+                var snapshot = item.options
+                snapshot.targetDeviceUDID = targetDeviceUDID
+                return NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: id, options: snapshot)
             }
             try queue.enqueue(jobs)
             notice = t("Đã thêm \(jobs.count) IPA. Mở hàng đợi để theo dõi.", "Queued \(jobs.count) IPAs. Open the queue to monitor progress.")

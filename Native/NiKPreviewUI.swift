@@ -590,6 +590,7 @@ struct NiKIPADetail: View {
     @ObservedObject var certificates: NiKCertificateStore
     @ObservedObject private var signingQueue = NiKSigningQueue.shared
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
+    @AppStorage("nik.deviceUDID") private var targetDeviceUDID = ""
     @AppStorage("nik.language") private var language = "vi"
     @Environment(\.dismiss) private var dismiss
 
@@ -605,6 +606,13 @@ struct NiKIPADetail: View {
 
     private var activeJob: NiKSigningJob? { signingQueue.jobs.first { $0.libraryID == item.id && !$0.state.isTerminal } }
     private var completedJob: NiKSigningJob? { signingQueue.jobs.last { $0.libraryID == item.id && $0.state == .succeeded } }
+
+    private var certificateAssessment: NiKCertificateAssessment? {
+        guard let cert = activeCertificate else { return nil }
+        let custom = item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NiKCertificateCompatibility.assess(cert, bundleID: custom.isEmpty ? item.bundleID : custom,
+            deviceUDID: targetDeviceUDID, allowMismatch: item.options.allowCertificateMismatch)
+    }
 
     private var activeCertificate: NiKCertificateProfile? {
         if let id = item.certificateID {
@@ -739,6 +747,19 @@ struct NiKIPADetail: View {
                     }
                 }
                 .pickerStyle(.menu)
+                if let assessment = certificateAssessment {
+                    ForEach(Array(assessment.issues.prefix(3))) { issue in
+                        Text(language == "en" ? issue.en : issue.vi).font(.caption)
+                            .foregroundStyle(issue.severity == .blocking ? Color.red : Color.orange)
+                    }
+                }
+                if let certificate = activeCertificate {
+                    NavigationLink(t("Phân tích chứng chỉ với IPA này", "Assess Certificate for This IPA")) {
+                        NiKCertificateAssessmentView(profile: certificate,
+                            bundleID: item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? item.bundleID : item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+                            allowMismatch: item.options.allowCertificateMismatch)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -800,11 +821,11 @@ struct NiKIPADetail: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(activeCertificate == nil || activeJob != nil ? Color.gray.opacity(0.45) : Color.accentColor)
+            .background(activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false ? Color.gray.opacity(0.45) : Color.accentColor)
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .disabled(activeCertificate == nil || activeJob != nil)
+        .disabled(activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false)
     }
 
     @ViewBuilder
@@ -939,7 +960,9 @@ saveStatusMessage = error.localizedDescription
         }
         do {
             guard library.save(item) else { throw NiKError(library.error) }
-            let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: item.options)
+            var snapshot = item.options
+            snapshot.targetDeviceUDID = targetDeviceUDID
+            let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: snapshot)
             try signingQueue.enqueue([job])
         } catch { errorMessage = error.localizedDescription }
     }
@@ -986,6 +1009,10 @@ struct NiKCertificateSettings: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if let failure = store.loadFailure {
+                    Text(failure).font(.footnote).foregroundStyle(.red)
+                    ShareLink(t("Xuất index để khôi phục", "Export Index for Recovery"), item: store.recoveryIndexURL)
+                }
                 savedProfilesCard
                 importFilesCard
                 documentsQuickLoadCard
@@ -1064,6 +1091,9 @@ struct NiKCertificateSettings: View {
             }
             .buttonStyle(.plain)
 
+            NavigationLink { NiKCertificateAssessmentView(profile: profile) } label: {
+                Image(systemName: "info.circle").padding(8)
+            }.buttonStyle(.plain)
             Button(role: .destructive) {
                 do {
                     try store.removeProfile(profile)

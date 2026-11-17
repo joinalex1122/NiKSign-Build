@@ -46,6 +46,9 @@ actor SigningService {
         try report(1, 0.12, "Đang kiểm tra khóa .p12 và hồ sơ .mobileprovision…")
         let p12Data = try NiKCertificateStore.readCertificateFile(p12)
         let certInfo = try NiKCertificateStore.inspectP12(data: p12Data, password: password)
+        guard certInfo.expirationDate != nil, certInfo.notBeforeDate != nil else {
+            throw NiKError("Không đọc được thời gian hiệu lực của chứng chỉ ký.")
+        }
         let provData = try NiKCertificateStore.readCertificateFile(profile)
         let provInfo = try NiKCertificateStore.parseMobileProvision(data: provData)
 
@@ -117,6 +120,22 @@ actor SigningService {
         }
         if !trimmedCustomBundleID.isEmpty {
             _ = try PatchPathValidator.canonicalBundleIdentifier(trimmedCustomBundleID)
+        }
+
+        _ = try PatchPathValidator.canonicalBundleIdentifier(effectiveBundleID)
+        let descriptor = NiKCertificateProfile(id: UUID(), name: provInfo.name, certSummary: certInfo.summary,
+            teamName: provInfo.teamName, teamID: provInfo.teamID, appIDName: provInfo.appIDName,
+            bundleIDPattern: provInfo.bundleIDPattern, creationDate: provInfo.creationDate,
+            expirationDate: provInfo.expirationDate, provisionedUDIDs: provInfo.provisionedUDIDs,
+            certMatchesProvision: provInfo.developerCertificatesDER.contains(certInfo.derData),
+            sha1Fingerprint: certInfo.sha1Hex, p12Filename: p12.lastPathComponent, provisionFilename: profile.lastPathComponent,
+            createdAt: Date(), certificateExpirationDate: certInfo.expirationDate,
+            certificateCreationDate: certInfo.notBeforeDate, provisionsAllDevices: provInfo.provisionsAllDevices,
+            allowsDebugging: provInfo.allowsDebugging, entitlements: provInfo.entitlements)
+        let assessment = NiKCertificateCompatibility.assess(descriptor, bundleID: effectiveBundleID,
+            deviceUDID: options.targetDeviceUDID, allowMismatch: options.allowCertificateMismatch)
+        guard assessment.canSign else {
+            throw NiKError(assessment.issues.filter { $0.severity == .blocking }.map(\.vi).joined(separator: "\n"))
         }
 
         let executableURL = app.appendingPathComponent(executable)

@@ -10,6 +10,9 @@ import Foundation
         let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? fm.removeItem(at: root) }
         let url = root.appendingPathComponent("jobs.json")
+        let defaults = try JSONDecoder().decode(NiKSigningOptions.self, from: Data("{}".utf8))
+        precondition(defaults == NiKSigningOptions())
+        expectFailure { _ = try JSONDecoder().decode(NiKSigningOptions.self, from: Data("{\"schemaVersion\":99}".utf8)) }
         let journal = try NiKSigningJobJournal(url: url)
         var options = NiKSigningOptions()
         options.customDisplayName = "Original snapshot"
