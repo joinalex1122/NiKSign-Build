@@ -9,7 +9,7 @@ struct NiKSignApp: App {
     @StateObject private var fileOperationCoordinator = FileOperationCoordinator()
     @StateObject private var patchStore = PatchProjectStore()
     @StateObject private var repositoryStore = PackageRepositoryStore()
-    @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.english.rawValue
+    @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.vietnamese.rawValue
     @State private var showOnboarding = false
     @AppStorage("nik.mode") private var nikMode = ""
     @State private var showAttribution = false
@@ -19,6 +19,10 @@ struct NiKSignApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init() {
+        if UserDefaults.standard.string(forKey: "nik.language") == nil {
+            let old = UserDefaults.standard.string(forKey: "appLanguage")
+            UserDefaults.standard.set(old == "en" ? "en" : "vi", forKey: "nik.language")
+        }
         setupLogCapture()
         log("app: 3105 launching — iOS \(AppInfo.osVersion) (\(AppInfo.osBuild)) \(AppInfo.machineName)")
     }

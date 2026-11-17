@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: brew install xcodegen openssl@3
       - name: Check source integration
         run: python3 scripts/check-integration.py
       - name: Codec and Patch v9 regression tests
@@ -57,6 +57,8 @@ jobs:
           /tmp/file-import-test
       - name: File manager and certificate ZIP regression tests
         run: bash scripts/test-file-tools.sh
+      - name: Modern and legacy certificate regression tests
+        run: bash scripts/test-certificates.sh
       - name: Build unsigned arm64 IPA
         run: bash scripts/build-ios.sh
       - name: Reject compiler warnings and errors

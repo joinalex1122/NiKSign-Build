@@ -7,5 +7,6 @@
   "views/PatchProjectsView.swift": "Native/UpstreamCompatibility/views/PatchProjectsView.swift",
   "helpers/DisplayIdentityAttribution.swift": "Native/UpstreamCompatibility/helpers/DisplayIdentityAttribution.swift",
   "kexploit/krw.m": "Native/UpstreamCompatibility/kexploit/krw.m",
-  "kexploit/kexploit_opa334.m": "Native/UpstreamCompatibility/kexploit/kexploit_opa334.m"
+  "kexploit/kexploit_opa334.m": "Native/UpstreamCompatibility/kexploit/kexploit_opa334.m",
+  "helpers/Localization.swift": "Native/UpstreamCompatibility/helpers/Localization.swift"
 }

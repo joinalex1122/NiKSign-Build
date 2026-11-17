@@ -57,6 +57,7 @@ self.displayTitle = title
 }
 
 func start() throws {
+lastError = nil
 guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { throw OTAError.missingIPA }
 stop()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
@@ -88,7 +89,7 @@ self.isRunning = self.port > 0
 self.lastError = nil
 case .failed(let error):
 self.lastError = error.localizedDescription
-self.isRunning = false
+self.stop()
 case .cancelled:
 self.isRunning = false
 default:

@@ -101,6 +101,7 @@ struct NiK3105V2HubView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             Section(t("Danh sách Workspace v9 (\(workspaces.count))", "Workspace v9 (\(workspaces.count))")) {
                 if workspaces.isEmpty {
@@ -130,6 +131,7 @@ struct NiK3105V2HubView: View {
                     }
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             if let project = activeProject, let wsURL = selectedWorkspaceURL {
                 Section(t("Chi tiết & Tùy chỉnh: \(project.name)", "Details & Options: \(project.name)")) {
@@ -220,6 +222,7 @@ struct NiK3105V2HubView: View {
                         }
                     }
                 }
+                .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
             }
         }
     }
@@ -245,6 +248,7 @@ struct NiK3105V2HubView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             Section(t("Gói Dialer đã nhập (\(dialerPackages.count))", "Imported Dialer Packages (\(dialerPackages.count))")) {
                 if dialerPackages.isEmpty {
@@ -292,6 +296,7 @@ struct NiK3105V2HubView: View {
                     }
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
         }
     }
 
@@ -316,6 +321,7 @@ struct NiK3105V2HubView: View {
                     .tint(systemFeatures.isCleanerInstalled ? .red : .orange)
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             Section(t("Footnote màn hình khóa (Lock Screen Footnote)", "Lock Screen Footnote")) {
                 TextField(t("Nội dung hiển thị ở cuối màn hình khóa…", "Text at the bottom of the lock screen…"), text: $systemFeatures.footnoteText)
@@ -323,6 +329,7 @@ struct NiK3105V2HubView: View {
                     systemFeatures.applyFootnote()
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             Section(t("Chế độ Giám sát (Supervised Mode)", "Supervised Mode")) {
                 Toggle(t("Bật trạng thái Supervised (IsSupervised)", "Enable Supervised State (IsSupervised)"), isOn: $systemFeatures.isSupervisedEnabled)
@@ -331,6 +338,7 @@ struct NiK3105V2HubView: View {
                     systemFeatures.applySupervisedState()
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
 
             Section(t("Sao lưu & Khôi phục hệ thống", "System Backup & Restore")) {
                 Button(t("Khôi phục Footnote & Supervised về nguyên gốc", "Restore Original Footnote & Supervised"), role: .destructive) {
@@ -342,6 +350,7 @@ struct NiK3105V2HubView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .listRowBackground(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(uiColor: .secondarySystemGroupedBackground)))
         }
     }
 

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Combine
 import Security
 import OpenSSL
 struct NiKCertificateProfile: Codable, Identifiable, Equatable {
@@ -219,8 +220,7 @@ final class NiKCertificateStore: ObservableObject {
     }
 
     nonisolated static func inspectP12(data: Data, password: String) throws -> (summary: String, derData: Data, sha1Hex: String) {
-    let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
-let candidates: [String] = trimmed == password ? [password] : [password, trimmed]
+    let candidates = [password] // Password whitespace is significant; signing must use the same value.
 var lastStatus: OSStatus = errSecSuccess
 
 for candidate in candidates {
