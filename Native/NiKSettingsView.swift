@@ -6,6 +6,7 @@ struct NiKSettingsView: View {
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.mode") private var mode = "both"
     @AppStorage("nik.theme") private var theme = "system"
+    @AppStorage("nik.interfaceMode") private var interfaceMode = "basic"
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     var body: some View {
         NavigationStack {
@@ -56,6 +57,15 @@ struct NiKSettingsView: View {
                     Button(t("Chỉ 3105", "3105 only")) { mode = "tools" }
                     Button(t("Cả hai", "Both")) { mode = "both" }
                 } label: { row("slider.horizontal.3", .indigo, t("Chế độ", "Mode"), mode == "sign" ? "IPA" : mode == "tools" ? "3105" : "IPA + 3105") }
+                Divider()
+                Menu {
+                    Button(t("Cơ bản", "Basic")) { interfaceMode = "basic" }
+                    Button(t("Nâng cao", "Advanced")) { interfaceMode = "advanced" }
+                } label: {
+                    row("switch.2", .teal, t("Mức tùy chỉnh", "Customization Level"), interfaceMode == "advanced" ? t("Nâng cao", "Advanced") : t("Cơ bản", "Basic"))
+                }
+                Text(t("Đổi mức hiển thị giữ nguyên tùy chọn của từng IPA và hàng đợi đang chạy.", "Changing the display level preserves each IPA’s options and running jobs."))
+                    .font(.caption).foregroundStyle(.secondary)
                 Divider()
                 Menu {
                     Button(t("Theo hệ thống", "System")) { theme = "system" }

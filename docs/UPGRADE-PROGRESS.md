@@ -15,7 +15,7 @@ P0 của nhánh codex/niksign-handoff-final còn chờ workflow 44148347210; ch�
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
 | P7: 7B nguồn | Có nền, chưa hoàn tất | Tải tệp/hash/cancel/thư viện |
-| 8B: Cơ bản/Nâng cao | Chưa triển khai bổ sung | Persistence/UI |
+| 8B: Cơ bản/Nâng cao | Đã viết; chờ Xcode/UI | Persistence và chuyển chế độ trên iPhone |
 | 9B/10C: backup/report/QA | Có nền, chưa hoàn tất | Giao dịch/report/redaction/tests |
 
 Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn lại và bước tiếp theo. Các lựa chọn đã chốt không cần hỏi lại. Không nới quyền iOS hoặc hứa cài/đọc container khi chưa có bằng chứng trên thiết bị.
@@ -53,6 +53,26 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Recovery store có root policy/symlink guard, SHA-256, snapshot chống stale edit, backup trước ghi và journal trước đổi tệp; giữ POSIX permissions. File editor tối đa 32 MB ở backend, tổng backup 256 MB.
 - Restore không tự ghi đè phiên bản mới; backup lỗi/thiếu bị từ chối và giữ lịch sử để thử lại. Prepared records được đối chiếu sau gián đoạn, không tự ghi lên tệp chưa rõ trạng thái.
 - Xóa backup cần xác nhận mất khả năng restore; dùng tombstone và index transaction, khôi phục folder nếu bị ngắt trước commit. Không xóa nội dung tệp đích khi dọn backup.
-- FileRecoverySmoke trên Swift Linux đã PASS: SHA-256 chuẩn, snapshot/backup, stale edits, restore conflict/retry, quyền file, ba điểm lỗi ghi, journal trước ghi, root/symlink, backup/index hỏng, recovery sau gián đoạn; đang bổ sung test dọn backup/tombstone.
+- FileRecoverySmoke trên Swift Linux đã PASS: SHA-256 chuẩn, snapshot/backup, stale edits, restore conflict/retry, quyền file, ba điểm lỗi ghi, journal trước ghi, root/symlink, backup/index hỏng, recovery sau gián đoạn; test dọn backup/tombstone cũng đã PASS.
 - Có controller nền và màn lịch sử trong Settings. Các API Apple NSFileCoordinator/CryptoKit và UI chờ CI; Linux dùng sha256sum trong harness, ứng dụng Apple dùng CryptoKit.
 - Tiếp theo: hoàn tất editor text/JSON/plist có preview thay đổi và backup tự động; nối menu tệp rồi triển khai tab/favorites/trash.
+
+## Mốc 4 — editor text/JSON/plist (WIP trong workspace, CHƯA có trong commit GitHub)
+
+- Workspace /workspace/NiKSign-upgrades mất kết nối trong lúc chuẩn bị checkpoint. Không reset/xóa workspace khi trở lại.
+- WIP: Native/Models/NiKEditableTextDocument.swift, Native/Views/NiKTextEditorView.swift, Tests/TextDocumentSmoke.swift; thay đổi Native/NiKPreviewUI.swift (editorDoc + tap text), Native/Services/NiKRecoveryController.swift (refresh lịch sử khi write lỗi), Native/Signer.swift (Zsign.checkSigned), scripts/audit-ios.sh (chạy test editor).
+- Có kiểm JSON/plist, định dạng, review vùng thay đổi giới hạn, xác nhận bỏ draft; lưu qua snapshot/backup/journal/SHA-256. No-op giữ nguyên byte, không tạo backup thừa.
+- Editor giới hạn 2 MB; binary plist giữ binary. Đã phát hiện Date có phần lẻ bị XML truncation, parser XML không chấp nhận fractional date: guard round-trip từ chối sửa trường hợp mất dữ liệu. Không gọi đây là typed tree editor hoàn chỉnh.
+- TextDocumentSmoke đã chạy Swift Linux 6.1.2 PASS, gồm nested fractional Date bị chặn, no-op, Data/Date/Bool, JSON lỗi và diff bounds. Chưa có kết quả parse cuối sau bản sửa guard do workspace ngắt; chưa typecheck UIKit.
+- Khi workspace trở lại: đối chiếu git diff trước; lấy commit remote mới bằng fetch. NiKPreviewUI.swift có thay đổi remote 8B và local editor, phải giữ cả hai; NiKSettingsView.swift remote 8B. Không reset --hard làm mất WIP.
+- Zsign bridge pinned gọi completion đồng bộ trước trả về; checkSigned chỉ kiểm tra theo zsign, không chứng minh Apple chấp nhận cài.
+- Cập nhật handoff này cùng checkpoint editor sau khi khôi phục môi trường và chạy lại kiểm tra cần thiết.
+
+## Mốc 5 — 8B giao diện Cơ bản/Nâng cao
+
+- Thêm nik.interfaceMode, mặc định basic, lưu độc lập nik.mode (sign/tools/both). Chọn trong Settings hoặc nút chuyển ngay ở tùy chọn IPA.
+- Cơ bản gồm tên/Bundle ID/version/cert/ký; Nâng cao hiện các chỉnh sửa hiện có. Chuyển chế độ không reset options và không đụng snapshot hàng đợi.
+- Luôn hiện tóm tắt các tùy chọn nâng cao đang áp dụng ở cả hai chế độ để không ký với thiết lập bị ẩn.
+- Đây là sửa UI qua GitHub khi workspace unavailable; chưa chạy kiểm thử UI/typecheck Xcode. Commit sẽ kích hoạt audit hai lượt. Không ghi PASS khi chưa có bằng chứng.
+- Run 44156319150 (c7ee74c) đã có runner, source-checks PASS, bước hai audit đang chạy ở lần kiểm tra gần nhất. Chưa có IPA xác nhận.
+- Còn tiếp: phục hồi/checkpoint editor; xử lý kết quả CI; tab/favorites/trash; workspace typed plist + components/diff/undo (2C); patch lifecycle (5C); tải nguồn (7B); report/redaction và gate thiết bị (9B/10C).

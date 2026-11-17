@@ -592,6 +592,7 @@ struct NiKIPADetail: View {
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
     @AppStorage("nik.deviceUDID") private var targetDeviceUDID = ""
     @AppStorage("nik.language") private var language = "vi"
+    @AppStorage("nik.interfaceMode") private var interfaceMode = "basic"
     @Environment(\.dismiss) private var dismiss
 
     @State private var tweakPicker = false
@@ -768,12 +769,37 @@ struct NiKIPADetail: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private var activeAdvancedOptions: [String] {
+        var result: [String] = []
+        if !item.options.minimumOSVersion.isEmpty { result.append("iOS ≥ " + item.options.minimumOSVersion) }
+        if item.options.enableFileSharing { result.append(t("Chia sẻ tệp", "File sharing")) }
+        if item.options.removeSupportedDevicesRestriction { result.append(t("Bỏ giới hạn thiết bị", "Remove device restriction")) }
+        if item.options.removeExtensions { result.append(t("Gỡ Extensions / Watch", "Remove Extensions / Watch")) }
+        if item.options.weakDylibInjection { result.append("Weak dylib") }
+        if item.options.allowCertificateMismatch { result.append(t("Cho phép cert/profile lệch", "Allow cert/profile mismatch")) }
+        if !item.options.injectedFiles.isEmpty { result.append("\(item.options.injectedFiles.count) " + t("thành phần chèn", "injected components")) }
+        return result
+    }
+
     @ViewBuilder
     private var optionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(t("Tùy chọn chỉnh sửa", "Signing Options"))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(t("Tùy chọn chỉnh sửa", "Signing Options"))
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Button(interfaceMode == "advanced" ? t("Cơ bản", "Basic") : t("Nâng cao", "Advanced")) {
+                    interfaceMode = interfaceMode == "advanced" ? "basic" : "advanced"
+                }.font(.caption.weight(.semibold))
+            }
+            if !activeAdvancedOptions.isEmpty {
+                Text(t("Đang áp dụng: ", "Currently applied: ") + activeAdvancedOptions.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if interfaceMode != "advanced" {
+                Text(t("Chế độ cơ bản giữ nguyên mọi tùy chọn nâng cao đã lưu. Chuyển Nâng cao để xem hoặc thay đổi.", "Basic mode preserves all saved advanced options. Switch to Advanced to inspect or change them."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             TextField(t("Tên ứng dụng mới (tùy chọn)", "Custom Display Name"), text: $item.options.customDisplayName)
                 .textFieldStyle(.roundedBorder)
             TextField(t("Bundle ID mới (tùy chọn)", "Custom Bundle ID"), text: $item.options.customBundleID)
@@ -782,7 +808,7 @@ struct NiKIPADetail: View {
                 .textFieldStyle(.roundedBorder)
             TextField(t("Phiên bản mới (tùy chọn)", "Custom Version"), text: $item.options.customVersion)
                 .textFieldStyle(.roundedBorder)
-            DisclosureGroup(t("Cấu hình nâng cao", "Advanced Options")) {
+            if interfaceMode == "advanced" {
                 TextField("Minimum iOS", text: $item.options.minimumOSVersion).textFieldStyle(.roundedBorder)
                 Toggle(t("Chia sẻ tệp", "File Sharing"), isOn: $item.options.enableFileSharing)
                 Toggle(t("Bỏ UISupportedDevices", "Remove UISupportedDevices"), isOn: $item.options.removeSupportedDevicesRestriction)
