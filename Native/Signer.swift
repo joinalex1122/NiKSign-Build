@@ -9,7 +9,7 @@ struct NiKError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-struct NiKSigningOptions: Sendable {
+struct NiKSigningOptions: Sendable, Codable {
     var customBundleID: String = ""
     var customDisplayName: String = ""
     var customVersion: String = ""
