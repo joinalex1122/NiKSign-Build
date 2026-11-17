@@ -57,35 +57,129 @@ struct NiKSystemFiles: View {
     @State private var entries: [URL] = []
     @State private var preview: NiKPreviewDocument?
     @State private var message = ""
+    @State private var query = ""
+
+    private var filteredEntries: [URL] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return entries }
+        return entries.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm dd/MM/yy"
+        return formatter
+    }()
+
     var body: some View {
         List {
             Section { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled) }
             if !message.isEmpty { Section("Không đọc được thư mục") { Text(message); Text("iOS có thể giới hạn quyền truy cập đường dẫn này.") } }
-            ForEach(entries, id: \.self) { url in
-                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                    NavigationLink { NiKSystemFiles(directory: url) } label: { Label(url.lastPathComponent, systemImage: "folder") }
+            ForEach(filteredEntries, id: \.self) { url in
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                if isDirectory {
+                    NavigationLink {
+                        NiKSystemFiles(directory: url)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(url.lastPathComponent)
+                                Text(metadataText(for: url, isDirectory: true))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "folder")
+                        }
+                    }
                 } else {
-                    HStack { Button { preview = NiKPreviewDocument(url: url) } label: { Label(url.lastPathComponent, systemImage: "doc") }; Spacer(); ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
+                    HStack {
+                        Button {
+                            preview = NiKPreviewDocument(url: url)
+                        } label: {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(url.lastPathComponent)
+                                    Text(metadataText(for: url, isDirectory: false))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "doc")
+                            }
+                        }
+                        Spacer()
+                        ShareLink(item: url) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
                 }
             }
-        }.buttonStyle(.borderless).navigationTitle(directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
-        .onAppear { reload() }.refreshable { reload() }
+        }
+        .buttonStyle(.borderless)
+        .navigationTitle(directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
+        .searchable(text: $query, prompt: "Tìm tệp")
+        .onAppear { reload() }
+        .refreshable { reload() }
         .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
     }
+
+    private func metadataText(for url: URL, isDirectory: Bool) -> String {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey])
+        let dateText = values?.contentModificationDate.map { Self.dateFormatter.string(from: $0) } ?? "--:-- --/--/--"
+        if isDirectory {
+            return "\(dateText) • Thư mục"
+        }
+        if let fileSize = values?.fileSize {
+            let sizeText = ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
+            return "\(dateText) • \(sizeText)"
+        }
+        return dateText
+    }
+
     private func reload() {
         do {
-            entries = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey])
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            entries = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey]
+            )
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             message = ""
-        } catch { entries = []; message = error.localizedDescription }
+        } catch {
+            entries = []
+            message = error.localizedDescription
+        }
     }
 }
 
 struct NiKPreviewDocument: Identifiable {
+    let id = UUID()
     let url: URL
-    var id: String { url.path }
 }
-struct NiKQuickLook: UIViewControllerRepresentable {
+
+struct NiKQuickLook: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            NiKQuickLookController(url: url)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .navigationTitle(url.lastPathComponent)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Đóng") {
+                            dismiss()
+                        }
+                    }
+                }
+        }
+    }
+}
+
+private struct NiKQuickLookController: UIViewControllerRepresentable {
     let url: URL
     func makeCoordinator() -> Coordinator { Coordinator(url: url) }
     func makeUIViewController(context: Context) -> QLPreviewController {
@@ -98,6 +192,8 @@ struct NiKQuickLook: UIViewControllerRepresentable {
         let url: URL
         init(url: URL) { self.url = url }
         func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            url as NSURL
+        }
     }
 }
