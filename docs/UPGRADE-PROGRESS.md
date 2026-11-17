@@ -76,3 +76,12 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Đây là sửa UI qua GitHub khi workspace unavailable; chưa chạy kiểm thử UI/typecheck Xcode. Commit sẽ kích hoạt audit hai lượt. Không ghi PASS khi chưa có bằng chứng.
 - Run 44156319150 (c7ee74c) đã có runner, source-checks PASS, bước hai audit đang chạy ở lần kiểm tra gần nhất. Chưa có IPA xác nhận.
 - Còn tiếp: phục hồi/checkpoint editor; xử lý kết quả CI; tab/favorites/trash; workspace typed plist + components/diff/undo (2C); patch lifecycle (5C); tải nguồn (7B); report/redaction và gate thiết bị (9B/10C).
+
+## Mốc 6 — 10C báo cáo chẩn đoán theo danh sách trường cho phép
+
+- Thêm báo cáo JSON có schema: phiên bản app/iOS, đếm trạng thái, tối đa 1.000 job gần nhất (số thứ tự riêng trong báo cáo, state, phần trăm, thời gian, cờ có output/lỗi), đếm trạng thái recovery. Không serialize trực tiếp job/recovery.
+- Loại khỏi bản xuất: tên app/tệp/cert, đường dẫn/URL, UUID/UDID, options/credentials, nội dung file, raw error/log/step. Phiên bản chỉ chấp nhận chữ số và dấu chấm. Progress/time không hữu hạn hoặc ngoài giới hạn được chuẩn hóa.
+- Settings có màn xem trước chính xác JSON rồi ShareLink; không gửi tự động lên mạng. Bản xuất đặt ở temporary directory.
+- Thêm DiagnosticsSmoke với sentinel trong options/path/UDID/error/log/digest/ID để phát hiện lộ dữ liệu; fixture giới hạn 1.005 job và NaN/duration bất thường. Nối test vào hai lượt audit.
+- Chưa thực thi test mới vì workspace unavailable; cần Xcode/Swift CI trước khi xác nhận. Báo cáo không thay xác minh trust/cài đặt/hệ thống, không tự khẳng định gate build đã qua. Recovery counts là snapshot đang nạp, chưa báo được tình trạng storage unavailable riêng (cần bổ sung ở controller).
+- Khi khôi phục workspace, merge scripts/audit-ios.sh giữ cả TextDocumentSmoke local và DiagnosticsSmoke remote. NiKSettingsView.swift remote chứa cả 8B và report. Không làm mất editor WIP của mốc 4.
