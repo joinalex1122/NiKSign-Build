@@ -358,74 +358,447 @@ struct NiKHubPreview: View {
     }
 }
 
-struct NiKLocalFiles: View {
-    let directory: URL
-    @State private var files: [URL] = []
-    @State private var preview: NiKPreviewDocument?
-    @State private var query = ""
-    @State private var importing = false
-    @State private var message = ""
-    @State private var newName = ""
-    @State private var createFolder = false
-    var body: some View {
-        List {
-            ForEach(files.filter { query.isEmpty || $0.lastPathComponent.localizedCaseInsensitiveContains(query) }, id: \.self) { url in
-                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                    NavigationLink { NiKLocalFiles(directory: url) } label: { Label(url.lastPathComponent, systemImage: "folder") }
-                } else {
-                    HStack {
-                        Button { preview = NiKPreviewDocument(url: url) } label: { Label(url.lastPathComponent, systemImage: url.pathExtension == "ipa" ? "app" : "doc") }
-                        Spacer(); ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                        if url.pathExtension.lowercased() == "ipa" {
-                            Button { Task { await NiKLibrary.shared.receive(url) } } label: { Image(systemName: "plus.app") }.accessibilityLabel("Thêm vào thư viện IPA")
-                        }
-                    }
-                }
-            }
-        }.buttonStyle(.borderless).navigationTitle(directory.lastPathComponent == "Documents" ? "Tệp" : directory.lastPathComponent)
-        .searchable(text: $query, prompt: "Tìm tệp")
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { importing = true } label: { Image(systemName: "square.and.arrow.down") }
-                Button { createFolder = true } label: { Image(systemName: "folder.badge.plus") }
-            }
-        }
-        .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
-        .onAppear { reload() }
-        .refreshable { reload() }
-        .alert("Thư mục mới", isPresented: $createFolder) {
-            TextField("Tên thư mục", text: $newName)
-            Button("Tạo") {
-                do {
-                    guard !newName.isEmpty, !newName.contains("/"), !newName.contains("\\"), newName != ".", newName != ".." else { throw NiKError("Tên không hợp lệ.") }
-                    try FileManager.default.createDirectory(at: directory.appendingPathComponent(newName), withIntermediateDirectories: false)
-                    newName = ""; reload()
-                } catch { message = error.localizedDescription }
-            }
-            Button("Hủy", role: .cancel) {}
-        }
-        .alert("Tệp", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) { Button("Đóng") { message = "" } } message: { Text(message) }
-        .sheet(isPresented: $importing) {
-            NiKFilePicker { result in
-                do {
-                    let url = try result.get()
-                    let target = directory
-                    Task {
-                        do {
-                            let imported = try await Task.detached { try NiKFileImport.copy(url, into: target) }.value
-                            reload(); message = "Đã nhập \(imported.lastPathComponent)."
-                        } catch { message = error.localizedDescription }
-                    }
-                } catch { message = error.localizedDescription }
-            }
-        }
-    }
-
-    private func reload() {
-        do {
-            files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: .skipsHiddenFiles)
-                .filter { (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        } catch { message = error.localizedDescription }
-    }
+private enum NiKSortField: String, CaseIterable { case name = "Tên", date = "Ngày", size = "Kích thước", type = "Loại" }
+private final class NiKFileClipboard: ObservableObject {
+static let shared = NiKFileClipboard()
+@Published var urls: [URL] = []
+@Published var isCut: Bool = false
+func set(_ urls: [URL], isCut: Bool) { self.urls = urls; self.isCut = isCut }
+func clear() { urls = []; isCut = false }
 }
+
+private struct NiKShareItem: Identifiable { let id = UUID(); let urls: [URL] }
+
+private struct NiKShareSheet: UIViewControllerRepresentable {
+let items: [Any]
+func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
+func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+private struct NiKFolderTarget: Identifiable { let id = UUID(); let urls: [URL]; let isMove: Bool }
+private struct NiKFolderPickerSheet: View {
+let current: URL
+let title: String
+let onSelect: (URL) -> Void
+@Environment(\.dismiss) private var dismiss
+@State private var folders: [URL] = []
+var body: some View {
+List {
+Section {
+Button {
+onSelect(current)
+} label: {
+Label("Chọn thư mục này (\(current.lastPathComponent))", systemImage: "checkmark.circle.fill")
+}
+}
+Section("Thư mục con") {
+ForEach(folders, id: \.self) { folder in
+NavigationLink(folder.lastPathComponent) {
+NiKFolderPickerSheet(current: folder, title: title, onSelect: onSelect)
+}
+}
+}
+}
+.navigationTitle(title)
+.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { dismiss() } } }
+.onAppear {
+let list = (try? FileManager.default.contentsOfDirectory(at: current, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+folders = list.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+}
+}
+}
+
+private struct NiKHexViewerSheet: View {
+let url: URL
+@Environment(\.dismiss) private var dismiss
+@State private var lines: [String] = []
+@State private var info = ""
+var body: some View {
+NavigationStack {
+ScrollView([.vertical, .horizontal]) {
+LazyVStack(alignment: .leading, spacing: 2) {
+if !info.isEmpty { Text(info).font(.caption).foregroundStyle(.secondary).padding(.bottom, 6) }
+ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+Text(line).font(.system(size: 11, design: .monospaced))
+}
+}
+.padding()
+}
+.navigationTitle(url.lastPathComponent)
+.navigationBarTitleDisplayMode(.inline)
+.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { dismiss() } } }
+.task { loadHex() }
+}
+}
+private func loadHex() {
+do {
+let handle = try FileHandle(forReadingFrom: url)
+defer { try? handle.close() }
+let maxBytes = 65536
+let data = try handle.read(upToCount: maxBytes) ?? Data()
+let total = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? Int64(data.count)
+info = total > Int64(maxBytes) ? "Hiển thị \(maxBytes) / \(total) bytes đầu tiên" : "Tổng: \(total) bytes"
+let bytes = [UInt8](data)
+var out: [String] = []
+for offset in stride(from: 0, to: bytes.count, by: 16) {
+let end = min(offset + 16, bytes.count)
+let chunk = bytes[offset..<end]
+let hex = chunk.map { String(format: "%02X", $0) }.joined(separator: " ")
+let pad = String(repeating: "   ", count: max(0, 16 - chunk.count))
+let ascii = chunk.map { (32...126).contains($0) ? String(UnicodeScalar($0)) : "." }.joined()
+out.append(String(format: "%08X  ", offset) + hex + pad + "  |" + ascii + "|")
+}
+lines = out.isEmpty ? ["(Tệp trống)"] : out
+} catch {
+info = error.localizedDescription
+lines = []
+}
+}
+}
+struct NiKLocalFiles: View {
+let directory: URL
+@ObservedObject private var clipboard = NiKFileClipboard.shared
+@State private var files: [URL] = []
+@State private var query = ""
+@State private var showHidden = false
+@State private var sortField: NiKSortField = .name
+@State private var sortAscending = true
+@State private var isSelecting = false
+@State private var selectedURLs: Set<URL> = []
+@State private var preview: NiKPreviewDocument?
+@State private var hexTarget: NiKPreviewDocument?
+@State private var shareTarget: NiKShareItem?
+@State private var folderTarget: NiKFolderTarget?
+@State private var ipaTarget: URL?
+@State private var zipTarget: URL?
+@State private var importing = false
+@State private var newFolderPrompt = false
+@State private var newFolderName = ""
+@State private var newFilePrompt = false
+@State private var newFileName = ""
+@State private var renameTarget: URL?
+@State private var renameName = ""
+@State private var message = ""
+
+private var filtered: [URL] {
+let base = files.filter { url in
+(showHidden || !url.lastPathComponent.hasPrefix(".")) &&
+(query.isEmpty || url.lastPathComponent.localizedCaseInsensitiveContains(query))
+}
+return base.sorted { a, b in
+let da = isDir(a), db = isDir(b)
+if da != db { return da }
+let cmp: Bool
+switch sortField {
+case .name:
+cmp = a.lastPathComponent.localizedStandardCompare(b.lastPathComponent) == .orderedAscending
+case .date:
+cmp = modDate(a) < modDate(b)
+case .size:
+cmp = fileSize(a) < fileSize(b)
+case .type:
+cmp = a.pathExtension.localizedStandardCompare(b.pathExtension) == .orderedAscending
+}
+return sortAscending ? cmp : !cmp
+}
+}
+
+var body: some View {
+List {
+if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
+ForEach(filtered, id: \.self) { url in
+rowItem(url)
+.contextMenu { contextButtons(for: url) }
+}
+}
+.navigationTitle(directory.lastPathComponent)
+.searchable(text: $query, prompt: "Tìm tệp")
+.toolbar {
+ToolbarItem(placement: .topBarTrailing) {
+Menu {
+Button {
+isSelecting.toggle()
+if !isSelecting { selectedURLs.removeAll() }
+} label: {
+Label(isSelecting ? "Xong" : "Chọn", systemImage: "checkmark.circle")
+}
+Menu {
+Button("Thư mục") { newFolderName = ""; newFolderPrompt = true }
+Button("Tệp trống") { newFileName = ""; newFilePrompt = true }
+Button("Nhập tệp") { importing = true }
+} label: {
+Label("Mới", systemImage: "plus")
+}
+if !clipboard.urls.isEmpty {
+Button { pasteFromClipboard() } label: {
+Label("Dán (\(clipboard.urls.count))", systemImage: "doc.on.clipboard")
+}
+}
+Menu {
+Picker("Theo", selection: $sortField) {
+ForEach(NiKSortField.allCases, id: \.self) { f in Text(f.rawValue).tag(f) }
+}
+Divider()
+Picker("Thứ tự", selection: $sortAscending) {
+Text("Tăng dần").tag(true)
+Text("Giảm dần").tag(false)
+}
+} label: {
+Label("Sắp xếp", systemImage: "arrow.up.arrow.down")
+}
+Button { showHidden.toggle() } label: {
+Label(showHidden ? "Ẩn tệp ẩn" : "Hiện ẩn", systemImage: showHidden ? "eye.slash" : "eye")
+}
+} label: {
+Image(systemName: "ellipsis.circle")
+}
+}
+}
+.safeAreaInset(edge: .bottom) {
+if isSelecting {
+HStack {
+Button("Sao chép") { clipboard.set(Array(selectedURLs), isCut: false); isSelecting = false; selectedURLs.removeAll() }.disabled(selectedURLs.isEmpty)
+Spacer()
+Button("Cắt") { clipboard.set(Array(selectedURLs), isCut: true); isSelecting = false; selectedURLs.removeAll() }.disabled(selectedURLs.isEmpty)
+Spacer()
+Button("Chia sẻ") { shareTarget = NiKShareItem(urls: Array(selectedURLs)) }.disabled(selectedURLs.isEmpty)
+Spacer()
+Button("Xóa", role: .destructive) { deleteItems(Array(selectedURLs)); selectedURLs.removeAll(); isSelecting = false }.disabled(selectedURLs.isEmpty)
+Spacer()
+Button("Xong") { isSelecting = false; selectedURLs.removeAll() }.bold()
+}
+.font(.subheadline)
+.padding(.horizontal)
+.padding(.vertical, 10)
+.background(.bar)
+}
+}
+   .onAppear { reload() }
+.refreshable { reload() }
+.sheet(item: $preview) { NiKQuickLook(url: $0.url) }
+.sheet(item: $hexTarget) { NiKHexViewerSheet(url: $0.url) }
+.sheet(item: $shareTarget) { NiKShareSheet(items: $0.urls) }
+.sheet(item: $folderTarget) { target in
+NavigationStack {
+NiKFolderPickerSheet(current: rootDocs(), title: target.isMove ? "Chuyển đến" : "Sao chép đến") { dest in
+moveOrCopy(target.urls, to: dest, isMove: target.isMove)
+folderTarget = nil
+}
+}
+}
+.sheet(isPresented: $importing) {
+NiKFilePicker(types: [.item]) { urls in
+Task { for url in urls { _ = try? NiKFileImport.copy(url, into: directory) }; reload() }
+}
+}
+.confirmationDialog(ipaTarget?.lastPathComponent ?? "IPA", isPresented: Binding(get: { ipaTarget != nil }, set: { if !$0 { ipaTarget = nil } }), titleVisibility: .visible, presenting: ipaTarget) { url in
+Button("Ký & Cài đặt") { Task { await NiKLibrary.shared.receive(url) } }
+Button("Giải nén thành App") { unzipIPA(url) }
+Button("Xem trước") { preview = NiKPreviewDocument(url: url) }
+Button("Hủy", role: .cancel) {}
+}
+.confirmationDialog(zipTarget?.lastPathComponent ?? "ZIP", isPresented: Binding(get: { zipTarget != nil }, set: { if !$0 { zipTarget = nil } }), titleVisibility: .visible, presenting: zipTarget) { url in
+Button("Giải nén tại đây") { unzipHere(url) }
+Button("Xem trước") { preview = NiKPreviewDocument(url: url) }
+Button("Hủy", role: .cancel) {}
+}
+.alert("Thư mục mới", isPresented: $newFolderPrompt) {
+TextField("Tên thư mục", text: $newFolderName)
+Button("Tạo") { createFolder() }
+Button("Hủy", role: .cancel) {}
+}
+.alert("Tệp trống mới", isPresented: $newFilePrompt) {
+TextField("Tên tệp", text: $newFileName)
+Button("Tạo") { createEmptyFile() }
+Button("Hủy", role: .cancel) {}
+}
+.alert("Đổi tên", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+TextField("Tên mới", text: $renameName)
+Button("Lưu") { commitRename() }
+Button("Hủy", role: .cancel) {}
+}
+}
+   @ViewBuilder
+private func rowItem(_ url: URL) -> some View {
+if isSelecting {
+Button {
+if selectedURLs.contains(url) { selectedURLs.remove(url) } else { selectedURLs.insert(url) }
+} label: {
+HStack(spacing: 12) {
+Image(systemName: selectedURLs.contains(url) ? "checkmark.circle.fill" : "circle")
+.foregroundStyle(selectedURLs.contains(url) ? Color.blue : Color.secondary)
+rowContent(url)
+}
+}
+} else if isDir(url) {
+NavigationLink { NiKLocalFiles(directory: url) } label: { rowContent(url) }
+} else {
+Button { handleTap(url) } label: { rowContent(url) }
+}
+}
+
+private func rowContent(_ url: URL) -> some View {
+let (icon, color) = iconInfo(for: url)
+return HStack(spacing: 12) {
+Image(systemName: icon)
+.font(.title3)
+.foregroundStyle(color)
+.frame(width: 28)
+VStack(alignment: .leading, spacing: 2) {
+Text(url.lastPathComponent)
+.foregroundStyle(.primary)
+.lineLimit(1)
+Text(subtitle(for: url))
+.font(.caption)
+.foregroundStyle(.secondary)
+}
+}
+}
+
+private func iconInfo(for url: URL) -> (String, Color) {
+if isDir(url) { return ("folder.fill", .blue) }
+switch url.pathExtension.lowercased() {
+case "ipa": return ("app.badge.fill", .purple)
+case "zip": return ("doc.zipper", .orange)
+case "dylib", "deb": return ("puzzlepiece.extension.fill", .teal)
+case "p12", "mobileprovision": return ("key.fill", .yellow)
+case "json", "plist", "3105": return ("doc.text.fill", .green)
+default: return ("doc.fill", .secondary)
+}
+}
+
+private func subtitle(for url: URL) -> String {
+let fmt = DateFormatter()
+fmt.dateFormat = "HH:mm dd/MM/yy"
+let dateStr = fmt.string(from: modDate(url))
+if isDir(url) { return "\(dateStr) · Thư mục" }
+let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize(url), countStyle: .file)
+return "\(dateStr) · \(sizeStr)"
+}
+
+@ViewBuilder
+private func contextButtons(for url: URL) -> some View {
+Button { isSelecting = true; selectedURLs.insert(url) } label: { Label("Chọn", systemImage: "checkmark.circle") }
+Button { clipboard.set([url], isCut: false) } label: { Label("Sao chép", systemImage: "doc.on.doc") }
+Button { clipboard.set([url], isCut: true) } label: { Label("Cắt", systemImage: "scissors") }
+Button { folderTarget = NiKFolderTarget(urls: [url], isMove: true) } label: { Label("Chuyển đến...", systemImage: "folder") }
+Button { folderTarget = NiKFolderTarget(urls: [url], isMove: false) } label: { Label("Sao chép đến...", systemImage: "folder.badge.plus") }
+Button { renameTarget = url; renameName = url.lastPathComponent } label: { Label("Đổi tên", systemImage: "pencil") }
+Button { shareTarget = NiKShareItem(urls: [url]) } label: { Label("Chia sẻ", systemImage: "square.and.arrow.up") }
+Button { hexTarget = NiKPreviewDocument(url: url) } label: { Label("Mở bằng Hex", systemImage: "number.square") }
+Button(role: .destructive) { deleteItems([url]) } label: { Label("Xóa", systemImage: "trash") }
+}
+   private func handleTap(_ url: URL) {
+let ext = url.pathExtension.lowercased()
+if ext == "ipa" { ipaTarget = url }
+else if ext == "zip" { zipTarget = url }
+else { preview = NiKPreviewDocument(url: url) }
+}
+
+private func isDir(_ url: URL) -> Bool {
+(try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+}
+
+private func modDate(_ url: URL) -> Date {
+(try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+}
+
+private func fileSize(_ url: URL) -> Int64 {
+Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+}
+
+private func rootDocs() -> URL {
+FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? directory
+}
+
+private func reload() {
+files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey])) ?? []
+}
+
+private func createFolder() {
+let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+guard !name.isEmpty else { return }
+try? FileManager.default.createDirectory(at: uniqueURL(in: directory, name: name), withIntermediateDirectories: true)
+reload()
+}
+
+private func createEmptyFile() {
+let name = newFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+guard !name.isEmpty else { return }
+FileManager.default.createFile(atPath: uniqueURL(in: directory, name: name).path, contents: Data())
+reload()
+}
+
+private func commitRename() {
+guard let src = renameTarget else { return }
+let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
+guard !name.isEmpty, name != src.lastPathComponent else { renameTarget = nil; return }
+let dst = src.deletingLastPathComponent().appendingPathComponent(name)
+try? FileManager.default.moveItem(at: src, to: dst)
+renameTarget = nil
+reload()
+}
+
+private func pasteFromClipboard() {
+moveOrCopy(clipboard.urls, to: directory, isMove: clipboard.isCut)
+if clipboard.isCut { clipboard.clear() }
+}
+
+private func moveOrCopy(_ urls: [URL], to destDir: URL, isMove: Bool) {
+for src in urls {
+let dst = uniqueURL(in: destDir, name: src.lastPathComponent)
+if isMove {
+try? FileManager.default.moveItem(at: src, to: dst)
+} else {
+try? FileManager.default.copyItem(at: src, to: dst)
+}
+}
+reload()
+}
+
+private func uniqueURL(in dir: URL, name: String) -> URL {
+var candidate = dir.appendingPathComponent(name)
+if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+let ext = (name as NSString).pathExtension
+let base = (name as NSString).deletingPathExtension
+var idx = 1
+while FileManager.default.fileExists(atPath: candidate.path) {
+let newName = ext.isEmpty ? "\(base)-\(idx)" : "\(base)-\(idx).\(ext)"
+candidate = dir.appendingPathComponent(newName)
+idx += 1
+}
+return candidate
+}
+
+private func deleteItems(_ urls: [URL]) {
+for url in urls { try? FileManager.default.removeItem(at: url) }
+reload()
+}
+
+private func unzipIPA(_ url: URL) {
+let folderName = url.deletingPathExtension().lastPathComponent
+let dest = uniqueURL(in: directory, name: folderName)
+message = "Đang giải nén \(url.lastPathComponent)..."
+Task.detached {
+do {
+try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+try FileManager.default.unzipItem(at: url, to: dest)
+await MainActor.run { message = "Đã giải nén thành \(dest.lastPathComponent)"; reload() }
+} catch {
+await MainActor.run { message = error.localizedDescription }
+}
+}
+}
+
+private func unzipHere(_ url: URL) {
+message = "Đang giải nén \(url.lastPathComponent)..."
+Task.detached {
+do {
+try FileManager.default.unzipItem(at: url, to: directory)
+await MainActor.run { message = "Đã giải nén \(url.lastPathComponent)"; reload() }
+} catch {
+await MainActor.run { message = error.localizedDescription }
+}
+}
+}
+} 
