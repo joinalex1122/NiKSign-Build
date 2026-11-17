@@ -18,7 +18,12 @@ struct NiKSettingsView: View {
                             row("signature", .orange, t("Chứng chỉ", "Certificates"), "\(certificates.profiles.count) " + t("chứng chỉ đã lưu", "saved certificates"))
                         }
                     }
-                    linksCard
+                    card {
+                    NavigationLink { NiKRecoveryHistoryView() } label: {
+                        row("arrow.uturn.backward", .indigo, t("Khôi phục tệp", "File Recovery"), t("Backup và lịch sử chỉnh sửa", "Backups and Edit History"))
+                    }
+                }
+                linksCard
                     legalCard
                 }.padding()
             }

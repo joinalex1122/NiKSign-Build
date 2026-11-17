@@ -47,3 +47,12 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - NiKPlistValue giữ bool/integer/data/date/array/dictionary, round-trip binary plist; giới hạn 64 cấp/100.000 mục. Core tests round trip/bounds PASS.
 - Phân tích này offline, chưa xác minh Apple CMS/thu hồi; không tuyên bố cài được trước kiểm thử iPhone. P0 và gate hai lượt Xcode vẫn là điều kiện phát hành.
 - Tiếp theo: xử lý CI nếu có lỗi; triển khai 9B workspace/backup/diff rồi 4B editors/tab/trash, sau đó 2C.
+
+## Mốc 3 — nền tảng khôi phục tệp (đang nối UI)
+
+- Recovery store có root policy/symlink guard, SHA-256, snapshot chống stale edit, backup trước ghi và journal trước đổi tệp; giữ POSIX permissions. File editor tối đa 32 MB ở backend, tổng backup 256 MB.
+- Restore không tự ghi đè phiên bản mới; backup lỗi/thiếu bị từ chối và giữ lịch sử để thử lại. Prepared records được đối chiếu sau gián đoạn, không tự ghi lên tệp chưa rõ trạng thái.
+- Xóa backup cần xác nhận mất khả năng restore; dùng tombstone và index transaction, khôi phục folder nếu bị ngắt trước commit. Không xóa nội dung tệp đích khi dọn backup.
+- FileRecoverySmoke trên Swift Linux đã PASS: SHA-256 chuẩn, snapshot/backup, stale edits, restore conflict/retry, quyền file, ba điểm lỗi ghi, journal trước ghi, root/symlink, backup/index hỏng, recovery sau gián đoạn; đang bổ sung test dọn backup/tombstone.
+- Có controller nền và màn lịch sử trong Settings. Các API Apple NSFileCoordinator/CryptoKit và UI chờ CI; Linux dùng sha256sum trong harness, ứng dụng Apple dùng CryptoKit.
+- Tiếp theo: hoàn tất editor text/JSON/plist có preview thay đổi và backup tự động; nối menu tệp rồi triển khai tab/favorites/trash.

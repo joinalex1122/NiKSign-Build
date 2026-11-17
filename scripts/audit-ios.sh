@@ -23,6 +23,8 @@ xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.sw
 xcrun swiftc Native/Models/NiKPlistValue.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKCertificateCompatibility.swift Tests/CertificateCompatibilitySmoke.swift -o /tmp/nik-cert-compat-test
 /tmp/nik-cert-compat-test
 /tmp/nik-signing-jobs-test
+xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Services/NiKFileDigest.swift Native/Services/NiKFileRecoveryStore.swift Tests/FileRecoverySmoke.swift -o /tmp/nik-file-recovery-test
+/tmp/nik-file-recovery-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
