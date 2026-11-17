@@ -2,7 +2,7 @@
 
 Đã ghép toàn bộ 66 đơn vị biên dịch Swift/Objective-C/C trong cây nguồn công
 khai của 3105 tại commit `a72617ed4c764a65d8aac1e91aca95231e72a2cb`, kết hợp
-các module Sign IPA 3.2 và **bổ sung đầy đủ 4 nhóm chức năng 3105 2.0** theo đặc
+các module Sign IPA 3.2 và bổ sung các module tham khảo 3105 2.0; chưa xác nhận tương đương đầy đủ theo đặc
 tả tại `Vendor/3105/docs/PATCH_GUIDE.vi.md` và `Vendor/3105/README.vi.md`.
 
 | Nhóm chức năng | Mã được nối vào app | Trạng thái |
@@ -22,5 +22,5 @@ tả tại `Vendor/3105/docs/PATCH_GUIDE.vi.md` và `Vendor/3105/README.vi.md`.
 | Quản lý nhiều chứng chỉ `.p12`/`.mobileprovision` & Keychain | NiKCertificateStore, NiKCertificateKeychain | Đã tích hợp (3.2) |
 | Ký IPA Zsign, tùy biến Info.plist & tiến trình 6 bước | Signer, NiKSignToolsView | Đã tích hợp (3.2) |
 | Chèn Tweak `.dylib` & giải nén `.deb` | NiKDylibInjector | Đã tích hợp (3.2) |
-| Máy chủ OTA `manifest.plist` & `itms-services://` | NiKLoopbackServer.h/.m | Đã tích hợp (3.2) |
+| Xuất IPA và `manifest.plist` qua HTTP nội bộ | NiKLoopbackServer.h/.m | Chưa có TLS/OTA; không tạo liên kết cài đặt không hoạt động |
 | Trình duyệt kho AltSource JSON & tải IPA | NiKAltSourceStore, NiKAltSourceView | Đã tích hợp (3.2) |

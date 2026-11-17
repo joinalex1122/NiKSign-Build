@@ -42,7 +42,7 @@ struct NiKSignView: View {
     @State private var signingProgress: NiKSigningProgress?
     @State private var signedArtifact: NiKSignedArtifact?
 
-    // OTA & Loopback server state
+    // Local HTTP export server state
     @State private var loopback = NiKLoopbackServer()
     @State private var loopbackURL: URL?
     @State private var manifestURL: URL?
@@ -325,7 +325,7 @@ struct NiKSignView: View {
                 Section("Khả năng của bản 3.3") {
                     Text("Các module bổ sung theo tài liệu 3105 2.0, cần kiểm thử trên thiết bị: Workspace v9 (Application + AppGroup + settings.json), bộ trộn Plist/JSON (%3105_Overwrite%, %3105_MatchPrefix%, %3105_Remove%), trình cài Dialer (.3105pass), Footnote màn hình khóa, Supervised và quản lý gói tính năng Cleaner.")
                     Text("Quản lý nhiều bộ chứng chỉ .p12/.mobileprovision với mật khẩu lưu trong Keychain, đối chiếu chứng chỉ X.509 DER và kiểm tra hạn sử dụng.")
-                    Text("Tùy biến Info.plist, trích xuất .dylib từ .deb để gắn LC_LOAD_DYLIB vào binary Mach-O 64-bit, máy chủ OTA manifest.plist và trình duyệt kho AltSource JSON.")
+                    Text("Tùy biến Info.plist, trích xuất .dylib từ .deb để gắn LC_LOAD_DYLIB vào binary Mach-O 64-bit, máy chủ HTTP nội bộ và manifest.plist và trình duyệt kho AltSource JSON.")
                 }
                 Section("Công cụ & giấy phép") {
                     NavigationLink("Kiểm tra Mach-O / DEB / TAR") { NiKInspectView() }

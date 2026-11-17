@@ -40,3 +40,10 @@ Real-device patching, certificates and installation remain unverified.
 
 TrollFools, ellekit and optool remain references, not linked engines. No LCSign/ESign
 source was added. The local HTTP server exports files; it does not implement TLS or OTA.
+
+## Memory measurement
+
+Single Linux `tracemalloc` run, synthetic IPA with a 32 MiB zero-filled Mach-O:
+old validator 77.48 MiB peak / 0.150 s; new validator 2.17 MiB / 0.074 s.
+The new run additionally verifies all member CRCs. These are Python allocator
+measurements for this fixture, not iPhone app memory or general performance guarantees.
