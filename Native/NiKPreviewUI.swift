@@ -804,6 +804,7 @@ struct NiKCertificateSettings: View {
 
     @State private var name = ""
     @State private var password = ""
+@State private var showPassword = false
     @StateObject private var temporaryFiles = NiKTemporaryFiles()
     @State private var p12URL: URL?
     @State private var provisionURL: URL?
@@ -1066,10 +1067,40 @@ struct NiKCertificateSettings: View {
             Text(t("Thông tin & Lưu", "Credentials & Save"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-            TextField(t("Tên gợi nhớ (tùy chọn)", "Custom Name (optional)"), text: $name)
-                .textFieldStyle(.roundedBorder)
-            SecureField(t("Mật khẩu tệp .p12", ".p12 Password"), text: $password)
-                .textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 6) {
+Text(t("Tên gợi nhớ (tuỳ chọn)", "Custom Name (optional)"))
+.font(.caption.weight(.medium))
+.foregroundStyle(.secondary)
+TextField(t("Tên gợi nhớ (tuỳ chọn)", "Custom Name (optional)"), text: $name)
+.textFieldStyle(.roundedBorder)
+.textContentType(.none)
+}
+VStack(alignment: .leading, spacing: 6) {
+Text(t("Mật khẩu .p12 (để trống nếu không có)", ".p12 Password (leave empty if none)"))
+.font(.caption.weight(.medium))
+.foregroundStyle(.secondary)
+HStack(spacing: 8) {
+Group {
+if showPassword {
+TextField(t("Mật khẩu .p12 (để trống nếu không có)", ".p12 Password (leave empty if none)"), text: $password)
+} else {
+SecureField(t("Mật khẩu .p12 (để trống nếu không có)", ".p12 Password (leave empty if none)"), text: $password)
+}
+}
+.textFieldStyle(.roundedBorder)
+.textContentType(.none)
+.textInputAutocapitalization(.never)
+.autocorrectionDisabled()
+Button {
+showPassword.toggle()
+} label: {
+Image(systemName: showPassword ? "eye.slash" : "eye")
+.foregroundStyle(.secondary)
+}
+.buttonStyle(.plain)
+}
+}
+         
             Button {
                 saveCertificate()
             } label: {
