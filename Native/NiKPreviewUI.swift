@@ -601,8 +601,8 @@ folderTarget = nil
 }
 }
 .sheet(isPresented: $importing) {
-NiKFilePicker(types: [.item]) { urls in
-Task { for url in urls { _ = try? NiKFileImport.copy(url, into: directory) }; reload() }
+NiKFilePicker { result in
+               if case .success(let url) = result { Task { _ = try? NiKFileImport.copy(url, into: directory); reload() } }
 }
 }
 }
