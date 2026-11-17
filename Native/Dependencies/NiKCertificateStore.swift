@@ -252,7 +252,7 @@ if let legacyProvider { OSSL_PROVIDER_unload(legacyProvider) }
 if let defaultProvider { OSSL_PROVIDER_unload(defaultProvider) }
 }
 
-let certFromOpenSSL: SecCertificate? = data.withUnsafeBytes { rawBuffer -> SecCertificate? in
+let certFromOpenSSL: SecCertificate? = data.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> SecCertificate? in
 guard let baseAddress = rawBuffer.baseAddress, rawBuffer.count > 0 else { return nil }
 guard let bio = BIO_new_mem_buf(baseAddress, Int32(rawBuffer.count)) else { return nil }
 defer { BIO_free(bio) }
@@ -260,8 +260,8 @@ guard let p12 = d2i_PKCS12_bio(bio, nil) else { return nil }
 defer { PKCS12_free(p12) }
 
 for candidate in candidates {
-var pkey: UnsafeMutablePointer<EVP_PKEY>?
-var cert: UnsafeMutablePointer<X509>?
+var pkey: OpaquePointer?
+var cert: OpaquePointer?
 let parsed = candidate.withCString { cPass in
 PKCS12_parse(p12, cPass, &pkey, &cert, nil)
 }
