@@ -41,3 +41,7 @@ assert 'LockScreenFootnote' in sys_feat and 'IsSupervised' in sys_feat and 'isCl
 hub = (r/'Native/Dependencies/NiK3105V2HubView.swift').read_text()
 assert 'NiK3105V2HubView' in hub
 print('PASS: all 11 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')
+
+for original, replacement in json.loads((r/'server-overlays.json').read_text()).items():
+    assert (r/original).is_file() and (r/replacement).is_file()
+    assert original.removeprefix('Vendor/GCDWebServer/') in config

@@ -2,6 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct NiK3105V2HubView: View {
+    @AppStorage("nik.language") private var language = "vi"
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     var initialDialerURL: URL? = nil
     @StateObject private var systemFeatures = NiKSystemFeaturesStore()
     @State private var selectedSection = 0
@@ -22,10 +24,10 @@ struct NiK3105V2HubView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Nhóm chức năng 3105 2.0", selection: $selectedSection) {
+            Picker(t("Nhóm chức năng 3105 2.0", "3105 2.0 Functions"), selection: $selectedSection) {
                 Text("Patch v9 & AppGroup").tag(0)
                 Text("Dialer (.3105pass)").tag(1)
-                Text("Footnote & Tính năng").tag(2)
+                Text(t("Footnote & Tính năng", "Footnote & Features")).tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -40,7 +42,10 @@ struct NiK3105V2HubView: View {
                 systemFeaturesView
             }
         }
-        .navigationTitle("Bộ công cụ 3105 2.0")
+        .padding(.bottom, 100)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(t("Bộ công cụ 3105 2.0", "3105 2.0 Tools"))
+        .listStyle(.insetGrouped)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             reloadWorkspaces()
@@ -50,7 +55,7 @@ struct NiK3105V2HubView: View {
                 do {
                     _ = try NiKDialerService.importPackage(from: url)
                     dialerPackages = NiKDialerService.loadInstalledPackages()
-                    alertMessage = "Đã nhập gói Dialer \(url.lastPathComponent)."
+                    alertMessage = t("Đã nhập gói Dialer \(url.lastPathComponent).", "Imported Dialer package \(url.lastPathComponent).")
                 } catch {
                     alertMessage = error.localizedDescription
                 }
@@ -61,13 +66,13 @@ struct NiK3105V2HubView: View {
                 guard let url = try result.get().first else { return }
                 let pkg = try NiKDialerService.importPackage(from: url)
                 dialerPackages = NiKDialerService.loadInstalledPackages()
-                alertMessage = "Đã nhập gói Dialer '\(pkg.name)' (\(pkg.items.count) phím)."
+                alertMessage = t("Đã nhập gói Dialer '\(pkg.name)' (\(pkg.items.count) phím).", "Imported Dialer '\(pkg.name)' (\(pkg.items.count) keys).")
             } catch {
                 alertMessage = error.localizedDescription
             }
         }
         .alert("3105 2.0", isPresented: Binding(get: { !alertMessage.isEmpty }, set: { if !$0 { alertMessage = "" } })) {
-            Button("Đóng") { alertMessage = "" }
+            Button(t("Đóng", "Close")) { alertMessage = "" }
         } message: {
             Text(alertMessage)
         }
@@ -77,10 +82,10 @@ struct NiK3105V2HubView: View {
 
     private var workspaceV9View: some View {
         List {
-            Section("Tạo Workspace chuẩn 3105 2.0 (Schema v9)") {
-                TextField("Tên dự án Patch (VD: LocketV9)", text: $newWorkspaceName)
-                Toggle("Tạo kèm mẫu settings.json, %3105_Overwrite% & %3105_MatchPrefix%", isOn: $includeSampleRules)
-                Button("Tạo Workspace Application + AppGroup") {
+            Section(t("Tạo Workspace chuẩn 3105 2.0 (Schema v9)", "Create 3105 Workspace (Schema v9)")) {
+                TextField(t("Tên dự án Patch (VD: LocketV9)", "Patch Project Name (e.g. LocketV9)"), text: $newWorkspaceName)
+                Toggle(t("Tạo kèm mẫu settings.json, %3105_Overwrite% & %3105_MatchPrefix%", "Include sample settings.json, %3105_Overwrite% & %3105_MatchPrefix%"), isOn: $includeSampleRules)
+                Button(t("Tạo Workspace Application + AppGroup", "Create Application + AppGroup Workspace")) {
                     do {
                         let created = try NiKWorkspaceV9Service.createWorkspace(
                             named: newWorkspaceName,
@@ -89,7 +94,7 @@ struct NiK3105V2HubView: View {
                         newWorkspaceName = ""
                         reloadWorkspaces()
                         selectWorkspace(created.workspaceURL, project: created.project)
-                        alertMessage = "Đã tạo workspace '\(created.project.name)' tại Documents/Patches/ với đầy đủ settings.json, Application/ và AppGroup/."
+                        alertMessage = t("Đã tạo workspace '\(created.project.name)' tại Documents/Patches/ với đầy đủ settings.json, Application/ và AppGroup/.", "Created workspace '\(created.project.name)' in Documents/Patches/ with settings.json, Application/ and AppGroup/.")
                     } catch {
                         alertMessage = error.localizedDescription
                     }
@@ -97,9 +102,9 @@ struct NiK3105V2HubView: View {
                 .buttonStyle(.borderedProminent)
             }
 
-            Section("Danh sách Workspace v9 (\(workspaces.count))") {
+            Section(t("Danh sách Workspace v9 (\(workspaces.count))", "Workspace v9 (\(workspaces.count))")) {
                 if workspaces.isEmpty {
-                    Text("Chưa có workspace v9 nào. Hãy bấm Tạo ở trên để khởi tạo cấu trúc Application/, AppGroup/ và settings.json.")
+                    Text(t("Chưa có workspace v9 nào. Hãy bấm Tạo ở trên để khởi tạo cấu trúc Application/, AppGroup/ và settings.json.", "No v9 workspaces yet. Create one above with Application/, AppGroup/ and settings.json."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -110,7 +115,7 @@ struct NiK3105V2HubView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(entry.project.name).font(.headline)
-                                    Text("\(entry.project.rules.count) ánh xạ · \(entry.project.settings.fields.count) trường settings.json")
+                                    Text(t("\(entry.project.rules.count) ánh xạ · \(entry.project.settings.fields.count) trường settings.json", "\(entry.project.rules.count) mappings · \(entry.project.settings.fields.count) settings.json fields"))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -127,12 +132,12 @@ struct NiK3105V2HubView: View {
             }
 
             if let project = activeProject, let wsURL = selectedWorkspaceURL {
-                Section("Chi tiết & Tùy chỉnh: \(project.name)") {
-                    Button("Đồng bộ lại từ thư mục Workspace") {
+                Section(t("Chi tiết & Tùy chỉnh: \(project.name)", "Details & Options: \(project.name)")) {
+                    Button(t("Đồng bộ lại từ thư mục Workspace", "Reload from Workspace Folder")) {
                         do {
                             let synced = try NiKWorkspaceV9Service.synchronizeWorkspace(at: wsURL)
                             selectWorkspace(wsURL, project: synced)
-                            alertMessage = "Đã đồng bộ \(synced.rules.count) quy tắc và \(synced.settings.fields.count) trường tùy chỉnh."
+                            alertMessage = t("Đã đồng bộ \(synced.rules.count) quy tắc và \(synced.settings.fields.count) trường tùy chỉnh.", "Loaded \(synced.rules.count) rules and \(synced.settings.fields.count) custom fields.")
                         } catch {
                             alertMessage = error.localizedDescription
                         }
@@ -157,18 +162,18 @@ struct NiK3105V2HubView: View {
                                     }
                                     .pickerStyle(.menu)
                                 } else if field.type == "boolean" {
-                                    Toggle("Giá trị Boolean", isOn: Binding(
+                                    Toggle(t("Giá trị Boolean", "Boolean Value"), isOn: Binding(
                                         get: { bindingForFieldValue(field).wrappedValue.lowercased() == "true" },
                                         set: { bindingForFieldValue(field).wrappedValue = $0 ? "true" : "false" }
                                     ))
                                 } else {
-                                    TextField("Nhập giá trị cho \(field.id)", text: bindingForFieldValue(field))
+                                    TextField(t("Nhập giá trị cho \(field.id)", "Enter value for \(field.id)"), text: bindingForFieldValue(field))
                                         .textInputAutocapitalization(.never)
                                         .autocorrectionDisabled()
                                         .font(.caption.monospaced())
                                 }
                                 if field.canRemove == true {
-                                    Toggle("Xoá trường này (canRemove)", isOn: bindingForFieldRemove(field))
+                                    Toggle(t("Xoá trường này (canRemove)", "Remove This Field (canRemove)"), isOn: bindingForFieldRemove(field))
                                         .font(.caption)
                                         .tint(.red)
                                 }
@@ -184,20 +189,20 @@ struct NiK3105V2HubView: View {
                             Text(rule.relativePath)
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(.secondary)
-                            Text("Chế độ: \(rule.mode == .replaceFile ? "Thay thế toàn bộ file" : (rule.mode == .mergePlist ? "Sửa/Merge nội dung Plist" : "Sửa/Merge nội dung JSON"))")
+                            Text("\(t("Chế độ", "Mode")): \(rule.mode == .replaceFile ? t("Thay thế toàn bộ file", "Replace Entire File") : (rule.mode == .mergePlist ? t("Sửa/Merge nội dung Plist", "Edit/Merge Plist") : t("Sửa/Merge nội dung JSON", "Edit/Merge JSON")))")
                                 .font(.caption2)
                                 .foregroundStyle(.orange)
                         }
                         .padding(.vertical, 2)
                     }
 
-                    Button("Áp dụng Patch v9 (Application & AppGroup)") {
+                    Button(t("Áp dụng Patch v9 (Application & AppGroup)", "Apply Patch v9 (Application & AppGroup)")) {
                         do {
                             let result = try NiKWorkspaceV9Service.apply(project: project, userValues: fieldInputs)
                             let skippedNote = result.skippedIdentifiers.isEmpty
                                 ? ""
-                                : " (Bỏ qua container chưa có trên máy: \(result.skippedIdentifiers.joined(separator: ", ")))"
-                            alertMessage = "Đã áp dụng \(result.appliedCount) quy tắc thành công\(skippedNote)."
+                                : " (\(t("Bỏ qua container chưa có trên máy", "Skipped Missing Containers")): \(result.skippedIdentifiers.joined(separator: ", ")))"
+                            alertMessage = t("Đã áp dụng \(result.appliedCount) quy tắc thành công\(skippedNote).", "Applied \(result.appliedCount) rules successfully\(skippedNote).")
                         } catch {
                             alertMessage = error.localizedDescription
                         }
@@ -205,10 +210,10 @@ struct NiK3105V2HubView: View {
                     .buttonStyle(.borderedProminent)
 
                     if NiKWorkspaceV9Service.hasBackupReceipt(projectID: project.id) {
-                        Button("Khôi phục file gốc (Restore)", role: .destructive) {
+                        Button(t("Khôi phục file gốc (Restore)", "Restore Original Files"), role: .destructive) {
                             do {
                                 let count = try NiKWorkspaceV9Service.restore(projectID: project.id)
-                                alertMessage = "Đã khôi phục \(count) tệp về nguyên bản trước khi áp dụng."
+                                alertMessage = t("Đã khôi phục \(count) tệp về nguyên bản trước khi áp dụng.", "Restored \(count) original files.")
                             } catch {
                                 alertMessage = error.localizedDescription
                             }
@@ -223,38 +228,38 @@ struct NiK3105V2HubView: View {
 
     private var dialerView: some View {
         List {
-            Section("Quản lý gói Dialer (.3105pass)") {
-                Button("Nhập gói .3105pass từ Tệp") {
+            Section(t("Quản lý gói Dialer (.3105pass)", "Manage Dialer Packages (.3105pass)")) {
+                Button(t("Nhập gói .3105pass từ Tệp", "Import .3105pass from Files")) {
                     importingDialer = true
                 }
-                Button("Tạo gói .3105pass mẫu (Sáng / Tối / Chữ đậm)") {
+                Button(t("Tạo gói .3105pass mẫu (Sáng / Tối / Chữ đậm)", "Create Sample .3105pass (Light / Dark / Bold)")) {
                     do {
                         let sample = try NiKDialerService.createSamplePackage()
                         dialerPackages = NiKDialerService.loadInstalledPackages()
-                        alertMessage = "Đã tạo gói mẫu '\(sample.name)' với đủ 3 kiểu phím: Sáng, Tối và Chữ đậm."
+                        alertMessage = t("Đã tạo gói mẫu '\(sample.name)' với đủ 3 kiểu phím: Sáng, Tối và Chữ đậm.", "Created sample '\(sample.name)' with Light, Dark and Bold keys.")
                     } catch {
                         alertMessage = error.localizedDescription
                     }
                 }
-                Text("Hỗ trợ tự nhận diện kiểu phím Sáng (Light), Tối (Dark) và Chữ đậm (Bold) theo dữ liệu trên thiết bị, kèm sao lưu và khôi phục an toàn.")
+                Text(t("Hỗ trợ tự nhận diện kiểu phím Sáng (Light), Tối (Dark) và Chữ đậm (Bold) theo dữ liệu trên thiết bị, kèm sao lưu và khôi phục an toàn.", "Detects Light, Dark and Bold key styles from device data, with backup and restore."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Gói Dialer đã nhập (\(dialerPackages.count))") {
+            Section(t("Gói Dialer đã nhập (\(dialerPackages.count))", "Imported Dialer Packages (\(dialerPackages.count))")) {
                 if dialerPackages.isEmpty {
-                    Text("Chưa có gói .3105pass nào.")
+                    Text(t("Chưa có gói .3105pass nào.", "No .3105pass packages yet."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(dialerPackages) { pkg in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(pkg.name).font(.headline)
-                            Text("Số phím: \(pkg.items.count) · Kiểu nhận diện: \(pkg.detectedStyles.map(\.rawValue).joined(separator: ", "))")
+                            Text("\(t("Số phím", "Keys")): \(pkg.items.count) · \(t("Kiểu nhận diện", "Detected Styles")): \(pkg.detectedStyles.map(\.rawValue).joined(separator: ", "))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             HStack(spacing: 12) {
-                                Button("Áp dụng") {
+                                Button(t("Áp dụng", "Apply")) {
                                     do {
                                         alertMessage = try NiKDialerService.apply(pkg)
                                     } catch {
@@ -263,7 +268,7 @@ struct NiK3105V2HubView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
 
-                                Button("Khôi phục") {
+                                Button(t("Khôi phục", "Restore")) {
                                     do {
                                         alertMessage = try NiKDialerService.restore(pkg)
                                     } catch {
@@ -294,17 +299,17 @@ struct NiK3105V2HubView: View {
 
     private var systemFeaturesView: some View {
         Form {
-            Section("Tính năng 3105 (Cài / Gỡ từ Kho & Đã cài)") {
+            Section(t("Tính năng 3105 (Cài / Gỡ từ Kho & Đã cài)", "3105 Features (Install / Remove)")) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Dọn dẹp (3105 Cleaner)")
+                        Text(t("Dọn dẹp (3105 Cleaner)", "3105 Cleaner"))
                             .font(.headline)
-                        Text(systemFeatures.isCleanerInstalled ? "Trạng thái: Đã cài đặt" : "Trạng thái: Đã gỡ")
+                        Text(systemFeatures.isCleanerInstalled ? t("Trạng thái: Đã cài đặt", "Status: Installed") : t("Trạng thái: Đã gỡ", "Status: Removed"))
                             .font(.caption)
                             .foregroundStyle(systemFeatures.isCleanerInstalled ? Color.green : Color.secondary)
                     }
                     Spacer()
-                    Button(systemFeatures.isCleanerInstalled ? "Gỡ tính năng" : "Cài đặt") {
+                    Button(systemFeatures.isCleanerInstalled ? t("Gỡ tính năng", "Remove Feature") : t("Cài đặt", "Install")) {
                         systemFeatures.toggleCleanerInstallation()
                     }
                     .buttonStyle(.borderedProminent)
@@ -312,23 +317,23 @@ struct NiK3105V2HubView: View {
                 }
             }
 
-            Section("Footnote màn hình khóa (Lock Screen Footnote)") {
-                TextField("Nội dung hiển thị ở cuối màn hình khóa…", text: $systemFeatures.footnoteText)
-                Button("Áp dụng Footnote màn hình khóa") {
+            Section(t("Footnote màn hình khóa (Lock Screen Footnote)", "Lock Screen Footnote")) {
+                TextField(t("Nội dung hiển thị ở cuối màn hình khóa…", "Text at the bottom of the lock screen…"), text: $systemFeatures.footnoteText)
+                Button(t("Áp dụng Footnote màn hình khóa", "Apply Lock Screen Footnote")) {
                     systemFeatures.applyFootnote()
                 }
             }
 
-            Section("Chế độ Giám sát (Supervised Mode)") {
-                Toggle("Bật trạng thái Supervised (IsSupervised)", isOn: $systemFeatures.isSupervisedEnabled)
-                TextField("Tên tổ chức hiển thị (OrganizationName)", text: $systemFeatures.organizationName)
-                Button("Cập nhật cấu hình Supervised") {
+            Section(t("Chế độ Giám sát (Supervised Mode)", "Supervised Mode")) {
+                Toggle(t("Bật trạng thái Supervised (IsSupervised)", "Enable Supervised State (IsSupervised)"), isOn: $systemFeatures.isSupervisedEnabled)
+                TextField(t("Tên tổ chức hiển thị (OrganizationName)", "Organization Name (OrganizationName)"), text: $systemFeatures.organizationName)
+                Button(t("Cập nhật cấu hình Supervised", "Update Supervised Configuration")) {
                     systemFeatures.applySupervisedState()
                 }
             }
 
-            Section("Sao lưu & Khôi phục hệ thống") {
-                Button("Khôi phục Footnote & Supervised về nguyên gốc", role: .destructive) {
+            Section(t("Sao lưu & Khôi phục hệ thống", "System Backup & Restore")) {
+                Button(t("Khôi phục Footnote & Supervised về nguyên gốc", "Restore Original Footnote & Supervised"), role: .destructive) {
                     systemFeatures.restoreOriginalSystemConfigs()
                 }
                 if !systemFeatures.lastStatusMessage.isEmpty {

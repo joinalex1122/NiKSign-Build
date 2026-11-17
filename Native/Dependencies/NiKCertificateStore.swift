@@ -245,12 +245,7 @@ return (summary, der, sha1)
 }
 }
 
-let defaultProvider = OSSL_PROVIDER_load(nil, "default")
-let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
-defer {
-if let legacyProvider { OSSL_PROVIDER_unload(legacyProvider) }
-if let defaultProvider { OSSL_PROVIDER_unload(defaultProvider) }
-}
+_ = NiKOpenSSLProviders.loaded
 
 let certFromOpenSSL: SecCertificate? = data.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> SecCertificate? in
 guard let baseAddress = rawBuffer.baseAddress, rawBuffer.count > 0 else { return nil }
@@ -338,4 +333,13 @@ throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus))
             developerCertificatesDER: certs
         )
     }
+}
+
+// Providers are process-wide and must outlive concurrent signing/TLS operations.
+private enum NiKOpenSSLProviders {
+    static let loaded: Bool = {
+        let defaultProvider = OSSL_PROVIDER_load(nil, "default")
+        let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
+        return defaultProvider != nil && legacyProvider != nil
+    }()
 }

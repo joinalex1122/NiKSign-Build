@@ -60,7 +60,7 @@ jobs:
       - name: Package source archive
         run: |
           mkdir -p dist
-          /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json
+          /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json upstream-overlays.json server-overlays.json
       - uses: actions/upload-artifact@v4
         with:
           name: NiKSign-unsigned-IPA-${{ matrix.runner }}

@@ -61,7 +61,7 @@ struct RepositoryHomeView: View {
                     rebuildFeed()
                 }
             }
-            .onChange(of: store.packages) { _ in
+            .onChange(of: store.packages) { _, _ in
                 rebuildFeed()
             }
         }
@@ -283,7 +283,7 @@ struct RepositoryNewView: View {
                 rebuildPackages()
                 openSimulatedPackageDetailIfNeeded()
             }
-            .onChange(of: store.packages) { _ in
+            .onChange(of: store.packages) { _, _ in
                 rebuildPackages()
                 openSimulatedPackageDetailIfNeeded()
             }

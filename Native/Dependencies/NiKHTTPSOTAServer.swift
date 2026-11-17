@@ -251,6 +251,31 @@ connection.cancel()
 }
 
 private static func generateLocalIdentity() throws -> (SecIdentity, Data) {
+let query: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: "com.niksign.local-ota-identity",
+    kSecAttrAccount as String: "identity-v1"
+]
+var result: CFTypeRef?
+var readQuery = query
+readQuery[kSecReturnData as String] = true
+readQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+let readStatus = SecItemCopyMatching(readQuery as CFDictionary, &result)
+if readStatus == errSecSuccess, let stored = result as? Data {
+    var imported: CFArray?
+    let status = SecPKCS12Import(stored as CFData, [kSecImportExportPassphrase as String: ""] as CFDictionary, &imported)
+    if status == errSecSuccess, let values = imported as? [[String: Any]],
+       let value = values.first?[kSecImportItemIdentity as String] {
+        let identity = value as! SecIdentity
+        var cert: SecCertificate?
+        if SecIdentityCopyCertificate(identity, &cert) == errSecSuccess, let cert {
+            return (identity, SecCertificateCopyData(cert) as Data)
+        }
+    }
+    throw OTAError.identityImportFailed
+}
+guard readStatus == errSecItemNotFound else { throw OTAError.identityImportFailed }
+
 guard let ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nil) else {
 throw OTAError.certificateGenerationFailed
 }
@@ -284,7 +309,7 @@ X509_set_issuer_name(x509, name)
 }
 
 var extCtx = X509V3_CTX()
-X509V3_set_ctx_nodb(&extCtx)
+// X509V3_set_ctx initializes a context without a configuration database.
 X509V3_set_ctx(&extCtx, x509, x509, nil, nil, 0)
 
 let extensions: [(Int32, String)] = [
@@ -348,6 +373,10 @@ let secIdentity = first[kSecImportItemIdentity as String] else {
 throw OTAError.identityImportFailed
 }
 
+var saved = query
+saved[kSecValueData as String] = Data(p12Bytes)
+saved[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+guard SecItemAdd(saved as CFDictionary, nil) == errSecSuccess else { throw OTAError.identityImportFailed }
 return (secIdentity as! SecIdentity, certDER)
 }
 }

@@ -39,15 +39,25 @@ targets:
       - Info.plist
       - views/RepositoryHomeView.swift
       - helpers/SupportPolicy.swift
+      - ContentView.swift
+      - views/LogView.swift
+      - views/PatchProjectsView.swift
+      - helpers/DisplayIdentityAttribution.swift
+      - kexploit/krw.m
+      - kexploit/kexploit_opa334.m
     - path: Vendor/minizip
       excludes:
       - MiniZip64_info.txt
     - path: Vendor/GCDWebServer
+      excludes:
+      - Core/GCDWebServerFunctions.m
+      - Core/GCDWebServerConnection.m
     dependencies:
     - package: Zsign
       product: Zsign
     - package: ZIPFoundation
     - sdk: libz.tbd
+    - sdk: AppIntents.framework
     - package: MachOKit
     - package: ArArchiveKit
     - package: SWCompression
@@ -76,6 +86,7 @@ targets:
         - '@executable_path/Frameworks'
         HEADER_SEARCH_PATHS:
         - $(inherited)
+        - $(SRCROOT)/Vendor/3105/ThreeOneOSFive/kexploit
         - $(SRCROOT)/Vendor/minizip
         - $(SRCROOT)/Vendor/GCDWebServer/Core
         - $(SRCROOT)/Vendor/GCDWebServer/Requests

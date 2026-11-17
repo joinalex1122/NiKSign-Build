@@ -12,9 +12,7 @@ for relative, expected in lock['sha256'].items():
     assert hashlib.sha256(p.read_bytes()).hexdigest() == expected, f'Upstream changed: {relative}'
 source = v / 'ThreeOneOSFive'
 # Exact substitutions: every upstream translation unit must still be compiled.
-overlays = {'helpers/SupportPolicy.swift': r/'Native/Integration/SupportPolicy.swift',
-            'App.swift': r/'Native/Integration/App.swift',
-            'views/RepositoryHomeView.swift': r/'Native/Integration/RepositoryHomeView.swift'}
+overlays = {key: r/value for key, value in json.loads((r/'upstream-overlays.json').read_text()).items()}
 config = (r / 'project.yml').read_text()
 assert 'path: Vendor/3105/ThreeOneOSFive' in config
 excludes = config.split('path: Vendor/3105/ThreeOneOSFive', 1)[1].split('- path:', 1)[0].split('dependencies:', 1)[0]

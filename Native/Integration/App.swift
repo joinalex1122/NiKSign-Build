@@ -86,7 +86,7 @@ struct NiKSignApp: App {
                     checkForUpdate()
                 }
             }
-            .onChange(of: scenePhase) { phase in
+            .onChange(of: scenePhase) { _, phase in
                 guard phase == .active, !showOnboarding, !nikMode.isEmpty, nikMode != "sign" else { return }
                 appState.detectSupport()
             }
