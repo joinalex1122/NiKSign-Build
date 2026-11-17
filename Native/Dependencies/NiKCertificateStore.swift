@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 import Security
-
+import OpenSSL
 struct NiKCertificateProfile: Codable, Identifiable, Equatable {
     var id: UUID
     var name: String
@@ -219,25 +219,83 @@ final class NiKCertificateStore: ObservableObject {
     }
 
     nonisolated static func inspectP12(data: Data, password: String) throws -> (summary: String, derData: Data, sha1Hex: String) {
-        var imported: CFArray?
-        let options: [String: Any] = [kSecImportExportPassphrase as String: password]
-        let status = SecPKCS12Import(data as CFData, options as CFDictionary, &imported)
-        guard status == errSecSuccess,
-              let items = imported as? [[String: Any]],
-              let first = items.first,
-              let identityRef = first[kSecImportItemIdentity as String] else {
-            throw NiKError("Không mở được khóa riêng .p12. Kiểm tra tệp và mật khẩu.")
-        }
-        let identity = identityRef as! SecIdentity
-        var certRef: SecCertificate?
-        guard SecIdentityCopyCertificate(identity, &certRef) == errSecSuccess,
-              let cert = certRef else {
-            throw NiKError("Không trích xuất được chứng chỉ X.509 từ tệp .p12.")
-        }
-        let summary = (SecCertificateCopySubjectSummary(cert) as String?) ?? "Apple Certificate"
-        let der = SecCertificateCopyData(cert) as Data
-        let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined().uppercased()
-        return (summary, der, sha1)
+    let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
+let candidates: [String] = trimmed == password ? [password] : [password, trimmed]
+var lastStatus: OSStatus = errSecSuccess
+
+for candidate in candidates {
+var imported: CFArray?
+let options: [String: Any] = [kSecImportExportPassphrase as String: candidate]
+let status = SecPKCS12Import(data as CFData, options as CFDictionary, &imported)
+lastStatus = status
+if status == errSecSuccess, let items = imported as? [[String: Any]] {
+if let matched = items.first(where: { $0[kSecImportItemIdentity as String] != nil }),
+let identityRef = matched[kSecImportItemIdentity as String] {
+let identity = identityRef as! SecIdentity
+var certRef: SecCertificate?
+guard SecIdentityCopyCertificate(identity, &certRef) == errSecSuccess,
+let cert = certRef else {
+throw NiKError("Không trích xuất được chứng chỉ X.509 từ tệp .p12.")
+}
+let summary = (SecCertificateCopySubjectSummary(cert) as String?) ?? "Apple Certificate"
+let der = SecCertificateCopyData(cert) as Data
+let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined().uppercased()
+return (summary, der, sha1)
+}
+}
+}
+
+let defaultProvider = OSSL_PROVIDER_load(nil, "default")
+let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
+defer {
+if let legacyProvider { OSSL_PROVIDER_unload(legacyProvider) }
+if let defaultProvider { OSSL_PROVIDER_unload(defaultProvider) }
+}
+
+let certFromOpenSSL: SecCertificate? = data.withUnsafeBytes { rawBuffer -> SecCertificate? in
+guard let baseAddress = rawBuffer.baseAddress, rawBuffer.count > 0 else { return nil }
+guard let bio = BIO_new_mem_buf(baseAddress, Int32(rawBuffer.count)) else { return nil }
+defer { BIO_free(bio) }
+guard let p12 = d2i_PKCS12_bio(bio, nil) else { return nil }
+defer { PKCS12_free(p12) }
+
+for candidate in candidates {
+var pkey: UnsafeMutablePointer<EVP_PKEY>?
+var cert: UnsafeMutablePointer<X509>?
+let parsed = candidate.withCString { cPass in
+PKCS12_parse(p12, cPass, &pkey, &cert, nil)
+}
+if let pkey { EVP_PKEY_free(pkey) }
+guard parsed == 1, let cert else {
+if let cert { X509_free(cert) }
+continue
+}
+defer { X509_free(cert) }
+
+let len = i2d_X509(cert, nil)
+guard len > 0 else { continue }
+var derBytes = [UInt8](repeating: 0, count: Int(len))
+let written = derBytes.withUnsafeMutableBufferPointer { buf -> Int32 in
+var outPtr = buf.baseAddress
+return i2d_X509(cert, &outPtr)
+}
+guard written > 0 else { continue }
+let derData = Data(derBytes.prefix(Int(written)))
+if let secCert = SecCertificateCreateWithData(nil, derData as CFData) {
+return secCert
+}
+}
+return nil
+}
+
+if let cert = certFromOpenSSL {
+let summary = (SecCertificateCopySubjectSummary(cert) as String?) ?? "Apple Certificate"
+let der = SecCertificateCopyData(cert) as Data
+let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined().uppercased()
+return (summary, der, sha1)
+}
+
+throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus)). Kiểm tra tệp và mật khẩu.")
     }
 
     nonisolated static func parseMobileProvision(data: Data) throws -> NiKProvisionMetadata {
