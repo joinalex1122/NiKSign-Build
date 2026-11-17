@@ -42,7 +42,7 @@ enum NiKCertZipHelper {
             ["pass", "password", "pwd", "matkhau", "mật khẩu"].contains($0.deletingPathExtension().lastPathComponent.lowercased())
         }
         if passwordFiles.count == 1, let txt = passwordFiles.first,
-           (try txt.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0 <= 16_384 {
+           ((try txt.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0) <= 16_384 {
             foundPass = try String(contentsOf: txt, encoding: .utf8).trimmingCharacters(in: .newlines)
         }
         keep = true

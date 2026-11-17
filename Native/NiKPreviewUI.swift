@@ -2,6 +2,7 @@ import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ZIPFoundation
+import ImageIO
 
 struct NiKLibraryItem: Codable, Identifiable {
     var id = UUID()
@@ -28,11 +29,16 @@ struct NiKLibraryItem: Codable, Identifiable {
             if FileManager.default.fileExists(atPath: index.path) { items = try JSONDecoder().decode([NiKLibraryItem].self, from: Data(contentsOf: index)) }
         } catch { self.error = error.localizedDescription }
     }
-    func save(_ item: NiKLibraryItem) {
-        if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item }
-        else { items.insert(item, at: 0) }
-        do { try JSONEncoder().encode(items).write(to: index, options: .atomic) }
-        catch { self.error = error.localizedDescription }
+    @discardableResult func save(_ item: NiKLibraryItem) -> Bool {
+        var updated = items
+        if let i = updated.firstIndex(where: { $0.id == item.id }) { updated[i] = item }
+        else { updated.insert(item, at: 0) }
+        do {
+            try JSONEncoder().encode(updated).write(to: index, options: .atomic)
+            items = updated
+            error = ""
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func remove(_ item: NiKLibraryItem) throws {
         let updated = items.filter { $0.id != item.id }
@@ -51,7 +57,11 @@ struct NiKLibraryItem: Codable, Identifiable {
         defer { receiving = false }
         do {
             let item = try await Task.detached { try Self.importIPA(url) }.value
-            save(item)
+            guard save(item) else {
+                try? FileManager.default.removeItem(at: item.ipaURL)
+                if let icon = item.iconURL { try? FileManager.default.removeItem(at: icon) }
+                return
+            }
             notice = "Đã nhập \(item.title) vào thư viện IPA."
         } catch { self.error = error.localizedDescription }
     }
@@ -75,6 +85,35 @@ struct NiKLibraryItem: Codable, Identifiable {
         let filename = UUID().uuidString + ".ipa"
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: local, to: root.appendingPathComponent(filename))
+        // Icon extraction is optional. Missing/asset-catalog-only icons use the UI fallback.
+        let appPath = String(metadata[0].path.dropLast("Info.plist".count))
+        let icons = info["CFBundleIcons"] as? [String: Any]
+        let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
+        let names = primary?["CFBundleIconFiles"] as? [String] ?? info["CFBundleIconFiles"] as? [String] ?? []
+        for name in names.reversed() {
+            let stem = (name as NSString).deletingPathExtension
+            var found = false
+            for suffix in ["@3x.png", "@2x.png", ".png"] {
+                guard let entry = zip[appPath + stem + suffix], entry.uncompressedSize <= 4 * 1_048_576 else { continue }
+                do {
+                    var png = Data()
+                    let crc = try zip.extract(entry) { chunk in
+                        guard png.count + chunk.count <= 4 * 1_048_576 else { throw NiKError("Icon quá lớn.") }
+                        png.append(chunk)
+                    }
+                    guard crc == entry.checksum, let source = CGImageSourceCreateWithData(png as CFData, nil),
+                          let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                            kCGImageSourceCreateThumbnailFromImageAlways: true,
+                            kCGImageSourceThumbnailMaxPixelSize: 180,
+                            kCGImageSourceCreateThumbnailWithTransform: true
+                          ] as CFDictionary), let data = UIImage(cgImage: thumb).pngData() else { continue }
+                    try data.write(to: root.appendingPathComponent(filename + ".png"), options: .atomic)
+                    found = true
+                    break
+                } catch { continue }
+            }
+            if found { break }
+        }
         return NiKLibraryItem(title: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? url.deletingPathExtension().lastPathComponent,
             version: info["CFBundleShortVersionString"] as? String ?? "?", bundleID: info["CFBundleIdentifier"] as? String ?? "?", filename: filename)
     }
@@ -152,23 +191,17 @@ struct NiKPreviewRoot: View {
     private var settings: some View {
         NiKSettingsView(certificates: certificates, library: library)
     }
-    @ViewBuilder
     private var activeTabView: some View {
-        switch tab {
-        case 0 where hasSigner:
-            NiKLibraryView(library: library, certificates: certificates)
-        case 1 where mode != "sign":
-            NiKHubPreview()
-        case 2:
-            NiKFilesHome()
-        case 3:
-            settings
-        default:
+        TabView(selection: $tab) {
             if hasSigner {
                 NiKLibraryView(library: library, certificates: certificates)
-            } else {
-                NiKFilesHome()
+                    .tag(0).toolbar(.hidden, for: .tabBar)
             }
+            if mode != "sign" {
+                NiKHubPreview().tag(1).toolbar(.hidden, for: .tabBar)
+            }
+            NiKFilesHome().tag(2).toolbar(.hidden, for: .tabBar)
+            settings.tag(3).toolbar(.hidden, for: .tabBar)
         }
     }
 

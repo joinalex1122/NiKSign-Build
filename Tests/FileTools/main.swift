@@ -62,3 +62,23 @@ precondition(noPassword.password == nil)
 let stages = try fm.contentsOfDirectory(atPath: root).filter { $0.hasPrefix(".unzip-") || $0.hasPrefix(".copy-") }
 precondition(stages.isEmpty)
 print("PASS: extraction, Unicode, no overwrite, limits, traversal, duplicate/collision cleanup, file names, self-transfer, certificate ambiguity and password whitespace")
+let linkZip = root.appendingPathComponent("symlink.zip")
+do {
+    let archive = try Archive(url: linkZip, accessMode: .create)
+    let bytes = Data("../outside".utf8)
+    try archive.addEntry(with: "link", type: .symlink, uncompressedSize: Int64(bytes.count)) { _, _ in bytes }
+}
+try expectFailure { try NiKArchive.extract(linkZip, to: root.appendingPathComponent("symlink-out")) }
+let corrupt = root.appendingPathComponent("crc.zip")
+do {
+    let archive = try Archive(url: corrupt, accessMode: .create)
+    let bytes = Data("UNIQUE_PAYLOAD_CRC".utf8)
+    try archive.addEntry(with: "test", type: .file, uncompressedSize: Int64(bytes.count)) { _, _ in bytes }
+}
+var corruptBytes = try Data(contentsOf: corrupt)
+let payloadRange = corruptBytes.range(of: Data("UNIQUE_PAYLOAD_CRC".utf8))!
+corruptBytes[payloadRange.lowerBound] ^= 0x01
+try corruptBytes.write(to: corrupt)
+try expectFailure { try NiKArchive.extract(corrupt, to: root.appendingPathComponent("crc-out")) }
+precondition(!fm.fileExists(atPath: root.appendingPathComponent("crc-out").path))
+print("PASS: symlink rejection and corrupted CRC cleanup")
