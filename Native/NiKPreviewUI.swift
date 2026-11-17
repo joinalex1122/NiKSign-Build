@@ -155,6 +155,9 @@ struct NiKPreviewRoot: View {
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
         .onChange(of: library.notice) { _, notice in if !notice.isEmpty && hasSigner { tab = 0 } }
+        .alert(t("Không nhập được IPA", "IPA Import Failed"), isPresented: Binding(
+            get: { !library.error.isEmpty }, set: { if !$0 { library.error = "" } }
+        )) { Button("OK", role: .cancel) {} } message: { Text(library.error) }
         .alert(t("Thêm chứng chỉ ký?", "Add Signing Certificate?"), isPresented: $prompt) {
             Button(t("Nhập chứng chỉ", "Import Certificate")) { tab = 3 }
             Button(t("Để sau", "Later"), role: .cancel) {}
@@ -363,7 +366,6 @@ struct NiKLibraryView: View {
                         Task {
                             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                             await library.receive(url)
-                            if !library.error.isEmpty { errorMessage = library.error }
                         }
                     }
                 }

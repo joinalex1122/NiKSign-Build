@@ -59,7 +59,7 @@ let readme = try zip("readme", [("cert.p12", "k"), ("cert.mobileprovision", "p")
 let noPassword = try NiKCertZipHelper.extractPairAndPassword(from: readme)
 defer { try? fm.removeItem(at: noPassword.tempDir) }
 precondition(noPassword.password == nil)
-let stages = try fm.contentsOfDirectory(atPath: root).filter { $0.hasPrefix(".unzip-") || $0.hasPrefix(".copy-") }
+let stages = try fm.contentsOfDirectory(atPath: root.path).filter { $0.hasPrefix(".unzip-") || $0.hasPrefix(".copy-") }
 precondition(stages.isEmpty)
 print("PASS: extraction, Unicode, no overwrite, limits, traversal, duplicate/collision cleanup, file names, self-transfer, certificate ambiguity and password whitespace")
 let linkZip = root.appendingPathComponent("symlink.zip")
