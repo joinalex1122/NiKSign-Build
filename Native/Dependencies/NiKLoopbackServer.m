@@ -44,6 +44,10 @@
                     httpsHost:(nullable NSString *)httpsHost {
     [self stop];
     self.lastError = nil;
+    if ([httpsHost stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length > 0) {
+        self.lastError = [NSError errorWithDomain:@"NiKSign" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Máy chủ nội bộ chỉ hỗ trợ HTTP. Domain HTTPS không tự cung cấp TLS; hãy dùng dịch vụ HTTPS thực tế để cài OTA."}];
+        return nil;
+    }
     if (!fileURL.isFileURL || ![[NSFileManager defaultManager] fileExistsAtPath:fileURL.path]) {
         self.lastError = [NSError errorWithDomain:@"NiKSign" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Không tìm thấy IPA đã xuất."}];
         return nil;
@@ -116,24 +120,12 @@
     self.server = server;
     unsigned long port = (unsigned long)server.port;
 
-    NSString *trimmedHost = [httpsHost stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     NSString *baseOrigin = [NSString stringWithFormat:@"http://127.0.0.1:%lu", port];
-    if (trimmedHost.length > 0) {
-        if ([trimmedHost hasPrefix:@"https://"] || [trimmedHost hasPrefix:@"http://"]) {
-            baseOrigin = [NSString stringWithFormat:@"%@:%lu", trimmedHost, port];
-        } else {
-            baseOrigin = [NSString stringWithFormat:@"https://%@:%lu", trimmedHost, port];
-        }
-    }
-
     self.fileURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", baseOrigin, ipaRoute]];
     self.manifestURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@", baseOrigin, manifestRoute]];
-
-    NSCharacterSet *allowed = [[NSCharacterSet characterSetWithCharactersInString:@"!*'();:@&=+$,/?%#[] "] invertedSet];
-    NSString *encodedManifest = [self.manifestURL.absoluteString stringByAddingPercentEncodingWithAllowedCharacters:allowed];
-    if (encodedManifest.length > 0) {
-        self.itmsInstallURL = [NSURL URLWithString:[NSString stringWithFormat:@"itms-services://?action=download-manifest&url=%@", encodedManifest]];
-    }
+    // GCDWebServer serves HTTP. DNS or a URL scheme change cannot add TLS.
+    // An actual HTTPS hosting/forwarding service is required before offering OTA.
+    self.itmsInstallURL = nil;
     return self.fileURL;
 }
 

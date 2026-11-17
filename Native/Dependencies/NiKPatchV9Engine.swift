@@ -258,7 +258,7 @@ enum NiKDynamicPayloadMerger {
     ) throws -> [String: String] {
         let targetDict = try decodeRootDictionary(from: targetData, isPlist: isPlist)
         let payloadDict = try decodeRootDictionary(from: payloadData, isPlist: isPlist)
-        let fieldsByID = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
+        let fieldsByID = try validatedFields(schema)
         var extracted: [String: String] = [:]
 
         for (rawKey, rawVal) in payloadDict {
@@ -299,7 +299,7 @@ enum NiKDynamicPayloadMerger {
             targetDict = [:]
         }
         let payloadDict = try decodeRootDictionary(from: payloadData, isPlist: isPlist)
-        let fieldsByID = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
+        let fieldsByID = try validatedFields(schema)
 
         let merged = try mergeDictionaries(
             target: targetDict,
@@ -417,20 +417,37 @@ enum NiKDynamicPayloadMerger {
         return output
     }
 
+    // Validate before indexing: Dictionary(uniqueKeysWithValues:) traps on duplicate IDs.
+    private static func validatedFields(_ schema: NiKPatchSettingsSchema) throws -> [String: NiKPatchSettingField] {
+        guard schema.fields.count <= 64 else { throw NiKError("Tối đa 64 trường settings.") }
+        var fields: [String: NiKPatchSettingField] = [:]
+        for field in schema.fields {
+            guard !field.id.isEmpty, fields.updateValue(field, forKey: field.id) == nil else {
+                throw NiKError("Trường settings có ID rỗng hoặc trùng: \(field.id).")
+            }
+        }
+        return fields
+    }
+
     /// Finds exactly one key in `dict` starting with `prefix` whose remaining suffix is a single segment without `/`.
     static func findSingleMatchingKey(in dict: [String: Any], prefix: String) throws -> String {
         guard !prefix.isEmpty else {
             throw NiKError("Selector %3105_MatchPrefix% không được để trống prefix.")
         }
-        let matches = dict.keys.filter { key in
-            guard key.hasPrefix(prefix) else { return false }
-            let suffix = String(key.dropFirst(prefix.count))
-            return !suffix.isEmpty && !suffix.contains("/")
+        // O(n) worst case, O(1) auxiliary space; stop once ambiguity is established.
+        var match: String?
+        for key in dict.keys where key.hasPrefix(prefix) {
+            let suffix = key.dropFirst(prefix.count)
+            guard !suffix.isEmpty, !suffix.contains("/") else { continue }
+            guard match == nil else {
+                throw NiKError("Selector %3105_MatchPrefix% (\(prefix)) khớp nhiều key; yêu cầu đúng 1 key.")
+            }
+            match = key
         }
-        guard matches.count == 1, let single = matches.first else {
-            throw NiKError("Selector %3105_MatchPrefix% (\(prefix)) khớp \(matches.count) key (yêu cầu khớp đúng 1 key duy nhất). Dừng an toàn.")
+        guard let match else {
+            throw NiKError("Selector %3105_MatchPrefix% (\(prefix)) không khớp key nào.")
         }
-        return single
+        return match
     }
 
     private static func exactPlaceholderID(in text: String) -> String? {
@@ -685,9 +702,13 @@ enum NiKWorkspaceV9Service {
             schema = existingManifest?.settings ?? NiKPatchSettingsSchema()
         }
 
-        let previousModes = Dictionary(uniqueKeysWithValues: (existingManifest?.rules ?? []).map {
-            ("\($0.scope.rawValue):\($0.identifier):\($0.relativePath)", $0.mode)
-        })
+        var previousModes: [String: NiKPatchRuleMode] = [:]
+        for rule in existingManifest?.rules ?? [] {
+            let key = "\(rule.scope.rawValue):\(rule.identifier):\(rule.relativePath)"
+            guard previousModes.updateValue(rule.mode, forKey: key) == nil else {
+                throw NiKError("Manifest chứa đường dẫn trùng lặp: \(rule.relativePath).")
+            }
+        }
 
         var discoveredRules: [NiKWorkspaceV9Rule] = []
         for scope in NiKContainerScope.allCases {
@@ -784,140 +805,203 @@ enum NiKWorkspaceV9Service {
         return updated
     }
 
-    /// Applies a Workspace v9 project to available Application & AppGroup containers with transactional backup & rollback.
+    // Serialize apply/restore so two callers cannot overwrite the same journal.
+    private static let transactionLock = NSLock()
+    private static let maxFileBytes = 32 * 1_024 * 1_024
+    private static let maxTransactionBytes = 128 * 1_024 * 1_024
+
+    private struct ContainerKey: Hashable {
+        let scope: NiKContainerScope
+        let identifier: String
+    }
+
+    private struct PreparedWrite {
+        let target: URL
+        let backup: NiKWorkspaceV9BackupEntry
+        let output: Data
+    }
+
+    /// Reject symlinks in target paths, including dangling links and parent directory links.
+    private static func checkedTarget(path: String, root: URL) throws -> URL {
+        let root = root.resolvingSymlinksInPath()
+        let target = try PatchPathValidator.resolveContainedTargetURL(relativePath: path, containerRoot: root)
+        var current = root
+        for component in try PatchPathValidator.canonicalRelativePath(path).split(separator: "/") {
+            current.appendPathComponent(String(component))
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: current.path),
+               attributes[.type] as? FileAttributeType == .typeSymbolicLink {
+                throw NiKError("Patch không hỗ trợ symbolic link: \(path).")
+            }
+        }
+        return target
+    }
+
+    private static func receiptURL(projectID: UUID, directory: URL?) throws -> URL {
+        let root = try directory ?? backupsRootURL()
+        return root.appendingPathComponent("\(projectID.uuidString).json")
+    }
+
+    private static func saveReceipt(_ receipt: NiKWorkspaceV9BackupReceipt, to url: URL) throws {
+        try JSONEncoder().encode(receipt).write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    /// Prepare all outputs, persist originals, then mutate targets. A pending receipt must
+    /// be restored before reapplying, preserving the first original across crashes/retries.
     static func apply(
         project: NiKWorkspaceV9Project,
         userValues: [String: NiKPatchFieldUserValue],
-        customContainerResolver: ((NiKContainerScope, String) throws -> URL)? = nil
+        customContainerResolver: ((NiKContainerScope, String) throws -> URL)? = nil,
+        backupDirectory: URL? = nil
     ) throws -> (receipt: NiKWorkspaceV9BackupReceipt, appliedCount: Int, skippedIdentifiers: [String]) {
-        let resolver = customContainerResolver ?? NiKContainerResolver.resolveContainerURL
-        var resolvedContainers: [String: URL] = [:]
-        var skipped: [String] = []
-
-        let uniqueScopesAndIDs = Array(Set(project.rules.map { "\($0.scope.rawValue)|\($0.identifier)" })).sorted()
-        for pair in uniqueScopesAndIDs {
-            let parts = pair.split(separator: "|", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let scope = NiKContainerScope(rawValue: parts[0]) else { continue }
-            let identifier = parts[1]
-            if let rootURL = try? resolver(scope, identifier) {
-                resolvedContainers[pair] = rootURL
-            } else {
-                // According to PATCH_GUIDE.vi.md: if one bundle is absent on the device, its rules are skipped while present bundles are still applied.
-                skipped.append("\(scope.rawValue)/\(identifier)")
-            }
-        }
-
-        let applicableRules = project.rules.filter {
-            resolvedContainers["\($0.scope.rawValue)|\($0.identifier)"] != nil
-        }
-        guard !applicableRules.isEmpty else {
-            throw NiKError("Không tìm thấy bất kỳ container Application/AppGroup mục tiêu nào trên thiết bị để áp dụng patch.")
-        }
-
+        transactionLock.lock()
+        defer { transactionLock.unlock() }
         let fm = FileManager.default
-        var backupEntries: [NiKWorkspaceV9BackupEntry] = []
-        var writtenTargets: [(targetURL: URL, existedBefore: Bool, originalBytes: Data?)] = []
+        let journal = try receiptURL(projectID: project.id, directory: backupDirectory)
+        guard !fm.fileExists(atPath: journal.path) else {
+            throw NiKError("Patch này có bản sao lưu chưa khôi phục. Hãy Restore trước khi áp dụng lại.")
+        }
+        guard !project.rules.isEmpty, project.rules.count <= 10_000 else {
+            throw NiKError("Dự án cần từ 1 đến 10.000 quy tắc.")
+        }
+        let resolver = customContainerResolver ?? NiKContainerResolver.resolveContainerURL
+        var resolved: [ContainerKey: URL] = [:]
+        var unavailable = Set<ContainerKey>()
+        var skipped: [String] = []
+        var targets = Set<String>()
+        var prepared: [PreparedWrite] = []
+        var byteCount = 0
 
-        do {
-            for rule in applicableRules {
-                let containerRoot = resolvedContainers["\(rule.scope.rawValue)|\(rule.identifier)"]!
-                let targetURL = try PatchPathValidator.resolveContainedTargetURL(
-                    relativePath: rule.relativePath,
-                    containerRoot: containerRoot
-                )
-                let existed = fm.fileExists(atPath: targetURL.path)
-                let originalData = existed ? try Data(contentsOf: targetURL) : nil
-
-                let outputBytes: Data
-                switch rule.mode {
-                case .replaceFile:
-                    outputBytes = rule.payloadData
-                case .mergePlist:
-                    outputBytes = try NiKDynamicPayloadMerger.merge(
-                        targetData: originalData,
-                        payloadData: rule.payloadData,
-                        isPlist: true,
-                        schema: project.settings,
-                        userValues: userValues
-                    )
-                case .mergeJSON:
-                    outputBytes = try NiKDynamicPayloadMerger.merge(
-                        targetData: originalData,
-                        payloadData: rule.payloadData,
-                        isPlist: false,
-                        schema: project.settings,
-                        userValues: userValues
-                    )
+        for rule in project.rules {
+            let key = ContainerKey(scope: rule.scope, identifier: rule.identifier)
+            if unavailable.contains(key) { continue }
+            if resolved[key] == nil {
+                do { resolved[key] = try resolver(rule.scope, rule.identifier) }
+                catch {
+                    unavailable.insert(key)
+                    skipped.append("\(rule.scope.rawValue)/\(rule.identifier)")
+                    continue
                 }
-
-                try fm.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try outputBytes.write(to: targetURL, options: .atomic)
-
-                writtenTargets.append((targetURL, existed, originalData))
-                backupEntries.append(
-                    NiKWorkspaceV9BackupEntry(
-                        scope: rule.scope,
-                        identifier: rule.identifier,
-                        relativePath: rule.relativePath,
-                        existedBefore: existed,
-                        originalBytes: originalData
-                    )
-                )
+            }
+            guard let root = resolved[key] else { continue }
+            let target = try checkedTarget(path: rule.relativePath, root: root)
+            guard targets.insert(target.path).inserted else {
+                throw NiKError("Nhiều quy tắc cùng ghi một tệp: \(rule.relativePath).")
+            }
+            guard rule.payloadData.count <= maxFileBytes else { throw NiKError("Payload vượt 32 MB.") }
+            let existed = fm.fileExists(atPath: target.path)
+            var original: Data?
+            if existed {
+                let attrs = try fm.attributesOfItem(atPath: target.path)
+                guard attrs[.type] as? FileAttributeType == .typeRegular,
+                      let size = attrs[.size] as? NSNumber, size.int64Value <= Int64(maxFileBytes) else {
+                    throw NiKError("Tệp gốc không hợp lệ hoặc vượt 32 MB: \(rule.relativePath).")
+                }
+                original = try Data(contentsOf: target)
+                guard original!.count <= maxFileBytes else { throw NiKError("Tệp gốc vượt 32 MB.") }
+            }
+            let output: Data
+            switch rule.mode {
+            case .replaceFile: output = rule.payloadData
+            case .mergePlist, .mergeJSON:
+                output = try NiKDynamicPayloadMerger.merge(
+                    targetData: original, payloadData: rule.payloadData,
+                    isPlist: rule.mode == .mergePlist, schema: project.settings, userValues: userValues)
+            }
+            byteCount += (original?.count ?? 0) + output.count
+            guard output.count <= maxFileBytes, byteCount <= maxTransactionBytes else {
+                throw NiKError("Patch vượt giới hạn 32 MB/tệp hoặc 128 MB dữ liệu giao dịch.")
+            }
+            prepared.append(PreparedWrite(target: target, backup: NiKWorkspaceV9BackupEntry(
+                scope: rule.scope, identifier: rule.identifier, relativePath: rule.relativePath,
+                existedBefore: existed, originalBytes: original), output: output))
+        }
+        guard !prepared.isEmpty else { throw NiKError("Không truy cập được container mục tiêu nào.") }
+        let receipt = NiKWorkspaceV9BackupReceipt(projectID: project.id, projectName: project.name,
+            appliedAt: Date(), entries: prepared.map { $0.backup })
+        // Persist before any target write. Failure here leaves all targets untouched.
+        try saveReceipt(receipt, to: journal)
+        var written: [PreparedWrite] = []
+        do {
+            for item in prepared {
+                try fm.createDirectory(at: item.target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try item.output.write(to: item.target, options: .atomic)
+                written.append(item)
             }
         } catch {
-            // Rollback any already-written files in this transaction
-            for item in writtenTargets.reversed() {
-                if item.existedBefore, let orig = item.originalBytes {
-                    try? orig.write(to: item.targetURL, options: .atomic)
-                } else {
-                    try? fm.removeItem(at: item.targetURL)
-                }
+            let applyError = error
+            var rollbackFailed = false
+            for item in written.reversed() {
+                do { try restoreEntry(item.backup, to: item.target) }
+                catch { rollbackFailed = true }
             }
-            throw error
+            if !rollbackFailed {
+                do { try fm.removeItem(at: journal) }
+                catch { rollbackFailed = true }
+            }
+            if rollbackFailed {
+                throw NiKError("Áp dụng thất bại: \(applyError.localizedDescription). Đã giữ bản sao lưu; hãy Restore để khôi phục các tệp.")
+            }
+            throw applyError
         }
-
-        let receipt = NiKWorkspaceV9BackupReceipt(
-            projectID: project.id,
-            projectName: project.name,
-            appliedAt: Date(),
-            entries: backupEntries
-        )
-        let receiptURL = try backupsRootURL().appendingPathComponent("\(project.id.uuidString).json")
-        let encodedReceipt = try JSONEncoder().encode(receipt)
-        try encodedReceipt.write(to: receiptURL, options: [.atomic, .completeFileProtection])
-        return (receipt, applicableRules.count, skipped)
+        return (receipt, prepared.count, skipped)
     }
 
+    private static func restoreEntry(_ entry: NiKWorkspaceV9BackupEntry, to target: URL) throws {
+        let fm = FileManager.default
+        if entry.existedBefore {
+            guard let original = entry.originalBytes else { throw NiKError("Bản sao lưu thiếu dữ liệu gốc.") }
+            try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try original.write(to: target, options: .atomic)
+        } else if fm.fileExists(atPath: target.path) {
+            try fm.removeItem(at: target)
+        }
+    }
+
+    /// Retain unresolved entries on disk for a later retry; never delete a partial backup.
     static func restore(
         projectID: UUID,
-        customContainerResolver: ((NiKContainerScope, String) throws -> URL)? = nil
+        customContainerResolver: ((NiKContainerScope, String) throws -> URL)? = nil,
+        backupDirectory: URL? = nil
     ) throws -> Int {
+        transactionLock.lock()
+        defer { transactionLock.unlock() }
+        let journal = try receiptURL(projectID: projectID, directory: backupDirectory)
+        let attrs = try FileManager.default.attributesOfItem(atPath: journal.path)
+        guard let size = attrs[.size] as? NSNumber, size.int64Value <= 256 * 1_024 * 1_024 else {
+            throw NiKError("Hồ sơ sao lưu vượt giới hạn 256 MB.")
+        }
+        let receipt = try JSONDecoder().decode(NiKWorkspaceV9BackupReceipt.self, from: Data(contentsOf: journal))
+        guard receipt.projectID == projectID, receipt.entries.count <= 10_000,
+              receipt.entries.allSatisfy({ $0.existedBefore == ($0.originalBytes != nil) }) else {
+            throw NiKError("Hồ sơ sao lưu không hợp lệ; đã giữ lại để kiểm tra.")
+        }
         let resolver = customContainerResolver ?? NiKContainerResolver.resolveContainerURL
-        let receiptURL = try backupsRootURL().appendingPathComponent("\(projectID.uuidString).json")
-        guard FileManager.default.fileExists(atPath: receiptURL.path) else {
-            throw NiKError("Không tìm thấy bản sao lưu giao dịch cho patch này.")
-        }
-        let data = try Data(contentsOf: receiptURL)
-        let receipt = try JSONDecoder().decode(NiKWorkspaceV9BackupReceipt.self, from: data)
-        var restoredCount = 0
-
+        var roots: [ContainerKey: URL] = [:]
+        var unavailable = Set<ContainerKey>()
+        var pending: [NiKWorkspaceV9BackupEntry] = []
+        var count = 0
         for entry in receipt.entries.reversed() {
-            guard let containerRoot = try? resolver(entry.scope, entry.identifier) else { continue }
-            let targetURL = try PatchPathValidator.resolveContainedTargetURL(
-                relativePath: entry.relativePath,
-                containerRoot: containerRoot
-            )
-            if entry.existedBefore, let orig = entry.originalBytes {
-                try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try orig.write(to: targetURL, options: .atomic)
-                restoredCount += 1
-            } else if FileManager.default.fileExists(atPath: targetURL.path) {
-                try FileManager.default.removeItem(at: targetURL)
-                restoredCount += 1
-            }
+            let key = ContainerKey(scope: entry.scope, identifier: entry.identifier)
+            do {
+                if unavailable.contains(key) { throw NiKError("Container chưa truy cập được.") }
+                if roots[key] == nil {
+                    do { roots[key] = try resolver(entry.scope, entry.identifier) }
+                    catch { unavailable.insert(key); throw error }
+                }
+                guard let root = roots[key] else { throw NiKError("Thiếu container.") }
+                let target = try checkedTarget(path: entry.relativePath, root: root)
+                try restoreEntry(entry, to: target)
+                count += 1
+            } catch { pending.append(entry) }
         }
-        try? FileManager.default.removeItem(at: receiptURL)
-        return restoredCount
+        if !pending.isEmpty {
+            try saveReceipt(NiKWorkspaceV9BackupReceipt(projectID: projectID,
+                projectName: receipt.projectName, appliedAt: receipt.appliedAt,
+                entries: Array(pending.reversed())), to: journal)
+            throw NiKError("Đã khôi phục \(count) tệp; còn \(pending.count) mục chưa khôi phục. Bản sao lưu được giữ để thử lại.")
+        }
+        try FileManager.default.removeItem(at: journal)
+        return count
     }
 
     static func hasBackupReceipt(projectID: UUID) -> Bool {

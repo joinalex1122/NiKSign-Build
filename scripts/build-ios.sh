@@ -16,7 +16,7 @@ if [ "$BUNDLE_ID" != "com.apple.mobile.MobileHouseArrest" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$app/Info.plist"
 fi
 file "$app/NiKSign" | tee build/binary-info.txt
-lipo -verify_arch arm64 "$app/NiKSign"
+lipo "$app/NiKSign" -verify_arch arm64
 rm -rf dist/Payload
 rm -f dist/NiKSign-unsigned.ipa
 mkdir -p dist/Payload

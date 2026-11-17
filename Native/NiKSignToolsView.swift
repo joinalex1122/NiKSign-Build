@@ -46,8 +46,6 @@ struct NiKSignView: View {
     @State private var loopback = NiKLoopbackServer()
     @State private var loopbackURL: URL?
     @State private var manifestURL: URL?
-    @State private var itmsURL: URL?
-    @State private var otaHttpsHost = ""
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -240,7 +238,7 @@ struct NiKSignView: View {
                     }
                 }
 
-                Section("5. Ký số & Cài đặt OTA") {
+                Section("5. Ký số & Xuất IPA") {
                     Button(busy ? "Đang xử lý ký…" : "Ký và xuất IPA") { sign() }
                         .buttonStyle(.borderedProminent)
                         .disabled(busy || ipa == nil || !hasValidCredentialSelection)
@@ -265,26 +263,23 @@ struct NiKSignView: View {
                         }
                         ShareLink("Chia sẻ / Lưu IPA đã ký", item: artifact.ipaURL)
 
-                        TextField("Domain HTTPS cục bộ cho OTA (VD: backloop.dev)", text: $otaHttpsHost)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.caption)
+                        Text("Máy chủ nội bộ dùng HTTP để tải IPA và xem manifest. Cài OTA cần nơi lưu trữ HTTPS hợp lệ; bạn có thể chia sẻ IPA cho dịch vụ cài đặt đang dùng.")
+                            .font(.caption).foregroundStyle(.secondary)
 
-                        Button("Bật máy chủ OTA & Manifest cục bộ") {
+                        Button("Bật tải IPA & xem Manifest cục bộ") {
                             attempt {
                                 guard let url = loopback.start(
                                     file: artifact.ipaURL,
                                     bundleID: artifact.bundleID,
                                     version: artifact.version,
                                     title: artifact.displayName,
-                                    httpsHost: otaHttpsHost.isEmpty ? nil : otaHttpsHost
+                                    httpsHost: nil
                                 ) else {
                                     if let error = loopback.lastError { throw error }
                                     throw NiKError("Không khởi động được máy chủ nội bộ.")
                                 }
                                 loopbackURL = url
                                 manifestURL = loopback.manifestURL
-                                itmsURL = loopback.itmsInstallURL
                             }
                         }
                     }
@@ -298,15 +293,6 @@ struct NiKSignView: View {
                                 Text("Manifest: \(manifestURL.absoluteString)")
                                     .font(.caption2.monospaced())
                                     .textSelection(.enabled)
-                            }
-                            if let itmsURL {
-                                Button("Mở trình cài đặt OTA (itms-services://)") {
-                                    openURL(itmsURL)
-                                }
-                                .font(.caption.weight(.semibold))
-                                Text("Lưu ý: iOS yêu cầu manifest.plist được phục vụ qua HTTPS hợp lệ (ví dụ cấu hình domain trỏ về 127.0.0.1 như *.backloop.dev) khi gọi itms-services://.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
                             }
                             Button("Dừng máy chủ nội bộ", role: .destructive) { stopLoopback() }
                                 .font(.caption)
@@ -337,7 +323,7 @@ struct NiKSignView: View {
         NavigationStack {
             Form {
                 Section("Khả năng của bản 3.3") {
-                    Text("Hoàn thiện đầy đủ các tính năng 3105 2.0 theo đặc tả: Workspace v9 (Application + AppGroup + settings.json), bộ trộn Plist/JSON (%3105_Overwrite%, %3105_MatchPrefix%, %3105_Remove%), trình cài Dialer (.3105pass), Footnote màn hình khóa, Supervised và quản lý gói tính năng Cleaner.")
+                    Text("Các module bổ sung theo tài liệu 3105 2.0, cần kiểm thử trên thiết bị: Workspace v9 (Application + AppGroup + settings.json), bộ trộn Plist/JSON (%3105_Overwrite%, %3105_MatchPrefix%, %3105_Remove%), trình cài Dialer (.3105pass), Footnote màn hình khóa, Supervised và quản lý gói tính năng Cleaner.")
                     Text("Quản lý nhiều bộ chứng chỉ .p12/.mobileprovision với mật khẩu lưu trong Keychain, đối chiếu chứng chỉ X.509 DER và kiểm tra hạn sử dụng.")
                     Text("Tùy biến Info.plist, trích xuất .dylib từ .deb để gắn LC_LOAD_DYLIB vào binary Mach-O 64-bit, máy chủ OTA manifest.plist và trình duyệt kho AltSource JSON.")
                 }
@@ -366,7 +352,6 @@ struct NiKSignView: View {
         loopback.stop()
         loopbackURL = nil
         manifestURL = nil
-        itmsURL = nil
     }
 
     private func attempt(_ action: () throws -> Void) {
