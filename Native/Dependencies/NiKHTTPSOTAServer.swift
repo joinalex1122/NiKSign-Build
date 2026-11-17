@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Network
 import Security
 import OpenSSL
@@ -62,7 +63,7 @@ guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { thr
 stop()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
 if identity == nil || certificateDER == nil {
-    let generated = try Self.generateLocalIdentity()
+    let generated = try NiKLocalTLSIdentity.loadOrCreate()
     identity = generated.0
     certificateDER = generated.1
 }
@@ -129,33 +130,12 @@ let certData: Data
 if let existing = certificateDER {
 certData = existing
 } else {
-let (secIdentity, der) = try Self.generateLocalIdentity()
+let (secIdentity, der) = try NiKLocalTLSIdentity.loadOrCreate()
 self.identity = secIdentity
 self.certificateDER = der
 certData = der
 }
-let payloadUUID = UUID().uuidString
-let rootUUID = UUID().uuidString
-let profile: [String: Any] = [
-"PayloadContent": [[
-"PayloadCertificateFileName": "NiKSign-Local-OTA.cer",
-"PayloadContent": certData,
-"PayloadDescription": "Local HTTPS OTA Certificate for localhost / 127.0.0.1",
-"PayloadDisplayName": "NiKSign Local OTA CA",
-"PayloadIdentifier": "com.niksign.ota.cert.\(payloadUUID)",
-"PayloadType": "com.apple.security.root",
-"PayloadUUID": payloadUUID,
-"PayloadVersion": 1
-]],
-"PayloadDescription": "Install this profile to trust local HTTPS OTA installation.",
-"PayloadDisplayName": "NiKSign Local HTTPS OTA",
-"PayloadIdentifier": "com.niksign.ota.profile.\(rootUUID)",
-"PayloadRemovalDisallowed": false,
-"PayloadType": "Configuration",
-"PayloadUUID": rootUUID,
-"PayloadVersion": 1
-]
-return try PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0)
+return try NiKOTAProfile.encode(certificateDER: certData)
 }
 func waitUntilReady() async throws {
     for _ in 0..<200 {
@@ -276,133 +256,4 @@ connection.cancel()
 })
 }
 
-private static func generateLocalIdentity() throws -> (SecIdentity, Data) {
-let query: [String: Any] = [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: "com.niksign.local-ota-identity",
-    kSecAttrAccount as String: "identity-v1"
-]
-var result: CFTypeRef?
-var readQuery = query
-readQuery[kSecReturnData as String] = true
-readQuery[kSecMatchLimit as String] = kSecMatchLimitOne
-let readStatus = SecItemCopyMatching(readQuery as CFDictionary, &result)
-if readStatus == errSecSuccess, let stored = result as? Data {
-    var imported: CFArray?
-    let status = SecPKCS12Import(stored as CFData, [kSecImportExportPassphrase as String: ""] as CFDictionary, &imported)
-    if status == errSecSuccess, let values = imported as? [[String: Any]],
-       let value = values.first?[kSecImportItemIdentity as String] {
-        let identity = value as! SecIdentity
-        var cert: SecCertificate?
-        if SecIdentityCopyCertificate(identity, &cert) == errSecSuccess, let cert {
-            return (identity, SecCertificateCopyData(cert) as Data)
-        }
-    }
-    throw OTAError.identityImportFailed
-}
-guard readStatus == errSecItemNotFound else { throw OTAError.identityImportFailed }
-
-guard let ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nil) else {
-throw OTAError.certificateGenerationFailed
-}
-defer { EVP_PKEY_CTX_free(ctx) }
-
-guard EVP_PKEY_keygen_init(ctx) > 0,
-EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN, EVP_PKEY_CTRL_RSA_KEYGEN_BITS, 2048, nil) > 0 else {
-throw OTAError.certificateGenerationFailed
-}
-
-var pkey: OpaquePointer?
-guard EVP_PKEY_keygen(ctx, &pkey) > 0, let key = pkey else {
-throw OTAError.certificateGenerationFailed
-}
-defer { EVP_PKEY_free(key) }
-
-guard let x509 = X509_new() else {
-throw OTAError.certificateGenerationFailed
-}
-defer { X509_free(x509) }
-
-X509_set_version(x509, 2)
-ASN1_INTEGER_set(X509_get_serialNumber(x509), Int.random(in: 1...Int.max))
-X509_gmtime_adj(X509_getm_notBefore(x509), 0)
-X509_gmtime_adj(X509_getm_notAfter(x509), 60 * 60 * 24 * 365)
-X509_set_pubkey(x509, key)
-
-if let name = X509_get_subject_name(x509) {
-X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0)
-X509_set_issuer_name(x509, name)
-}
-
-var extCtx = X509V3_CTX()
-// X509V3_set_ctx initializes a context without a configuration database.
-X509V3_set_ctx(&extCtx, x509, x509, nil, nil, 0)
-
-let extensions: [(Int32, String)] = [
-(NID_basic_constraints, "critical,CA:TRUE"),
-(NID_key_usage, "critical,digitalSignature,keyEncipherment,keyCertSign"),
-(NID_ext_key_usage, "serverAuth"),
-(NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1")
-]
-for (nid, value) in extensions {
-let cValue = strdup(value)
-defer { free(cValue) }
-if let ext = X509V3_EXT_conf_nid(nil, &extCtx, nid, cValue) {
-X509_add_ext(x509, ext, -1)
-X509_EXTENSION_free(ext)
-}
-}
-
-guard X509_sign(x509, key, EVP_sha256()) > 0 else {
-throw OTAError.certificateGenerationFailed
-}
-
-let certLen = i2d_X509(x509, nil)
-guard certLen > 0 else { throw OTAError.certificateGenerationFailed }
-var certBytes = [UInt8](repeating: 0, count: Int(certLen))
-var certSuccess = false
-certBytes.withUnsafeMutableBufferPointer { buf in
-var ptr = buf.baseAddress
-certSuccess = i2d_X509(x509, &ptr) > 0
-}
-guard certSuccess else { throw OTAError.certificateGenerationFailed }
-let certDER = Data(certBytes)
-
-let pass = strdup("")
-let label = strdup("NiKSign Local OTA")
-defer {
-free(pass)
-free(label)
-}
-guard let p12 = PKCS12_create(pass, label, key, x509, nil, 0, 0, 0, 0, 0) else {
-throw OTAError.certificateGenerationFailed
-}
-defer { PKCS12_free(p12) }
-
-let p12Len = i2d_PKCS12(p12, nil)
-guard p12Len > 0 else { throw OTAError.certificateGenerationFailed }
-var p12Bytes = [UInt8](repeating: 0, count: Int(p12Len))
-var p12Success = false
-p12Bytes.withUnsafeMutableBufferPointer { buf in
-var ptr = buf.baseAddress
-p12Success = i2d_PKCS12(p12, &ptr) > 0
-}
-guard p12Success else { throw OTAError.certificateGenerationFailed }
-
-var items: CFArray?
-let options = [kSecImportExportPassphrase as String: ""] as CFDictionary
-let status = SecPKCS12Import(Data(p12Bytes) as CFData, options, &items)
-guard status == errSecSuccess,
-let array = items as? [[String: Any]],
-let first = array.first,
-let secIdentity = first[kSecImportItemIdentity as String] else {
-throw OTAError.identityImportFailed
-}
-
-var saved = query
-saved[kSecValueData as String] = Data(p12Bytes)
-saved[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-guard SecItemAdd(saved as CFDictionary, nil) == errSecSuccess else { throw OTAError.identityImportFailed }
-return (secIdentity as! SecIdentity, certDER)
-}
 }

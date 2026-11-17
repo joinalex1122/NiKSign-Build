@@ -23,3 +23,28 @@ expectFailure { _ = try NiKCertificateStore.inspectP12(data: legacy, password: "
 expectFailure { _ = try NiKCertificateStore.inspectP12(data: Data(legacy.prefix(20)), password: " test password ") }
 expectFailure { _ = try NiKCertificateStore.inspectP12(data: Data(), password: "") }
 print("PASS: modern and legacy p12 identity inspection, matching DER/fingerprint, password spaces, wrong password and damaged input")
+
+// Use an isolated service and remove synthetic test credentials afterward.
+let service = "com.niksign.tests.ota." + UUID().uuidString
+let deleteQuery: [String: Any] = [
+    kSecClass as String: kSecClassGenericPassword,
+    kSecAttrService as String: service
+]
+defer { SecItemDelete(deleteQuery as CFDictionary) }
+let firstTLS = try NiKLocalTLSIdentity.loadOrCreate(service: service)
+let secondTLS = try NiKLocalTLSIdentity.loadOrCreate(service: service)
+precondition(firstTLS.1 == secondTLS.1)
+precondition(SecCertificateCreateWithData(nil, firstTLS.1 as CFData) != nil)
+try firstTLS.1.write(to: directory.appendingPathComponent("local-ota.cer"))
+print("PASS: actual local TLS identity generation, DER certificate and stable Keychain reload")
+
+let mobileConfig = try NiKOTAProfile.encode(certificateDER: firstTLS.1)
+let profile = try PropertyListSerialization.propertyList(from: mobileConfig, format: nil) as! [String: Any]
+precondition(profile["PayloadType"] as? String == "Configuration")
+let payloads = profile["PayloadContent"] as! [[String: Any]]
+precondition(payloads.count == 1)
+precondition(payloads[0]["PayloadType"] as? String == "com.apple.security.root")
+precondition(payloads[0]["PayloadContent"] as? Data == firstTLS.1)
+precondition(payloads[0]["PayloadVersion"] as? Int == 1)
+precondition(profile["PayloadRemovalDisallowed"] as? Bool == false)
+print("PASS: real mobileconfig builder, root certificate payload and DER round trip")
