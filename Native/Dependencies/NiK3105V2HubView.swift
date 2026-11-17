@@ -301,7 +301,7 @@ struct NiK3105V2HubView: View {
                             .font(.headline)
                         Text(systemFeatures.isCleanerInstalled ? "Trạng thái: Đã cài đặt" : "Trạng thái: Đã gỡ")
                             .font(.caption)
-                            .foregroundStyle(systemFeatures.isCleanerInstalled ? .green : .secondary)
+                            .foregroundStyle(systemFeatures.isCleanerInstalled ? Color.green : Color.secondary)
                     }
                     Spacer()
                     Button(systemFeatures.isCleanerInstalled ? "Gỡ tính năng" : "Cài đặt") {
