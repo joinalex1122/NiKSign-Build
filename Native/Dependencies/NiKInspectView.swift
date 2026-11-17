@@ -35,14 +35,14 @@ catch { return error.localizedDescription }
 }.value
 busy = false
     }
-    private static func inspectFile(at url: URL) throws -> String {
+    nonisolated private static func inspectFile(at url: URL) throws -> String {
         if url.pathExtension.lowercased() == "ipa" {
             return try inspectIPA(at: url)
         }
         return try NiKArchiveInspector.report(at: url)
     }
 
-    private static func inspectIPA(at url: URL) throws -> String {
+    nonisolated private static func inspectIPA(at url: URL) throws -> String {
         let archive = try Archive(url: url, accessMode: .read)
         var infoPlist: [String: Any] = [:]
         var frameworks = Set<String>()

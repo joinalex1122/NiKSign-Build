@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install build tools
-        run: brew install xcodegen openssl@3
+        run: brew install xcodegen openssl@3 pkgconf
       - name: Two consecutive clean audits on one runner
         shell: bash
         run: |

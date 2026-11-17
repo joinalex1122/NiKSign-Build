@@ -94,7 +94,7 @@ struct NiK3105ToolsDashboardView: View {
             }
         }
         .sheet(item: $selectedInspectorFile) { doc in
-            NiKDeepFileInspectorSheet(url: doc.url)
+            NiKQuickLook(url: doc.url)
         }
     }
 
@@ -375,34 +375,37 @@ struct NiK3105ToolsDashboardView: View {
     }
 
     private func scanCaches() {
+        guard !isScanningCache else { return }
         isScanningCache = true
-        Task.detached(priority: .userInitiated) {
-            let apps = ContainerStore.installedAppsFromAPI()
-            var totalBytes: Int64 = 0
-            var appCount = 0
-            let fm = FileManager.default
-            for app in apps where !app.containerPath.isEmpty {
-                var appHasCache = false
-                for sub in ["Library/Caches", "tmp", "Library/Logs"] {
-                    let dir = URL(fileURLWithPath: app.containerPath).appendingPathComponent(sub)
-                    if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
-                        for case let fileURL as URL in enumerator {
-                            if let vals = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                               vals.isRegularFile == true {
-                                totalBytes += Int64(vals.fileSize ?? 0)
-                                appHasCache = true
-                            }
+        Task {
+            let summary = await Task.detached(priority: .userInitiated) { Self.cacheSummary() }.value
+            let formatted = ByteCountFormatter.string(fromByteCount: summary.bytes, countStyle: .file)
+            cacheSummaryText = t("Đã quét \(summary.apps) ứng dụng · Có thể dọn: \(formatted)", "Scanned \(summary.apps) apps · Reclaimable: \(formatted)")
+            isScanningCache = false
+        }
+    }
+
+    nonisolated private static func cacheSummary() -> (bytes: Int64, apps: Int) {
+        let apps = ContainerStore.installedAppsFromAPI()
+        var totalBytes: Int64 = 0
+        var appCount = 0
+        let fm = FileManager.default
+        for app in apps where !app.containerPath.isEmpty {
+            var appHasCache = false
+            for sub in ["Library/Caches", "tmp", "Library/Logs"] {
+                let dir = URL(fileURLWithPath: app.containerPath).appendingPathComponent(sub)
+                if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
+                    for case let fileURL as URL in enumerator {
+                        if let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), values.isRegularFile == true {
+                            totalBytes += Int64(values.fileSize ?? 0)
+                            appHasCache = true
                         }
                     }
                 }
-                if appHasCache { appCount += 1 }
             }
-            let formatted = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
-            await MainActor.run {
-                cacheSummaryText = t("Đã quét \(appCount) ứng dụng · Có thể dọn: \(formatted)", "Scanned \(appCount) apps · Reclaimable: \(formatted)")
-                isScanningCache = false
-            }
+            if appHasCache { appCount += 1 }
         }
+        return (totalBytes, appCount)
     }
 
     private func cleanCachesNow() {
@@ -458,7 +461,7 @@ struct NiK3105ToolsDashboardView: View {
                 sharedPrefsItems = sorted
                 statusBanner = sorted.isEmpty
                     ? t("Chưa tìm thấy tệp Preferences nào (kiểm tra quyền truy cập container).", "No Preferences files found (check container access).")
-                    : t("Tìm thấy \(sorted.count) tệp Preferences. Chạm vào tệp để sửa trực tiếp.", "Found \(sorted.count) Preferences files. Tap a file to edit.")
+                    : t("Tìm thấy \(sorted.count) tệp Preferences. Chạm vào tệp để xem trước.", "Found \(sorted.count) Preferences files. Tap a file to preview.")
             }
         }
     }

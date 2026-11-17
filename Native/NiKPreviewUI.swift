@@ -13,6 +13,9 @@ struct NiKLibraryItem: Codable, Identifiable {
     var certificateID: UUID?
     var options = NiKSigningOptions()
     var signedPath: String?
+    var signedBundleID: String?
+    var signedVersion: String?
+    var signedDisplayName: String?
 }
 
 @MainActor final class NiKLibrary: ObservableObject {
@@ -477,8 +480,9 @@ struct NiKLibraryView: View {
         NavigationLink {
             NiKIPADetail(item: item, library: library, certificates: certificates)
         } label: {
-if grid { ipaGridCard(item) } else { ipaListCard(item) }
-            
+            Group {
+                if grid { ipaGridCard(item) } else { ipaListCard(item) }
+            }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -823,7 +827,7 @@ Text(saveStatusMessage)
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 .sheet(item: $mobileConfigShare) { share in
 NiKShareSheet(items: [share.url])
                                  }
@@ -871,9 +875,13 @@ Label(t("Lưu vào thư mục Tệp", "Save to Files Folder"), systemImage: "fol
 
 private func startHTTPSInstall(for url: URL) {
 do {
-let bid = item.options.customBundleID.isEmpty ? item.bundleID : item.options.customBundleID
-let ver = item.options.customVersion.isEmpty ? item.version : item.options.customVersion
-let title = item.options.customDisplayName.isEmpty ? item.title : item.options.customDisplayName
+guard item.signedPath == url.path,
+      let bid = item.signedBundleID, !bid.isEmpty,
+      let ver = item.signedVersion, !ver.isEmpty,
+      let title = item.signedDisplayName else {
+    otaStatusMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
+    return
+}
 otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
 try otaServer.start()
 otaStatusMessage = t("Đang khởi động máy chủ HTTPS OTA...", "Starting HTTPS OTA server...")
@@ -933,6 +941,9 @@ saveStatusMessage = error.localizedDescription
             )
             signedURL = output.ipaURL
             item.signedPath = output.ipaURL.path
+            item.signedBundleID = output.bundleID
+            item.signedVersion = output.version
+            item.signedDisplayName = output.displayName
             library.save(item)
         } catch {
             errorMessage = error.localizedDescription
