@@ -477,33 +477,81 @@ struct NiKLibraryView: View {
         NavigationLink {
             NiKIPADetail(item: item, library: library, certificates: certificates)
         } label: {
-            HStack(spacing: 12) {
-                NiKAppIcon(url: item.iconURL, size: 50)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(item.bundleID)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text("v\(item.version) · \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
+if grid { ipaGridCard(item) } else { ipaListCard(item) }
+            
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
+
+@ViewBuilder
+private func ipaGridCard(_ item: NiKLibraryItem) -> some View {
+VStack(alignment: .leading, spacing: 10) {
+HStack(alignment: .top) {
+NiKAppIcon(url: item.iconURL, size: 52)
+.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+Spacer(minLength: 0)
+if item.signedPath != nil {
+Text(t("Đã ký", "Signed"))
+.font(.caption2.weight(.semibold))
+.padding(.horizontal, 8)
+.padding(.vertical, 3)
+.background(Color.green.opacity(0.16), in: Capsule())
+.foregroundStyle(.green)
+}
+}
+Text(item.title)
+.font(.subheadline.weight(.semibold))
+.foregroundStyle(.primary)
+.lineLimit(2)
+.multilineTextAlignment(.leading)
+Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
+.font(.caption)
+.foregroundStyle(.secondary)
+.lineLimit(1)
+}
+.frame(maxWidth: .infinity, alignment: .leading)
+}
+
+@ViewBuilder
+private func ipaListCard(_ item: NiKLibraryItem) -> some View {
+HStack(spacing: 12) {
+NiKAppIcon(url: item.iconURL, size: 50)
+.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+VStack(alignment: .leading, spacing: 4) {
+Text(item.title)
+.font(.body.weight(.semibold))
+.foregroundStyle(.primary)
+.lineLimit(1)
+Text(item.bundleID)
+.font(.caption)
+.foregroundStyle(.secondary)
+.lineLimit(1)
+HStack(spacing: 6) {
+Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
+.font(.caption2.weight(.medium))
+.padding(.horizontal, 7)
+.padding(.vertical, 2)
+.background(Color.secondary.opacity(0.14), in: Capsule())
+.foregroundStyle(.secondary)
+if item.signedPath != nil {
+Text(t("Đã ký", "Signed"))
+.font(.caption2.weight(.semibold))
+.padding(.horizontal, 7)
+.padding(.vertical, 2)
+.background(Color.green.opacity(0.16), in: Capsule())
+.foregroundStyle(.green)
+}
+}
+}
+Spacer(minLength: 0)
+Image(systemName: "chevron.right")
+.font(.caption.weight(.semibold))
+.foregroundStyle(.tertiary)
+}
+}
 
     @ViewBuilder
     private var trailingMenu: some View {
@@ -540,6 +588,10 @@ struct NiKIPADetail: View {
     @State private var tweakPicker = false
     @State private var signedURL: URL?
     @State private var errorMessage: String?
+@StateObject private var otaServer = NiKHTTPSOTAServer()
+@State private var otaStatusMessage = ""
+@State private var saveStatusMessage = ""
+@State private var mobileConfigShare: NiKOTAShareURL?
 
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
 
@@ -705,7 +757,7 @@ struct NiKIPADetail: View {
                         Button { item.options.injectedFiles.removeAll { $0 == url } } label: { Image(systemName: "minus.circle") }
                     }
                 }
-                NavigationLink(t("Kiểm tra tệp", "Inspect Files")) { NiKInspectView() }
+                NavigationLink(t("Kiểm tra tệp", "Inspect Files")) { NiKInspectView(initialURL: item.ipaURL) }
             }
             Button(t("Lưu tùy chỉnh", "Save Options")) { library.save(item) }
         }
@@ -753,11 +805,111 @@ struct NiKIPADetail: View {
                     .padding(.vertical, 12)
                     .background(Color.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
+signedInstallControls(url)
+signedSaveToFilesButton(url)
+if !otaStatusMessage.isEmpty {
+Text(otaStatusMessage)
+.font(.caption)
+.foregroundStyle(.secondary)
+}
+if !saveStatusMessage.isEmpty {
+Text(saveStatusMessage)
+.font(.caption)
+.foregroundStyle(.green)
+}
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)
+.sheet(item: $mobileConfigShare) { share in
+NiKShareSheet(items: [share.url])
+                                 }
     }
+
+private struct NiKOTAShareURL: Identifiable {
+let id = UUID()
+let url: URL
+}
+
+@ViewBuilder
+private func signedInstallControls(_ url: URL) -> some View {
+Button {
+startHTTPSInstall(for: url)
+} label: {
+Label(t("Cài đặt trực tiếp (HTTPS OTA)", "Direct Install (HTTPS OTA)"), systemImage: "arrow.down.app.fill")
+.font(.subheadline.weight(.semibold))
+.frame(maxWidth: .infinity)
+.padding(.vertical, 12)
+.background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+}
+Button {
+exportTrustProfile()
+} label: {
+Label(t("Xuất chứng chỉ tin cậy (.mobileconfig)", "Export Trust Profile (.mobileconfig)"), systemImage: "checkmark.shield")
+.font(.caption.weight(.semibold))
+.frame(maxWidth: .infinity)
+.padding(.vertical, 10)
+.background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+}
+}
+
+@ViewBuilder
+private func signedSaveToFilesButton(_ url: URL) -> some View {
+Button {
+saveToDocuments(url)
+} label: {
+Label(t("Lưu vào thư mục Tệp", "Save to Files Folder"), systemImage: "folder.badge.plus")
+.font(.subheadline.weight(.semibold))
+.frame(maxWidth: .infinity)
+.padding(.vertical, 12)
+.background(Color.blue.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+}
+}
+
+private func startHTTPSInstall(for url: URL) {
+do {
+let bid = item.options.customBundleID.isEmpty ? item.bundleID : item.options.customBundleID
+let ver = item.options.customVersion.isEmpty ? item.version : item.options.customVersion
+let title = item.options.customDisplayName.isEmpty ? item.title : item.options.customDisplayName
+otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
+try otaServer.start()
+otaStatusMessage = t("Đang khởi động máy chủ HTTPS OTA...", "Starting HTTPS OTA server...")
+DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+if otaServer.openInstallURL() {
+otaStatusMessage = t("Đã mở hộp thoại cài đặt OTA.", "Opened OTA install prompt.")
+} else {
+otaStatusMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
+}
+}
+} catch {
+otaStatusMessage = error.localizedDescription
+}
+}
+
+private func exportTrustProfile() {
+do {
+let data = try otaServer.exportMobileConfig()
+let dest = FileManager.default.temporaryDirectory.appendingPathComponent("NiKSign-HTTPS-CA.mobileconfig")
+try data.write(to: dest, options: .atomic)
+mobileConfigShare = NiKOTAShareURL(url: dest)
+} catch {
+otaStatusMessage = error.localizedDescription
+}
+}
+
+private func saveToDocuments(_ url: URL) {
+do {
+let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+let dest = docs.appendingPathComponent(url.lastPathComponent)
+if FileManager.default.fileExists(atPath: dest.path) {
+try FileManager.default.removeItem(at: dest)
+}
+try FileManager.default.copyItem(at: url, to: dest)
+saveStatusMessage = t("Đã lưu vào Tệp: \(dest.lastPathComponent)", "Saved to Files: \(dest.lastPathComponent)")
+} catch {
+saveStatusMessage = error.localizedDescription
+}
+}
 
     private func sign() async {
         guard let cert = activeCertificate else {
