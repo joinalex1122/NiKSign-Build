@@ -15,3 +15,5 @@ Validation: existing Python/C/JavaScript checks plus macOS Swift file-import, Pa
 The upstream 3105 support policy remains unchanged. iOS 27.2 official is not on its supported list. Ordinary sandbox file import works independently; listing protected app containers is not enabled by this update.
 
 Device checks: import an IPA from On My iPhone and iCloud; open it from the Files tab for signing; import separate p12/profile files and a ZIP pair; verify the certificate appears in Settings and the signer; try wrong password, duplicate names, create/rename/copy/move/delete, ZIP extraction, Hex and QuickLook close; switch tabs during work and test both color modes. Signing and installation require a suitable certificate/profile and device testing.
+
+The macOS runner is pinned to `macos-15-intel` because the recent main build was cancelled before acquiring a hosted runner, with capacity notices for macOS ARM runners. Xcode still targets iPhoneOS arm64.
