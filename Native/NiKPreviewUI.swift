@@ -44,6 +44,9 @@ struct NiKLibraryItem: Codable, Identifiable {
         } catch { self.error = error.localizedDescription; return false }
     }
     func remove(_ item: NiKLibraryItem) throws {
+        guard !NiKSigningQueue.shared.jobs.contains(where: { $0.libraryID == item.id && !$0.state.isTerminal }) else {
+            throw NiKError("Hãy hủy hoặc hoàn tất công việc ký của IPA trước khi xóa bản gốc.")
+        }
         let updated = items.filter { $0.id != item.id }
         let data = try JSONEncoder().encode(updated)
         // Commit the index before publishing the changed list.
@@ -560,6 +563,8 @@ Image(systemName: "chevron.right")
     @ViewBuilder
     private var trailingMenu: some View {
         Menu {
+            NavigationLink(t("Ký nhiều IPA", "Batch Signing")) { NiKBatchSigningView(library: library, certificates: certificates) }
+            NavigationLink(t("Hàng đợi ký", "Signing Queue")) { NiKSigningQueueView(queue: NiKSigningQueue.shared) }
             Button { grid.toggle() } label: {
                 Label(grid ? t("Danh sách", "List") : t("Lưới", "Grid"), systemImage: grid ? "list.bullet" : "square.grid.2x2")
             }
@@ -583,12 +588,11 @@ struct NiKIPADetail: View {
     @State var item: NiKLibraryItem
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
+    @ObservedObject private var signingQueue = NiKSigningQueue.shared
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
     @AppStorage("nik.language") private var language = "vi"
     @Environment(\.dismiss) private var dismiss
 
-    @State private var signing = false
-    @State private var progressText = ""
     @State private var tweakPicker = false
     @State private var signedURL: URL?
     @State private var errorMessage: String?
@@ -598,6 +602,9 @@ struct NiKIPADetail: View {
 @State private var mobileConfigShare: NiKOTAShareURL?
 
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    private var activeJob: NiKSigningJob? { signingQueue.jobs.first { $0.libraryID == item.id && !$0.state.isTerminal } }
+    private var completedJob: NiKSigningJob? { signingQueue.jobs.last { $0.libraryID == item.id && $0.state == .succeeded } }
 
     private var activeCertificate: NiKCertificateProfile? {
         if let id = item.certificateID {
@@ -617,6 +624,11 @@ struct NiKIPADetail: View {
                 certificateCard
                 optionsCard
                 signActionCard
+                NavigationLink(t("Theo dõi hàng đợi ký", "Monitor Signing Queue")) { NiKSigningQueueView(queue: signingQueue) }
+                if let activeJob {
+                    ProgressView(value: activeJob.fraction)
+                    Text(activeJob.step).font(.caption).foregroundStyle(.secondary)
+                }
                 if let signedURL {
                     signedResultCard(signedURL)
                 }
@@ -654,9 +666,8 @@ struct NiKIPADetail: View {
                 } catch { errorMessage = error.localizedDescription }
             }
         }
-        .disabled(signing)
-        .navigationBarBackButtonHidden(signing)
-        .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) } }
+        .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) }; syncCompletedJob() }
+        .onChange(of: completedJob?.id) { _, _ in syncCompletedJob() }
         .onDisappear {
             otaServer.stop()
             if library.items.contains(where: { $0.id == item.id }) { library.save(item) }
@@ -779,21 +790,21 @@ struct NiKIPADetail: View {
             Task { await sign() }
         } label: {
             HStack(spacing: 10) {
-                if signing {
+                if activeJob != nil {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "signature")
                 }
-                Text(signing ? progressText : t("Ký IPA ngay", "Sign IPA Now"))
+                Text(activeJob != nil ? t("Đang chờ / đang xử lý", "Queued / Processing") : t("Ký IPA ngay", "Sign IPA Now"))
                     .font(.headline)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(activeCertificate == nil || signing ? Color.gray.opacity(0.45) : Color.accentColor)
+            .background(activeCertificate == nil || activeJob != nil ? Color.gray.opacity(0.45) : Color.accentColor)
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .disabled(activeCertificate == nil || signing)
+        .disabled(activeCertificate == nil || activeJob != nil)
     }
 
     @ViewBuilder
@@ -923,31 +934,23 @@ saveStatusMessage = error.localizedDescription
 
     private func sign() async {
         guard let cert = activeCertificate else {
-            errorMessage = t("Không đọc được thông tin chứng chỉ.", "Unable to load certificate credentials.")
+            errorMessage = t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate.")
             return
         }
-        library.save(item)
-        signing = true
-        progressText = t("Đang ký IPA...", "Signing IPA...")
-        defer { signing = false }
         do {
-            let credentials = try certificates.credentials(for: cert)
-            let output = try await SigningService.shared.signDetailed(
-                ipa: item.ipaURL,
-                p12: credentials.p12,
-                profile: credentials.provision,
-                password: credentials.password,
-                options: item.options
-            )
-            signedURL = output.ipaURL
-            item.signedPath = output.ipaURL.path
-            item.signedBundleID = output.bundleID
-            item.signedVersion = output.version
-            item.signedDisplayName = output.displayName
-            library.save(item)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+            guard library.save(item) else { throw NiKError(library.error) }
+            let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: item.options)
+            try signingQueue.enqueue([job])
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func syncCompletedJob() {
+        guard let artifact = completedJob?.output else { return }
+        signedURL = artifact.ipaURL
+        item.signedPath = artifact.ipaURL.path
+        item.signedBundleID = artifact.bundleID
+        item.signedVersion = artifact.version
+        item.signedDisplayName = artifact.displayName
     }
 }
 

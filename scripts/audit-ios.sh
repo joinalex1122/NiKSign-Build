@@ -19,6 +19,8 @@ xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchP
 /tmp/nik-patch-v9-transaction-test
 xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/nik-file-import-test
 /tmp/nik-file-import-test
+xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Tests/SigningJobsSmoke.swift -o /tmp/nik-signing-jobs-test
+/tmp/nik-signing-jobs-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
