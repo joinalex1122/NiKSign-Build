@@ -26,6 +26,8 @@ case .missingIPA: return "No IPA file configured."
 @Published private(set) var lastError: String?
 
 private var listener: NWListener?
+private var connections: [ObjectIdentifier: NWConnection] = [:]
+private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 private let queue = DispatchQueue(label: "com.niksign.https.ota.server", qos: .userInitiated)
 
 private var ipaURL: URL?
@@ -100,12 +102,23 @@ self?.handle(connection: connection)
 }
 }
 self.listener = newListener
+backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "NiKSign Local OTA") { [weak self] in
+    Task { @MainActor in self?.stop() }
+}
 newListener.start(queue: queue)
 }
 
 func stop() {
+listener?.stateUpdateHandler = nil
+listener?.newConnectionHandler = nil
 listener?.cancel()
 listener = nil
+connections.values.forEach { $0.cancel() }
+connections.removeAll()
+if backgroundTask != .invalid {
+    UIApplication.shared.endBackgroundTask(backgroundTask)
+    backgroundTask = .invalid
+}
 isRunning = false
 port = 0
 }
@@ -143,55 +156,67 @@ let profile: [String: Any] = [
 ]
 return try PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0)
 }
-  @discardableResult
-func openInstallURL() -> Bool {
-guard let url = itmsInstallURL else { return false }
-UIApplication.shared.open(url)
-return true
+func waitUntilReady() async throws {
+    for _ in 0..<200 {
+        if isRunning { return }
+        if lastError != nil || listener == nil { throw OTAError.identityImportFailed }
+        try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    stop()
+    throw OTAError.identityImportFailed
+}
+
+func openInstallURL() async -> Bool {
+    guard let url = itmsInstallURL else { return false }
+    return await withCheckedContinuation { continuation in
+        UIApplication.shared.open(url, options: [:]) { continuation.resume(returning: $0) }
+    }
 }
 
 private func handle(connection: NWConnection) {
-connection.start(queue: queue)
-connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, error in
-guard let self else {
-connection.cancel()
-return
+    guard connections.count < 8 else { connection.cancel(); return }
+    let id = ObjectIdentifier(connection)
+    connections[id] = connection
+    connection.stateUpdateHandler = { [weak self] state in
+        if case .cancelled = state { Task { @MainActor in self?.connections.removeValue(forKey: id) } }
+        if case .failed = state { connection.cancel() }
+    }
+    connection.start(queue: queue)
+    queue.asyncAfter(deadline: .now() + 120) { [weak connection] in connection?.cancel() }
+    receiveRequest(connection: connection, buffer: Data())
 }
-if error != nil {
-connection.cancel()
-return
-}
-let requestText = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-let firstLine = requestText.split(separator: "\r\n", maxSplits: 1).first ?? ""
-let parts = firstLine.split(separator: " ")
-let path = parts.count >= 2 ? String(parts[1]) : "/"
 
-Task { @MainActor [weak self] in
-guard let self else {
-connection.cancel()
-return
-}
-let manifestPath = "/\(self.token)/manifest.plist"
-let ipaPath = "/\(self.token)/app.ipa"
-
-if path == manifestPath {
-do {
-let plist = try self.manifestPlistData()
-self.sendResponse(on: connection, status: "200 OK", contentType: "application/xml", body: plist)
-} catch {
-self.sendResponse(on: connection, status: "500 Internal Server Error", contentType: "text/plain", body: Data("Manifest error".utf8))
-}
-} else if path == ipaPath {
-guard let ipaURL = self.ipaURL else {
-self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("IPA not found".utf8))
-return
-}
-self.sendFile(on: connection, url: ipaURL)
-} else {
-self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("Not Found".utf8))
-}
-}
-}
+private func receiveRequest(connection: NWConnection, buffer: Data) {
+    connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384 - buffer.count) { [weak self] data, _, complete, error in
+        Task { @MainActor [weak self] in
+            guard let self, error == nil, let data, !data.isEmpty else { connection.cancel(); return }
+            var request = buffer
+            request.append(data)
+            guard let end = request.range(of: Data("\r\n\r\n".utf8)) else {
+                guard !complete, request.count < 16_384 else { connection.cancel(); return }
+                self.receiveRequest(connection: connection, buffer: request)
+                return
+            }
+            guard let header = String(data: request[..<end.lowerBound], encoding: .utf8),
+                  let line = header.components(separatedBy: "\r\n").first else { connection.cancel(); return }
+            let parts = line.split(separator: " ")
+            guard parts.count == 3, ["GET", "HEAD"].contains(parts[0]), parts[2].hasPrefix("HTTP/1.") else {
+                self.sendResponse(on: connection, status: "405 Method Not Allowed", contentType: "text/plain", body: Data())
+                return
+            }
+            let path = String(parts[1]), head = parts[0] == "HEAD"
+            if path == "/\(self.token)/manifest.plist" {
+                do {
+                    let plist = try self.manifestPlistData()
+                    self.sendResponse(on: connection, status: "200 OK", contentType: "application/xml", body: plist, head: head)
+                } catch { connection.cancel() }
+            } else if path == "/\(self.token)/app.ipa", let url = self.ipaURL {
+                self.sendFile(on: connection, url: url, head: head)
+            } else {
+                self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data())
+            }
+        }
+    }
 }
 
 private func manifestPlistData() throws -> Data {
@@ -213,14 +238,14 @@ let manifest: [String: Any] = [
 return try PropertyListSerialization.data(fromPropertyList: manifest, format: .xml, options: 0)
 }
 
-private func sendFile(on connection: NWConnection, url: URL) {
+private func sendFile(on connection: NWConnection, url: URL, head: Bool) {
     do {
         let handle = try FileHandle(forReadingFrom: url)
         let size = try handle.seekToEnd()
         try handle.seek(toOffset: 0)
         let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size)\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(header.utf8), completion: .contentProcessed { error in
-            guard error == nil else { try? handle.close(); connection.cancel(); return }
+            guard error == nil, !head else { try? handle.close(); connection.cancel(); return }
             Self.sendNextChunk(on: connection, handle: handle, remaining: size)
         })
     } catch {
@@ -241,10 +266,10 @@ nonisolated private static func sendNextChunk(on connection: NWConnection, handl
     } catch { try? handle.close(); connection.cancel() }
 }
 
-private func sendResponse(on connection: NWConnection, status: String, contentType: String, body: Data) {
+private func sendResponse(on connection: NWConnection, status: String, contentType: String, body: Data, head: Bool = false) {
 let header = "HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
 var payload = Data(header.utf8)
-payload.append(body)
+if !head { payload.append(body) }
 connection.send(content: payload, completion: .contentProcessed { _ in
 connection.cancel()
 })

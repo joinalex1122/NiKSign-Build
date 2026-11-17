@@ -874,12 +874,15 @@ let title = item.options.customDisplayName.isEmpty ? item.title : item.options.c
 otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
 try otaServer.start()
 otaStatusMessage = t("Đang khởi động máy chủ HTTPS OTA...", "Starting HTTPS OTA server...")
-DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-if otaServer.openInstallURL() {
+Task {
+do {
+try await otaServer.waitUntilReady()
+if await otaServer.openInstallURL() {
 otaStatusMessage = t("Đã mở hộp thoại cài đặt OTA.", "Opened OTA install prompt.")
 } else {
 otaStatusMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
 }
+} catch { otaStatusMessage = error.localizedDescription }
 }
 } catch {
 otaStatusMessage = error.localizedDescription
