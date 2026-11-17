@@ -94,16 +94,12 @@ struct NiKPreviewRoot: View {
         Group {
             if mode.isEmpty { welcome }
             else {
-                TabView(selection: $tab) {
-                    if hasSigner {
-                        NiKLibraryView(library: library, certificates: certificates).tabItem { Label(t("Ký IPA", "Sign IPA"), systemImage: "signature") }.tag(0)
+               ZStack(alignment: .bottom) {
+                        activeTabView
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        liquidGlassTabBar
                     }
-                    if mode != "sign" { NiKHubPreview().tabItem { Label("3105", systemImage: "square.stack.3d.up") }.tag(1) }
-                    NavigationStack {
-                        NiKFilesHome()
-                    }.tabItem { Label(t("Tệp", "Files"), systemImage: "folder") }.tag(2)
-                    settings.tabItem { Label(t("Cài đặt", "Settings"), systemImage: "gearshape") }.tag(3)
-                }
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
         .tint(.cyan)
@@ -148,50 +144,425 @@ struct NiKPreviewRoot: View {
        let ver = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "3.3.0"; let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "330"; func card<C: View>(@ViewBuilder _ c: () -> C) -> some View { c().padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)) }; func row(_ icon: String, _ color: Color, _ title: String, _ sub: String) -> some View { HStack(spacing: 12) { Image(systemName: icon).font(.title3).foregroundStyle(color).frame(width: 30); VStack(alignment: .leading, spacing: 2) { Text(title).font(.body.weight(.medium)).foregroundStyle(.primary); Text(sub).font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) } }; return NavigationStack { ScrollView { VStack(spacing: 12) { card { HStack(spacing: 14) { NiKBrand(); VStack(alignment: .leading, spacing: 4) { Text("NiKSign").font(.title2.bold()); Text("\(t("Phiên bản", "Version")) \(ver) (\(build))").font(.caption).foregroundStyle(.secondary) }; Spacer() } }; card { VStack(spacing: 14) { Menu { Button("Tiếng Việt") { language = "vi" }; Button("English") { language = "en" } } label: { row("globe", .blue, t("Ngôn ngữ", "Language"), language == "en" ? "English" : "Tiếng Việt") }; Divider(); Menu { Button(t("Chỉ ký IPA", "Sign IPA only")) { mode = "sign" }; Button(t("Chỉ 3105", "3105 only")) { mode = "tools" }; Button(t("Cả hai", "Both")) { mode = "both" } } label: { row("slider.horizontal.3", .indigo, t("Chế độ", "Mode"), mode == "sign" ? t("Chỉ ký IPA", "Sign IPA only") : mode == "tools" ? t("Chỉ 3105", "3105 only") : t("Cả hai", "Both")) }; Divider(); Menu { Button(t("Theo hệ thống", "System")) { theme = "system" }; Button(t("Sáng", "Light")) { theme = "light" }; Button(t("Tối", "Dark")) { theme = "dark" } } label: { row("paintbrush", .purple, t("Giao diện", "Appearance"), theme == "light" ? t("Sáng", "Light") : theme == "dark" ? t("Tối", "Dark") : t("Theo hệ thống", "System")) } } }; card { NavigationLink { NiKCertificateSettings(store: certificates) } label: { row("signature", .orange, t("Chứng chỉ", "Certificates"), "\(certificates.profiles.count) \(t("chứng chỉ đã lưu", "saved certificates"))") } }; card { VStack(spacing: 14) { Link(destination: URL(string: "https://t.me/nikvn21")!) { row("paperplane.fill", .cyan, t("Kênh Telegram", "Telegram Channel"), t("@nikvn21 · Cộng đồng & cập nhật NiKSign", "@nikvn21 · Community & NiKSign updates")) }; Divider(); Link(destination: URL(string: "https://github.com/joinalex1122/NiKSign-Build")!) { row("globe", .teal, t("Trang web & Mã nguồn", "Website & Source Code"), "github.com/joinalex1122/NiKSign-Build") }; Divider(); NavigationLink { List { Section(t("Sao chép nhanh", "Quick Copy")) { Button { UIPasteboard.general.string = "niksign://" } label: { Label("niksign://", systemImage: "doc.on.doc") }; Button { UIPasteboard.general.string = "threeoneosfive://" } label: { Label("threeoneosfive://", systemImage: "doc.on.doc") } }; Section(t("Hướng dẫn", "Guide")) { Text(t("Dùng niksign:// hoặc threeoneosfive:// để mở nhanh ứng dụng hoặc truyền tệp IPA từ ứng dụng khác.", "Use niksign:// or threeoneosfive:// to quickly open the app or pass IPA files from other apps.")).font(.footnote).foregroundStyle(.secondary) } }.navigationTitle("URL Scheme") } label: { row("link", .green, "URL Scheme", "niksign:// · threeoneosfive://") }; Divider(); NavigationLink { List { Section(t("Trạng thái hiện tại", "Current Status")) { Text(library.notice.isEmpty ? t("Không có thông báo mới", "No recent notices") : library.notice).font(.footnote) }; Section(t("Thư mục tạm", "Temporary Directory")) { Text(FileManager.default.temporaryDirectory.path).font(.caption2).foregroundStyle(.secondary); Button(t("Dọn bộ nhớ đệm", "Clear Cache"), role: .destructive) { let tmp = FileManager.default.temporaryDirectory; (try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil))?.forEach { try? FileManager.default.removeItem(at: $0) } } } }.navigationTitle(t("Nhật ký", "Logs")) } label: { row("text.alignleft", .gray, t("Nhật ký", "Logs"), t("Trạng thái & dọn bộ nhớ đệm", "Status & cache cleanup")) } } }; card { VStack(spacing: 14) { NavigationLink { ScrollView { Text(t("NiKSign xử lý hoàn toàn ngoại tuyến trên thiết bị của bạn. Bạn tự chịu trách nhiệm về chứng chỉ và tệp IPA sử dụng.", "NiKSign processes everything completely offline on your device. You are responsible for the certificates and IPA files you use.")).padding() }.navigationTitle(t("Điều khoản dịch vụ", "Terms of Service")) } label: { row("doc.text.fill", .blue, t("Điều khoản dịch vụ", "Terms of Service"), t("Sử dụng ngoại tuyến trên thiết bị", "Offline on-device usage")) }; Divider(); NavigationLink { ScrollView { Text(t("NiKSign cam kết xử lý ngoại tuyến trên thiết bị, không thu thập, lưu trữ hay gửi dữ liệu cá nhân, chứng chỉ hay tệp IPA lên máy chủ bên ngoài.", "NiKSign is committed to offline on-device processing and does not collect, store, or transmit personal data, certificates, or IPA files to external servers.")).padding() }.navigationTitle(t("Chính sách bảo mật", "Privacy Policy")) } label: { row("lock.shield.fill", .mint, t("Chính sách bảo mật", "Privacy Policy"), t("Cam kết xử lý ngoại tuyến", "Offline processing commitment")) }; Divider(); NavigationLink { NiKLicensesView() } label: { row("doc.plaintext", .secondary, t("Thành phần bên thứ ba và giấy phép", "Third-Party Components & Licenses"), "ZIPFoundation · OpenSSL") } } } }.padding() }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle(t("Cài đặt", "Settings"))
         }
     }
+    @ViewBuilder
+    private var activeTabView: some View {
+        switch tab {
+        case 0 where hasSigner:
+            NiKLibraryView(library: library, certificates: certificates)
+        case 1 where mode != "sign":
+            NiKHubPreview()
+        case 2:
+            NavigationStack { NiKFilesHome() }
+        case 3:
+            settings
+        default:
+            if hasSigner {
+                NiKLibraryView(library: library, certificates: certificates)
+            } else {
+                NavigationStack { NiKFilesHome() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var liquidGlassTabBar: some View {
+        HStack(spacing: 4) {
+            if hasSigner {
+                tabBarButton(index: 0, title: t("Ký IPA", "Sign IPA"), icon: "signature")
+            }
+            if mode != "sign" {
+                tabBarButton(index: 1, title: "3105", icon: "square.stack.3d.up")
+            }
+            tabBarButton(index: 2, title: t("Tệp", "Files"), icon: "folder.fill")
+            tabBarButton(index: 3, title: t("Cài đặt", "Settings"), icon: "gearshape.fill")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(
+                    LinearGradient(
+                        colors: [.white.opacity(0.45), .white.opacity(0.12), .white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: .black.opacity(0.38), radius: 18, x: 0, y: 8)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func tabBarButton(index: Int, title: String, icon: String) -> some View {
+        let selected = tab == index
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                tab = index
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: selected ? .semibold : .regular))
+                Text(title)
+                    .font(.system(size: 10, weight: selected ? .semibold : .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? Color.white : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(Color.black.opacity(0.55))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.15), lineWidth: 0.8)
+                        )
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct NiKGlassCircleIcon: View {
+    let systemName: String
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 34, height: 34)
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay(
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.45), .white.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+    }
+}
+
+struct NiKCardPressButtonStyle: ButtonStyle {
+    var selected: Bool = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        selected
+                            ? Color.accentColor.opacity(0.18)
+                            : (configuration.isPressed ? Color(uiColor: .secondarySystemGroupedBackground) : Color.clear)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        selected
+                            ? Color.accentColor.opacity(0.55)
+                            : (configuration.isPressed ? Color.white.opacity(0.12) : Color.clear),
+                        lineWidth: 1
+                    )
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+enum NiKCertZipHelper {
+    static func extractPairAndPassword(from zipURL: URL) throws -> (p12: URL, provision: URL, password: String?, tempDir: URL) {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("nikcert-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        try FileManager.default.unzipItem(at: zipURL, to: tmpDir)
+
+        var p12URL: URL?
+        var provURL: URL?
+        var txtURLs: [URL] = []
+
+        if let enumerator = FileManager.default.enumerator(at: tmpDir, includingPropertiesForKeys: [.isRegularFileKey]) {
+            for case let file as URL in enumerator {
+                let path = file.path
+                if path.contains("__MACOSX") || file.lastPathComponent.hasPrefix("._") { continue }
+                let ext = file.pathExtension.lowercased()
+                if ext == "p12" && p12URL == nil {
+                    p12URL = file
+                } else if ext == "mobileprovision" && provURL == nil {
+                    provURL = file
+                } else if ext == "txt" {
+                    txtURLs.append(file)
+                }
+            }
+        }
+
+        guard let foundP12 = p12URL else {
+            throw NSError(domain: "NiKCert", code: 1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy tệp .p12 trong gói .zip"])
+        }
+        guard let foundProv = provURL else {
+            throw NSError(domain: "NiKCert", code: 2, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy tệp .mobileprovision trong gói .zip"])
+        }
+
+        var foundPass: String?
+        let sortedTxt = txtURLs.sorted {
+            let a = $0.lastPathComponent.lowercased().contains("pass")
+            let b = $1.lastPathComponent.lowercased().contains("pass")
+            return a && !b
+        }
+        for txt in sortedTxt {
+            if let raw = try? String(contentsOf: txt, encoding: .utf8) {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    foundPass = trimmed
+                    break
+                }
+            }
+        }
+        return (foundP12, foundProv, foundPass, tmpDir)
+    }
+
+    static func findPairInDirectory(for fileURL: URL) -> (p12: URL?, provision: URL?) {
+        let folder = fileURL.deletingLastPathComponent()
+        let items = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        let ext = fileURL.pathExtension.lowercased()
+        let base = fileURL.deletingPathExtension().lastPathComponent.lowercased()
+
+        let p12Candidates = items.filter { $0.pathExtension.lowercased() == "p12" && !$0.lastPathComponent.hasPrefix("._") }
+        let provCandidates = items.filter { $0.pathExtension.lowercased() == "mobileprovision" && !$0.lastPathComponent.hasPrefix("._") }
+
+        if ext == "p12" {
+            let matchedProv = provCandidates.first { $0.deletingPathExtension().lastPathComponent.lowercased() == base } ?? provCandidates.first
+            return (fileURL, matchedProv)
+        } else if ext == "mobileprovision" {
+            let matchedP12 = p12Candidates.first { $0.deletingPathExtension().lastPathComponent.lowercased() == base } ?? p12Candidates.first
+            return (matchedP12, fileURL)
+        }
+        return (p12Candidates.first, provCandidates.first)
+    }
+
+    static func documentsCertificateFiles() -> [URL] {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return [] }
+        var results: [URL] = []
+        if let enumerator = FileManager.default.enumerator(at: docs, includingPropertiesForKeys: [.isRegularFileKey]) {
+            for case let file as URL in enumerator {
+                let path = file.path
+                if path.contains("__MACOSX") || file.lastPathComponent.hasPrefix("._") { continue }
+                let ext = file.pathExtension.lowercased()
+                if ext == "p12" || ext == "mobileprovision" || ext == "zip" {
+                    results.append(file)
+                }
+            }
+        }
+        return results.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
 }
 
 struct NiKLibraryView: View {
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
-    @AppStorage("nik.libraryGrid") private var grid = false
+    @AppStorage("nik_language") private var language = "vi"
     @State private var query = ""
     @State private var importing = false
-    @State private var busy = false
-    private var filtered: [NiKLibraryItem] { library.items.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.bundleID.localizedCaseInsensitiveContains(query) } }
+    @State private var errorMessage: String?
+
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    private var filtered: [NiKLibraryItem] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return library.items }
+        return library.items.filter {
+            $0.title.lowercased().contains(q) || $0.bundleID.lowercased().contains(q)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                if library.receiving { ProgressView("Đang nhập IPA…").padding() }
-                if !library.notice.isEmpty { Text(library.notice).font(.caption).foregroundStyle(.secondary).padding(.horizontal) }
-                if library.items.isEmpty { VStack(spacing: 16) { NiKBrand(); Text("Thư viện IPA trống").font(.title2.bold()); Text("Bấm + để nhập IPA từ Tệp.").foregroundStyle(.secondary) }.padding(40) }
-                LazyVGrid(columns: grid ? [GridItem(.adaptive(minimum: 150))] : [GridItem(.flexible())], spacing: 12) {
-                    ForEach(filtered) { item in
-                        NavigationLink { NiKIPADetail(item: item, library: library, certificates: certificates) } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack { Image(systemName: "app.fill").font(.largeTitle).foregroundStyle(.cyan); Text(item.title).font(.headline); Spacer() }
-                                Text(item.version).font(.caption).foregroundStyle(.secondary)
-                                Text(item.signedPath == nil ? "Chưa ký" : "Đã ký").font(.caption).foregroundStyle(item.signedPath == nil ? Color.cyan : Color.green)
-                            }.padding().frame(maxWidth: .infinity, alignment: .leading).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-                        }.buttonStyle(.plain)
-                    }
-                }.padding()
-            }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("Ký IPA")
-            .searchable(text: $query, prompt: "Tìm ứng dụng")
+                VStack(spacing: 14) {
+                    searchBarCard
+                    certificateBannerCard
+                    libraryListCard
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 96)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle(t("Ký IPA", "Sign IPA"))
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { grid.toggle() } label: { Image(systemName: grid ? "list.bullet" : "square.grid.2x2") }.accessibilityLabel("Đổi danh sách/lưới")
-                    Button { importing = true } label: { Image(systemName: "plus") }.disabled(library.receiving).accessibilityLabel("Nhập IPA")
+                ToolbarItem(placement: .topBarTrailing) {
+                    trailingMenu
                 }
             }
             .sheet(isPresented: $importing) {
                 NiKFilePicker { result in
-                    switch result {
-                    case .success(let url): Task { await library.receive(url) }
-                    case .failure(let error): library.error = error.localizedDescription
+                    if case .success(let url) = result {
+                        let scoped = url.startAccessingSecurityScopedResource()
+                        Task {
+                            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                            await library.receive(url)
+                            if let err = library.error { errorMessage = err }
+                        }
                     }
                 }
             }
-            .alert("NiKSign", isPresented: Binding(get: { !library.error.isEmpty }, set: { if !$0 { library.error = "" } })) { Button("Đóng") { library.error = "" } } message: { Text(library.error) }
+            .alert(t("Thông báo", "Notice"), isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var searchBarCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(t("Tìm IPA theo tên hoặc Bundle ID...", "Search IPA by name or Bundle ID..."), text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+    }
+
+    @ViewBuilder
+    private var certificateBannerCard: some View {
+        NavigationLink {
+            NiKCertificateSettings(store: certificates)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: certificates.profiles.isEmpty ? "exclamationmark.shield.fill" : "checkmark.seal.fill")
+                    .font(.title3)
+                    .foregroundStyle(certificates.profiles.isEmpty ? Color.orange : Color.green)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        (certificates.profiles.isEmpty ? Color.orange : Color.green).opacity(0.15),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(t("Chứng chỉ ký", "Signing Certificate"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(certificates.profiles.isEmpty
+                         ? t("Chưa có chứng chỉ · Chạm để thêm", "No certificate · Tap to add")
+                         : "\(certificates.profiles.count) " + t("chứng chỉ sẵn sàng", "certificates ready"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var libraryListCard: some View {
+        if filtered.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "shippingbox")
+                    .font(.system(size: 36))
+                    .foregroundStyle(.secondary)
+                Text(t("Chưa có tệp IPA nào", "No IPA files yet"))
+                    .font(.headline)
+                Text(t("Nhấn nút + ở góc trên để nhập tệp .ipa từ thiết bị hoặc chọn từ tab Tệp.", "Tap + above to import an .ipa file or pick from Files tab."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    importing = true
+                } label: {
+                    Label(t("Nhập IPA", "Import IPA"), systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color.accentColor, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(24)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            VStack(spacing: 10) {
+                ForEach(filtered) { item in
+                    ipaCardRow(item)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ipaCardRow(_ item: NiKLibraryItem) -> some View {
+        NavigationLink {
+            NiKIPADetail(item: item, library: library, certificates: certificates)
+        } label: {
+            HStack(spacing: 12) {
+                NiKAppIcon(url: item.iconURL, size: 50)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(item.bundleID)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text("v\(item.version) · \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var trailingMenu: some View {
+        Menu {
+            Button {
+                importing = true
+            } label: {
+                Label(t("Nhập IPA từ Tệp", "Import IPA"), systemImage: "plus.circle")
+            }
+            NavigationLink {
+                NiKCertificateSettings(store: certificates)
+            } label: {
+                Label(t("Quản lý Chứng chỉ", "Manage Certificates"), systemImage: "checkmark.seal")
+            }
+        } label: {
+            NiKGlassCircleIcon(systemName: "ellipsis")
         }
     }
 }
@@ -201,623 +572,1225 @@ struct NiKIPADetail: View {
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
-    @State private var busy = false
-    @State private var status = ""
-    @State private var tweakPicker = false
+    @AppStorage("nik_language") private var language = "vi"
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var signing = false
+    @State private var progressText = ""
+    @State private var signedURL: URL?
+    @State private var errorMessage: String?
+
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    private var activeCertificate: NiKCertificateProfile? {
+        if let id = item.certificateID, let match = certificates.profiles.first(where: { $0.id == id }) {
+            return match
+        }
+        if let def = UUID(uuidString: defaultCertificate),
+           let match = certificates.profiles.first(where: { $0.id == def }) {
+            return match
+        }
+        return certificates.profiles.first
+    }
+
     var body: some View {
-        Form {
-            Section { HStack { NiKBrand(); VStack(alignment: .leading) { Text(item.title).font(.headline); Text(item.bundleID).font(.caption); Text("Bản gốc được giữ lại").font(.caption).foregroundStyle(.secondary) } } }
-            Section {
-                Picker("Chứng chỉ ký", selection: $item.certificateID) {
-                    Text("Mặc định").tag(nil as UUID?)
-                    ForEach(certificates.profiles) { Text($0.name).tag(Optional($0.id)) }
+        ScrollView {
+            VStack(spacing: 16) {
+                headerCard
+                certificateCard
+                optionsCard
+                signActionCard
+                if let signedURL {
+                    signedResultCard(signedURL)
                 }
             }
-            Section("Tùy chỉnh") {
-                NavigationLink("Thông tin ứng dụng") {
-                    Form {
-                        TextField("Tên hiển thị", text: $item.options.customDisplayName)
-                        TextField("Bundle ID", text: $item.options.customBundleID).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        TextField("Phiên bản", text: $item.options.customVersion)
-                        TextField("iOS tối thiểu", text: $item.options.minimumOSVersion)
-                        Text("Để trống để giữ giá trị gốc. Đổi iOS tối thiểu không đảm bảo tương thích.").font(.footnote)
-                    }.navigationTitle("Thông tin ứng dụng")
-                }
-                NavigationLink("Cấu hình") {
-                    Form {
-                        Toggle("Chia sẻ tệp", isOn: $item.options.enableFileSharing)
-                        Toggle("Bỏ UISupportedDevices", isOn: $item.options.removeSupportedDevicesRestriction)
-                        Toggle("Gỡ App Extensions / Watch", isOn: $item.options.removeExtensions)
-                    }.navigationTitle("Cấu hình")
-                }
-                NavigationLink("Thành phần") {
-                    Form {
-                        Button("Thêm dylib / deb") { tweakPicker = true }
-                        Toggle("Liên kết Weak Dylib", isOn: $item.options.weakDylibInjection)
-                        ForEach(item.options.injectedFiles, id: \.self) { url in Text(url.lastPathComponent) }
-                        .onDelete { item.options.injectedFiles.remove(atOffsets: $0) }
-                    }.navigationTitle("Thành phần")
-                }
-                NavigationLink("Nâng cao · Kiểm tra tệp") { NiKInspectView() }
-                Section("Ký & đóng gói") {
-                    Text("Bản thử dùng mức nén mặc định. Sửa biểu tượng, Info.plist tùy ý, Mach-O và entitlements sẽ được bổ sung sau; hiện không có công tắc giả.").font(.footnote).foregroundStyle(.secondary)
-                    Button("Lưu tùy chỉnh") { library.save(item); status = "Đã lưu tùy chỉnh cho IPA này." }
-                    Button(busy ? "Đang ký…" : "Ký IPA") { sign() }.buttonStyle(.borderedProminent)
-                    if busy { ProgressView() }
-                    if !status.isEmpty { Text(status).font(.footnote).textSelection(.enabled) }
-                    if let path = item.signedPath { ShareLink("Chia sẻ / Lưu IPA đã ký", item: URL(fileURLWithPath: path)) }
-                    ShareLink("Xuất IPA gốc", item: NiKLibrary.root.appendingPathComponent(item.filename))
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 96)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(item.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        library.remove(item)
+                        dismiss()
+                    } label: {
+                        Label(t("Xóa IPA khỏi thư viện", "Remove IPA"), systemImage: "trash")
+                    }
+                } label: {
+                    NiKGlassCircleIcon(systemName: "ellipsis")
                 }
             }
-        }.navigationTitle("Tùy chỉnh IPA").disabled(busy).navigationBarBackButtonHidden(busy)
-        .onDisappear { library.save(item) }
-        .fileImporter(isPresented: $tweakPicker, allowedContentTypes: [.data]) { result in
-            do {
-                let url = try result.get(); let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                guard ["dylib", "deb"].contains(url.pathExtension.lowercased()) else { throw NiKError("Cần chọn dylib hoặc deb.") }
-                let target = NiKLibrary.root.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
-                try FileManager.default.copyItem(at: url, to: target)
-                item.options.injectedFiles.append(target); library.save(item)
-            } catch { status = error.localizedDescription }
+        }
+        .alert(t("Lỗi ký IPA", "Signing Error"), isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
-    private func sign() {
-        let id = item.certificateID ?? UUID(uuidString: defaultCertificate)
-        guard let cert = certificates.profiles.first(where: { $0.id == id }) else { status = "Chọn chứng chỉ cho IPA hoặc đặt mặc định trong Cài đặt → Chứng chỉ."; return }
-        do {
-            let credentials = try certificates.credentials(for: cert)
-            let input = NiKLibrary.root.appendingPathComponent(item.filename)
-            let options = item.options
-            busy = true; status = "Đang kiểm tra và ký…"; library.save(item)
-            Task {
-                do {
-                    let output = try await SigningService.shared.signDetailed(ipa: input, p12: credentials.p12, profile: credentials.provision, password: credentials.password, options: options)
-                    item.signedPath = output.ipaURL.path; library.save(item); status = "Đã ký và xuất IPA."
-                } catch { status = error.localizedDescription }
-                busy = false
+
+    @ViewBuilder
+    private var headerCard: some View {
+        HStack(spacing: 14) {
+            NiKAppIcon(url: item.iconURL, size: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.headline)
+                Text(item.bundleID)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("v\(item.version) · \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
-        } catch { status = error.localizedDescription }
+            Spacer()
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var certificateCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(t("Chứng chỉ sử dụng", "Certificate"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if certificates.profiles.isEmpty {
+                NavigationLink {
+                    NiKCertificateSettings(store: certificates)
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                        Text(t("Thêm chứng chỉ (.p12 + .mobileprovision)", "Add certificate (.p12 + .mobileprovision)"))
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            } else {
+                Picker(t("Chứng chỉ", "Certificate"), selection: Binding(
+                    get: { item.certificateID ?? activeCertificate?.id },
+                    set: {
+                        item.certificateID = $0
+                        library.save(item)
+                    }
+                )) {
+                    ForEach(certificates.profiles) { cert in
+                        Text(cert.name).tag(Optional(cert.id))
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var optionsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t("Tùy chọn chỉnh sửa", "Signing Options"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(t("Tên ứng dụng mới (tùy chọn)", "Custom Display Name"), text: $item.options.customDisplayName)
+                .textFieldStyle(.roundedBorder)
+            TextField(t("Bundle ID mới (tùy chọn)", "Custom Bundle ID"), text: $item.options.customBundleID)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textFieldStyle(.roundedBorder)
+            TextField(t("Phiên bản mới (tùy chọn)", "Custom Version"), text: $item.options.customVersion)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var signActionCard: some View {
+        Button {
+            Task { await sign() }
+        } label: {
+            HStack(spacing: 10) {
+                if signing {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "signature")
+                }
+                Text(signing ? progressText : t("Ký IPA ngay", "Sign IPA Now"))
+                    .font(.headline)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(activeCertificate == nil || signing ? Color.gray.opacity(0.45) : Color.accentColor)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .disabled(activeCertificate == nil || signing)
+    }
+
+    @ViewBuilder
+    private func signedResultCard(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(t("Đã ký thành công!", "Signed Successfully!"), systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(.green)
+            Text(url.lastPathComponent)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ShareLink(item: url) {
+                Label(t("Chia sẻ / Xuất IPA đã ký", "Share / Export Signed IPA"), systemImage: "square.and.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func sign() async {
+        guard let cert = activeCertificate,
+              let credentials = try? certificates.credentials(for: cert) else {
+            errorMessage = t("Không đọc được thông tin chứng chỉ.", "Unable to load certificate credentials.")
+            return
+        }
+        library.save(item)
+        signing = true
+        progressText = t("Đang ký IPA...", "Signing IPA...")
+        defer { signing = false }
+        do {
+            let output = try await SigningService.shared.signDetailed(
+                ipa: item.ipaURL,
+                p12: credentials.p12,
+                profile: credentials.provision,
+                password: credentials.password,
+                options: item.options
+            )
+            signedURL = output.ipaURL
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
 struct NiKCertificateSettings: View {
-    @ObservedObject var store: NiKCertificateStore
-    @AppStorage("nik.defaultCertificate") private var selected = ""
-    @State private var importing = false
-    @State private var isKey = true
-    @State private var key: Data?
-    @State private var provision: Data?
-    @State private var password = ""
-    @State private var name = ""
-    @State private var message = ""
-    var body: some View {
-        Form {
-            Section("Đã lưu") {
-                Picker("Mặc định", selection: $selected) {
-                    Text("Chưa chọn").tag("")
-                    ForEach(store.profiles) { Text($0.name).tag($0.id.uuidString) }
-                }
-                ForEach(store.profiles) { p in VStack(alignment: .leading) { Text(p.name); Text(p.teamName).font(.caption).foregroundStyle(.secondary) } }
-                .onDelete { offsets in for p in offsets.map({ store.profiles[$0] }) { store.removeProfile(p); if selected == p.id.uuidString { selected = "" } } }
+    enum CertPickMode: Identifiable {
+        case p12, provision, zip
+        var id: Int {
+            switch self {
+            case .p12: return 0
+            case .provision: return 1
+            case .zip: return 2
             }
-            Section("Thêm chứng chỉ") {
-                TextField("Tên gợi nhớ", text: $name)
-                Button(key == nil ? "Chọn .p12" : "Đã chọn .p12") { isKey = true; importing = true }
-                Button(provision == nil ? "Chọn .mobileprovision" : "Đã chọn profile") { isKey = false; importing = true }
-                SecureField("Mật khẩu .p12", text: $password)
-                Button("Kiểm tra & Lưu") { save() }.disabled(key == nil || provision == nil)
-                if !message.isEmpty { Text(message).font(.footnote) }
-            }
-        }.navigationTitle("Chứng chỉ")
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.data]) { result in
-            do {
-                let url = try result.get(); let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 8_388_608 else { throw NiKError("Tệp vượt 8 MB.") }
-                let data = try Data(contentsOf: url)
-                if isKey { key = data } else { provision = data }
-            } catch { message = error.localizedDescription }
         }
     }
-    private func save() {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: dir) }
+
+    @ObservedObject var store: NiKCertificateStore
+    @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
+    @AppStorage("nik_language") private var language = "vi"
+
+    @State private var name = ""
+    @State private var password = ""
+    @State private var p12URL: URL?
+    @State private var provisionURL: URL?
+    @State private var pickMode: CertPickMode?
+    @State private var docFiles: [URL] = []
+    @State private var message: String?
+    @State private var isSuccess = false
+
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                savedProfilesCard
+                importFilesCard
+                documentsQuickLoadCard
+                credentialsAndSaveCard
+                if let message {
+                    statusBannerCard(message)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 96)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(t("Chứng chỉ", "Certificates"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { reloadDocuments() }
+        .sheet(item: $pickMode) { mode in
+            NiKFilePicker { result in
+                if case .success(let url) = result {
+                    handlePickedURL(url, mode: mode)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedProfilesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(t("Chứng chỉ đã lưu", "Saved Certificates"), systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(store.profiles.count)")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.accentColor.opacity(0.16), in: Capsule())
+            }
+            if store.profiles.isEmpty {
+                Text(t("Chưa có chứng chỉ nào được lưu.", "No certificates saved yet."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(store.profiles) { profile in
+                    savedProfileRow(profile)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func savedProfileRow(_ profile: NiKCertificateProfile) -> some View {
+        let isDefault = defaultCertificate == profile.id.uuidString
+        HStack(spacing: 12) {
+            Button {
+                defaultCertificate = profile.id.uuidString
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: isDefault ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isDefault ? Color.green : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(profile.teamName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                store.removeProfile(profile)
+                if isDefault {
+                    defaultCertificate = store.profiles.first?.id.uuidString ?? ""
+                }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                    .padding(8)
+                    .background(Color.red.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var importFilesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t("Nhập chứng chỉ mới", "Import Certificate"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Button {
+                pickMode = .zip
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.zipper")
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(t("Nhập nhanh từ file .zip (certificate.zip)", "Quick Import from .zip"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(t("Tự giải nén tìm .p12, .mobileprovision và mật khẩu .txt", "Auto-extract .p12, .mobileprovision & .txt password"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(12)
+                .background(Color.accentColor.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            filePickRow(
+                title: t("Tệp khóa (.p12)", "Key File (.p12)"),
+                fileURL: p12URL,
+                icon: "key.fill",
+                color: .orange
+            ) {
+                pickMode = .p12
+            }
+
+            filePickRow(
+                title: t("Hồ sơ (.mobileprovision)", "Provisioning Profile (.mobileprovision)"),
+                fileURL: provisionURL,
+                icon: "doc.badge.gearshape.fill",
+                color: .blue
+            ) {
+                pickMode = .provision
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func filePickRow(title: String, fileURL: URL?, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.body)
+                    .foregroundStyle(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text(fileURL?.lastPathComponent ?? t("Chạm để chọn tệp...", "Tap to select file..."))
+                        .font(.caption)
+                        .foregroundStyle(fileURL == nil ? Color.secondary : Color.green)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: fileURL == nil ? "folder.badge.plus" : "checkmark.circle.fill")
+                    .foregroundStyle(fileURL == nil ? Color.secondary : Color.green)
+            }
+            .padding(12)
+            .background(Color(uiColor: .tertiarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var documentsQuickLoadCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(t("Tệp có sẵn trong Documents", "Available in Documents"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    reloadDocuments()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+
+            if docFiles.isEmpty {
+                Text(t("Không có tệp .p12, .mobileprovision hoặc .zip nào trong Documents.", "No .p12, .mobileprovision, or .zip files in Documents."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(docFiles, id: \.path) { file in
+                    Button {
+                        loadDocumentFile(file)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: iconForCertFile(file))
+                                .foregroundStyle(colorForCertFile(file))
+                                .frame(width: 30, height: 30)
+                                .background(colorForCertFile(file).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(file.lastPathComponent)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(file.pathExtension.uppercased())
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(t("Nạp", "Load"))
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.accentColor.opacity(0.16), in: Capsule())
+                        }
+                        .padding(10)
+                        .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var credentialsAndSaveCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t("Thông tin & Lưu", "Credentials & Save"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(t("Tên gợi nhớ (tùy chọn)", "Custom Name (optional)"), text: $name)
+                .textFieldStyle(.roundedBorder)
+            SecureField(t("Mật khẩu tệp .p12", ".p12 Password"), text: $password)
+                .textFieldStyle(.roundedBorder)
+            Button {
+                saveCertificate()
+            } label: {
+                Text(t("Kiểm tra & Lưu", "Verify & Save"))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background((p12URL == nil || provisionURL == nil) ? Color.gray.opacity(0.45) : Color.accentColor)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(p12URL == nil || provisionURL == nil)
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func statusBannerCard(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(isSuccess ? .green : .orange)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func reloadDocuments() {
+        docFiles = NiKCertZipHelper.documentsCertificateFiles()
+    }
+
+    private func iconForCertFile(_ url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "p12": return "key.fill"
+        case "mobileprovision": return "doc.badge.gearshape.fill"
+        default: return "doc.zipper"
+        }
+    }
+
+    private func colorForCertFile(_ url: URL) -> Color {
+        switch url.pathExtension.lowercased() {
+        case "p12": return .orange
+        case "mobileprovision": return .blue
+        default: return .purple
+        }
+    }
+
+    private func handlePickedURL(_ url: URL, mode: CertPickMode) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let tempCopy = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-\(url.lastPathComponent)")
         do {
-            guard let key, let provision else { return }
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let k = dir.appendingPathComponent("key.p12"), p = dir.appendingPathComponent("profile.mobileprovision")
-            try key.write(to: k, options: .completeFileProtection); try provision.write(to: p, options: .completeFileProtection)
+            try FileManager.default.copyItem(at: url, to: tempCopy)
+            switch mode {
+            case .p12:
+                p12URL = tempCopy
+                message = t("Đã nạp tệp .p12: ", "Loaded .p12: ") + url.lastPathComponent
+                isSuccess = true
+            case .provision:
+                provisionURL = tempCopy
+                message = t("Đã nạp tệp .mobileprovision: ", "Loaded .mobileprovision: ") + url.lastPathComponent
+                isSuccess = true
+            case .zip:
+                loadZipCertificate(tempCopy)
+            }
+        } catch {
+            message = error.localizedDescription
+            isSuccess = false
+        }
+    }
+
+    private func loadDocumentFile(_ url: URL) {
+        let ext = url.pathExtension.lowercased()
+        if ext == "zip" {
+            loadZipCertificate(url)
+        } else if ext == "p12" {
+            p12URL = url
+            message = t("Đã nạp .p12 từ Documents: ", "Loaded .p12: ") + url.lastPathComponent
+            isSuccess = true
+        } else if ext == "mobileprovision" {
+            provisionURL = url
+            message = t("Đã nạp .mobileprovision từ Documents: ", "Loaded .mobileprovision: ") + url.lastPathComponent
+            isSuccess = true
+        }
+    }
+
+    private func loadZipCertificate(_ url: URL) {
+        do {
+            let extracted = try NiKCertZipHelper.extractPairAndPassword(from: url)
+            p12URL = extracted.p12
+            provisionURL = extracted.provision
+            if let pass = extracted.password, !pass.isEmpty {
+                password = pass
+                message = t("Đã giải nén .p12, .mobileprovision và mật khẩu từ .txt. Bấm Kiểm tra & Lưu!", "Extracted .p12, .mobileprovision, and password. Tap Verify & Save!")
+            } else {
+                message = t("Đã giải nén .p12 và .mobileprovision. Nhập mật khẩu .p12 rồi bấm Kiểm tra & Lưu.", "Extracted .p12 and .mobileprovision. Enter password and tap Verify & Save.")
+            }
+            isSuccess = true
+        } catch {
+            message = error.localizedDescription
+            isSuccess = false
+        }
+    }
+
+    private func saveCertificate() {
+        guard let k = p12URL, let p = provisionURL else { return }
+        do {
             let saved = try store.importProfile(p12URL: k, provisionURL: p, password: password, customName: name)
-            if selected.isEmpty { selected = saved.id.uuidString }
-            self.key = nil; self.provision = nil; password = ""; name = ""; message = "Đã lưu chứng chỉ."
-        } catch { message = error.localizedDescription }
+            if defaultCertificate.isEmpty {
+                defaultCertificate = saved.id.uuidString
+            }
+            message = t("Đã lưu chứng chỉ: ", "Saved certificate: ") + saved.name
+            isSuccess = true
+            name = ""
+            password = ""
+        } catch {
+            message = error.localizedDescription
+            isSuccess = false
+        }
     }
 }
 
-struct NiKHubPreview: View {
-    @State private var section = 2
-    @State private var session = FilesTabSession()
+struct NiKLocalFiles: View {
+    let directory: URL
+    let title: String
+
+    @AppStorage("nik_language") private var language = "vi"
+    @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
+
+    @State private var items: [NiKFileItem] = []
+    @State private var query = ""
+    @State private var sort: NiKFilesSort = .name
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<String> = []
+
+    @State private var importing = false
+    @State private var creatingFolder = false
+    @State private var newFolderName = ""
+
+    @State private var renameTarget: NiKFileItem?
+    @State private var renameText = ""
+    @State private var folderTarget: NiKFolderTarget?
+    @State private var previewDoc: NiKPreviewDocument?
+    @State private var hexTarget: NiKPreviewDocument?
+    @State private var shareItem: NiKShareItem?
+
+    @State private var zipTarget: NiKFileItem?
+    @State private var ipaTarget: NiKFileItem?
+    @State private var certPendingP12: URL?
+    @State private var certPendingProvision: URL?
+    @State private var certPasswordInput = ""
+    @State private var showCertPasswordPrompt = false
+    @State private var alertMessage: String?
+
+    private static let rowDateFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm dd/MM/yy"
+        return df
+    }()
+
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    private var filtered: [NiKFileItem] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let base = q.isEmpty ? items : items.filter { $0.name.lowercased().contains(q) }
+        return base.sorted { a, b in
+            if a.isDirectory != b.isDirectory { return a.isDirectory && !b.isDirectory }
+            switch sort {
+            case .name: return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            case .date: return a.modifiedAt > b.modifiedAt
+            case .size: return a.size > b.size
+            }
+        }
+    }
+
     var body: some View {
-        NavigationStack {
-            VStack {
-                Picker("Nhóm", selection: $section) { Text("Dự án").tag(0); Text("Ứng dụng").tag(1); Text("Công cụ").tag(2) }.pickerStyle(.segmented).padding()
-                if section == 0 { PatchProjectsView() }
-                else if section == 1 { AppDataBrowserView(tabSession: $session) }
-                else {
-                    List {
-                        NavigationLink("Wallpaper · Hình nền") { WallpaperLabView() }
-                        NavigationLink("Dialer · Footnote · Supervised") { NiK3105V2HubView() }
-                        NavigationLink("Cleaner · Dọn dẹp") { CleanerView() }
-                        NavigationLink("Nguồn & công cụ 3105 gốc") { ContentView() }
-                        Text("Khả năng sử dụng tùy thuộc thiết bị. Các công cụ chuyên sâu dùng bộ xử lý 3105 hiện có.").font(.footnote).foregroundStyle(.secondary)
+        mainView
+            .modifier(applySheets)
+            .modifier(applyDialogsAndAlerts)
+    }
+
+    @ViewBuilder
+    private var mainView: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                searchBar
+                if isSelecting {
+                    selectionBar
+                }
+                filesListContent
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 96)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                trailingToolbarMenu
+            }
+        }
+        .onAppear { reload() }
+    }
+
+    @ViewBuilder
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(t("Tìm tệp hoặc thư mục...", "Search files or folders..."), text: $query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+    }
+
+    @ViewBuilder
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedIDs.count) " + t("đã chọn", "selected"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(t("Xóa", "Delete"), role: .destructive) {
+                deleteSelected()
+            }
+            .font(.caption.weight(.semibold))
+            .disabled(selectedIDs.isEmpty)
+            Button(t("Xong", "Done")) {
+                isSelecting = false
+                selectedIDs.removeAll()
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+    }
+
+    @ViewBuilder
+    private var filesListContent: some View {
+        if filtered.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "folder")
+                    .font(.system(size: 34))
+                    .foregroundStyle(.secondary)
+                Text(t("Thư mục trống", "Empty Folder"))
+                    .font(.headline)
+                Text(t("Nhấn nút ... ở góc trên để nhập tệp hoặc tạo thư mục mới.", "Tap ... above to import files or create a folder."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(28)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            LazyVStack(spacing: 4) {
+                ForEach(filtered) { item in
+                    rowEntry(item)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowEntry(_ item: NiKFileItem) -> some View {
+        if item.isDirectory && !isSelecting {
+            NavigationLink {
+                NiKLocalFiles(directory: item.url, title: item.name)
+            } label: {
+                rowContent(item)
+            }
+            .buttonStyle(NiKCardPressButtonStyle())
+            .contextMenu { rowContextMenu(item) }
+        } else {
+            Button {
+                handleTap(item)
+            } label: {
+                rowContent(item)
+            }
+            .buttonStyle(NiKCardPressButtonStyle(selected: isSelecting && selectedIDs.contains(item.id)))
+            .contextMenu { rowContextMenu(item) }
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(_ item: NiKFileItem) -> some View {
+        HStack(spacing: 12) {
+            if isSelecting {
+                Image(systemName: selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(selectedIDs.contains(item.id) ? Color.accentColor : Color.secondary)
+            }
+            Image(systemName: iconName(for: item))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(iconColor(for: item))
+                .frame(width: 40, height: 40)
+                .background(
+                    iconColor(for: item).opacity(0.16),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(subtitleText(for: item))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if item.isDirectory {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var trailingToolbarMenu: some View {
+        Menu {
+            Button {
+                importing = true
+            } label: {
+                Label(t("Nhập tệp", "Import File"), systemImage: "square.and.arrow.down")
+            }
+            Button {
+                newFolderName = ""
+                creatingFolder = true
+            } label: {
+                Label(t("Thư mục mới", "New Folder"), systemImage: "folder.badge.plus")
+            }
+            Button {
+                isSelecting.toggle()
+                if !isSelecting { selectedIDs.removeAll() }
+            } label: {
+                Label(isSelecting ? t("Hủy chọn", "Cancel Selection") : t("Chọn nhiều", "Select"), systemImage: "checkmark.circle")
+            }
+            Menu(t("Sắp xếp", "Sort")) {
+                Button(t("Tên", "Name")) { sort = .name }
+                Button(t("Ngày sửa", "Date")) { sort = .date }
+                Button(t("Dung lượng", "Size")) { sort = .size }
+            }
+        } label: {
+            NiKGlassCircleIcon(systemName: "ellipsis")
+        }
+    }
+
+    @ViewBuilder
+    private func rowContextMenu(_ item: NiKFileItem) -> some View {
+        if !item.isDirectory {
+            let ext = item.url.pathExtension.lowercased()
+            if ext == "zip" {
+                Button {
+                    startCertImportFromZip(item.url)
+                } label: {
+                    Label(t("Nhập làm Chứng chỉ (.zip)", "Import as Certificate (.zip)"), systemImage: "checkmark.seal")
+                }
+                Button {
+                    unzipHere(item.url)
+                } label: {
+                    Label(t("Giải nén tại đây", "Unzip Here"), systemImage: "archivebox")
+                }
+            } else if ext == "p12" || ext == "mobileprovision" {
+                Button {
+                    startCertImportFromPair(item.url)
+                } label: {
+                    Label(t("Lưu làm Chứng chỉ", "Save as Certificate"), systemImage: "checkmark.seal")
+                }
+            }
+            Button {
+                previewDoc = NiKPreviewDocument(url: item.url)
+            } label: {
+                Label(t("Xem trước", "Preview"), systemImage: "eye")
+            }
+            Button {
+                hexTarget = NiKPreviewDocument(url: item.url)
+            } label: {
+                Label(t("Xem Hex", "Hex View"), systemImage: "number.square")
+            }
+        }
+        Button {
+            renameTarget = item
+            renameText = item.name
+        } label: {
+            Label(t("Đổi tên", "Rename"), systemImage: "pencil")
+        }
+        Button {
+            folderTarget = NiKFolderTarget(item: item, isCopy: false)
+        } label: {
+            Label(t("Di chuyển", "Move"), systemImage: "folder")
+        }
+        Button {
+            shareItem = NiKShareItem(url: item.url)
+        } label: {
+            Label(t("Chia sẻ", "Share"), systemImage: "square.and.arrow.up")
+        }
+        Button(role: .destructive) {
+            try? FileManager.default.removeItem(at: item.url)
+            reload()
+        } label: {
+            Label(t("Xóa", "Delete"), systemImage: "trash")
+        }
+    }
+
+    private var applySheets: some ViewModifier {
+        SheetModifier(
+            importing: $importing,
+            directory: directory,
+            previewDoc: $previewDoc,
+            hexTarget: $hexTarget,
+            shareItem: $shareItem,
+            folderTarget: $folderTarget,
+            onReload: reload
+        )
+    }
+
+    private var applyDialogsAndAlerts: some ViewModifier {
+        DialogAlertModifier(
+            t: t,
+            creatingFolder: $creatingFolder,
+            newFolderName: $newFolderName,
+            renameTarget: $renameTarget,
+            renameText: $renameText,
+            zipTarget: $zipTarget,
+            ipaTarget: $ipaTarget,
+            showCertPasswordPrompt: $showCertPasswordPrompt,
+            certPasswordInput: $certPasswordInput,
+            alertMessage: $alertMessage,
+            onCreateFolder: createFolder,
+            onRename: performRename,
+            onUnzip: unzipHere,
+            onCertZip: startCertImportFromZip,
+            onPreview: { previewDoc = NiKPreviewDocument(url: $0) },
+            onShare: { shareItem = NiKShareItem(url: $0) },
+            onSaveCert: completeCertImport
+        )
+    }
+
+    private func subtitleText(for item: NiKFileItem) -> String {
+        let dateStr = Self.rowDateFormatter.string(from: item.modifiedAt)
+        if item.isDirectory {
+            return "\(dateStr) · " + t("Thư mục", "Folder")
+        }
+        let sizeStr = ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)
+        return "\(dateStr) · \(sizeStr)"
+    }
+
+    private func iconName(for item: NiKFileItem) -> String {
+        if item.isDirectory { return "folder.fill" }
+        switch item.url.pathExtension.lowercased() {
+        case "ipa": return "shippingbox.fill"
+        case "zip": return "doc.zipper"
+        case "p12": return "key.fill"
+        case "mobileprovision": return "doc.badge.gearshape.fill"
+        case "plist", "json", "xml", "txt", "log": return "doc.text.fill"
+        default: return "doc.fill"
+        }
+    }
+
+    private func iconColor(for item: NiKFileItem) -> Color {
+        if item.isDirectory { return .blue }
+        switch item.url.pathExtension.lowercased() {
+        case "ipa": return .indigo
+        case "zip": return .purple
+        case "p12": return .orange
+        case "mobileprovision": return .teal
+        default: return .gray
+        }
+    }
+
+    private func handleTap(_ item: NiKFileItem) {
+        if isSelecting {
+            if selectedIDs.contains(item.id) { selectedIDs.remove(item.id) }
+            else { selectedIDs.insert(item.id) }
+            return
+        }
+        let ext = item.url.pathExtension.lowercased()
+        if ext == "zip" {
+            zipTarget = item
+        } else if ext == "ipa" {
+            ipaTarget = item
+        } else if ext == "p12" || ext == "mobileprovision" {
+            startCertImportFromPair(item.url)
+        } else {
+            previewDoc = NiKPreviewDocument(url: item.url)
+        }
+    }
+
+    private func reload() {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        items = urls.map { url in
+            let vals = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+            return NiKFileItem(
+                url: url,
+                name: url.lastPathComponent,
+                isDirectory: vals?.isDirectory ?? false,
+                size: Int64(vals?.fileSize ?? 0),
+                modifiedAt: vals?.contentModificationDate ?? Date()
+            )
+        }
+    }
+
+    private func createFolder() {
+        let trimmed = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let target = directory.appendingPathComponent(trimmed)
+        try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        reload()
+    }
+
+    private func performRename() {
+        guard let target = renameTarget else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let dest = target.url.deletingLastPathComponent().appendingPathComponent(trimmed)
+        try? FileManager.default.moveItem(at: target.url, to: dest)
+        renameTarget = nil
+        reload()
+    }
+
+    private func deleteSelected() {
+        for item in items where selectedIDs.contains(item.id) {
+            try? FileManager.default.removeItem(at: item.url)
+        }
+        selectedIDs.removeAll()
+        isSelecting = false
+        reload()
+    }
+
+    private func unzipHere(_ url: URL) {
+        let dest = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+            try FileManager.default.unzipItem(at: url, to: dest)
+            reload()
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func startCertImportFromZip(_ url: URL) {
+        do {
+            let extracted = try NiKCertZipHelper.extractPairAndPassword(from: url)
+            certPendingP12 = extracted.p12
+            certPendingProvision = extracted.provision
+            certPasswordInput = extracted.password ?? ""
+            showCertPasswordPrompt = true
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func startCertImportFromPair(_ url: URL) {
+        let pair = NiKCertZipHelper.findPairInDirectory(for: url)
+        guard let p12 = pair.p12 else {
+            alertMessage = t("Không tìm thấy tệp .p12 cặp đôi trong cùng thư mục.", "No matching .p12 file found in the same folder.")
+            return
+        }
+        guard let prov = pair.provision else {
+            alertMessage = t("Không tìm thấy tệp .mobileprovision cặp đôi trong cùng thư mục.", "No matching .mobileprovision file found in the same folder.")
+            return
+        }
+        certPendingP12 = p12
+        certPendingProvision = prov
+        certPasswordInput = ""
+        showCertPasswordPrompt = true
+    }
+
+    private func completeCertImport() {
+        guard let p12 = certPendingP12, let prov = certPendingProvision else { return }
+        do {
+            let store = NiKCertificateStore()
+            let saved = try store.importProfile(p12URL: p12, provisionURL: prov, password: certPasswordInput, customName: "")
+            if defaultCertificate.isEmpty {
+                defaultCertificate = saved.id.uuidString
+            }
+            alertMessage = t("Đã lưu chứng chỉ: ", "Saved certificate: ") + saved.name
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+        certPendingP12 = nil
+        certPendingProvision = nil
+        certPasswordInput = ""
+    }
+}
+
+private struct SheetModifier: ViewModifier {
+    @Binding var importing: Bool
+    let directory: URL
+    @Binding var previewDoc: NiKPreviewDocument?
+    @Binding var hexTarget: NiKPreviewDocument?
+    @Binding var shareItem: NiKShareItem?
+    @Binding var folderTarget: NiKFolderTarget?
+    let onReload: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $importing) {
+                NiKFilePicker { result in
+                    if case .success(let url) = result {
+                        Task {
+                            _ = try? NiKFileImport.copy(url, into: directory)
+                            onReload()
+                        }
                     }
                 }
-            }.navigationTitle("3105")
-        }
+            }
+            .sheet(item: $previewDoc) { doc in NiKQuickLook(url: doc.url) }
+            .sheet(item: $hexTarget) { doc in NiKHexViewerSheet(url: doc.url) }
+            .sheet(item: $shareItem) { item in NiKShareSheet(items: [item.url]) }
+            .sheet(item: $folderTarget) { target in
+                NiKFolderPickerSheet(item: target.item, isCopy: target.isCopy) { onReload() }
+            }
     }
 }
 
-private enum NiKSortField: String, CaseIterable { case name = "Tên", date = "Ngày", size = "Kích thước", type = "Loại" }
-private final class NiKFileClipboard: ObservableObject {
-static let shared = NiKFileClipboard()
-@Published var urls: [URL] = []
-@Published var isCut: Bool = false
-func set(_ urls: [URL], isCut: Bool) { self.urls = urls; self.isCut = isCut }
-func clear() { urls = []; isCut = false }
+private struct DialogAlertModifier: ViewModifier {
+    let t: (String, String) -> String
+    @Binding var creatingFolder: Bool
+    @Binding var newFolderName: String
+    @Binding var renameTarget: NiKFileItem?
+    @Binding var renameText: String
+    @Binding var zipTarget: NiKFileItem?
+    @Binding var ipaTarget: NiKFileItem?
+    @Binding var showCertPasswordPrompt: Bool
+    @Binding var certPasswordInput: String
+    @Binding var alertMessage: String?
+
+    let onCreateFolder: () -> Void
+    let onRename: () -> Void
+    let onUnzip: (URL) -> Void
+    let onCertZip: (URL) -> Void
+    let onPreview: (URL) -> Void
+    let onShare: (URL) -> Void
+    let onSaveCert: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .alert(t("Thư mục mới", "New Folder"), isPresented: $creatingFolder) {
+                TextField(t("Tên thư mục", "Folder name"), text: $newFolderName)
+                Button(t("Tạo", "Create"), action: onCreateFolder)
+                Button(t("Hủy", "Cancel"), role: .cancel) {}
+            }
+            .alert(t("Đổi tên", "Rename"), isPresented: Binding(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )) {
+                TextField(t("Tên mới", "New name"), text: $renameText)
+                Button(t("Lưu", "Save"), action: onRename)
+                Button(t("Hủy", "Cancel"), role: .cancel) { renameTarget = nil }
+            }
+            .confirmationDialog(zipTarget?.name ?? "ZIP", isPresented: Binding(
+                get: { zipTarget != nil },
+                set: { if !$0 { zipTarget = nil } }
+            )) {
+                if let z = zipTarget {
+                    Button(t("Nhập làm Chứng chỉ (.zip)", "Import as Certificate (.zip)")) { onCertZip(z.url) }
+                    Button(t("Giải nén tại đây", "Unzip Here")) { onUnzip(z.url) }
+                    Button(t("Xem trước", "Preview")) { onPreview(z.url) }
+                    Button(t("Chia sẻ", "Share")) { onShare(z.url) }
+                }
+                Button(t("Hủy", "Cancel"), role: .cancel) {}
+            }
+            .confirmationDialog(ipaTarget?.name ?? "IPA", isPresented: Binding(
+                get: { ipaTarget != nil },
+                set: { if !$0 { ipaTarget = nil } }
+            )) {
+                if let ipa = ipaTarget {
+                    Button(t("Xem trước", "Preview")) { onPreview(ipa.url) }
+                    Button(t("Giải nén tại đây", "Unzip Here")) { onUnzip(ipa.url) }
+                    Button(t("Chia sẻ", "Share")) { onShare(ipa.url) }
+                }
+                Button(t("Hủy", "Cancel"), role: .cancel) {}
+            }
+            .alert(t("Mật khẩu Chứng chỉ (.p12)", "Certificate Password (.p12)"), isPresented: $showCertPasswordPrompt) {
+                SecureField(t("Nhập mật khẩu .p12", "Enter .p12 password"), text: $certPasswordInput)
+                Button(t("Lưu chứng chỉ", "Save Certificate"), action: onSaveCert)
+                Button(t("Hủy", "Cancel"), role: .cancel) { certPasswordInput = "" }
+            } message: {
+                Text(t("Nhập mật khẩu của tệp .p12 để lưu trực tiếp vào NiKCertificateStore.", "Enter the .p12 password to save directly to NiKCertificateStore."))
+            }
+            .alert(t("Thông báo", "Notice"), isPresented: Binding(
+                get: { alertMessage != nil },
+                set: { if !$0 { alertMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(alertMessage ?? "")
+            }
+    }
 }
 
-private struct NiKShareItem: Identifiable { let id = UUID(); let urls: [URL] }
-
-private struct NiKShareSheet: UIViewControllerRepresentable {
-let items: [Any]
-func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
-func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
-
-private struct NiKFolderTarget: Identifiable { let id = UUID(); let urls: [URL]; let isMove: Bool }
-private struct NiKFolderPickerSheet: View {
-let current: URL
-let title: String
-let onSelect: (URL) -> Void
-@Environment(\.dismiss) private var dismiss
-@State private var folders: [URL] = []
-var body: some View {
-List {
-Section {
-Button {
-onSelect(current)
-} label: {
-Label("Chọn thư mục này (\(current.lastPathComponent))", systemImage: "checkmark.circle.fill")
-}
-}
-Section("Thư mục con") {
-ForEach(folders, id: \.self) { folder in
-NavigationLink(folder.lastPathComponent) {
-NiKFolderPickerSheet(current: folder, title: title, onSelect: onSelect)
-}
-}
-}
-}
-.navigationTitle(title)
-.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { dismiss() } } }
-.onAppear {
-let list = (try? FileManager.default.contentsOfDirectory(at: current, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
-folders = list.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-}
-}
-}
-
-private struct NiKHexViewerSheet: View {
-let url: URL
-@Environment(\.dismiss) private var dismiss
-@State private var lines: [String] = []
-@State private var info = ""
-var body: some View {
-NavigationStack {
-ScrollView([.vertical, .horizontal]) {
-LazyVStack(alignment: .leading, spacing: 2) {
-if !info.isEmpty { Text(info).font(.caption).foregroundStyle(.secondary).padding(.bottom, 6) }
-ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-Text(line).font(.system(size: 11, design: .monospaced))
-}
-}
-.padding()
-}
-.navigationTitle(url.lastPathComponent)
-.navigationBarTitleDisplayMode(.inline)
-.toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Đóng") { dismiss() } } }
-.task { loadHex() }
-}
-}
-private func loadHex() {
-do {
-let handle = try FileHandle(forReadingFrom: url)
-defer { try? handle.close() }
-let maxBytes = 65536
-let data = try handle.read(upToCount: maxBytes) ?? Data()
-let total = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? Int64(data.count)
-info = total > Int64(maxBytes) ? "Hiển thị \(maxBytes) / \(total) bytes đầu tiên" : "Tổng: \(total) bytes"
-let bytes = [UInt8](data)
-var out: [String] = []
-for offset in stride(from: 0, to: bytes.count, by: 16) {
-let end = min(offset + 16, bytes.count)
-let chunk = bytes[offset..<end]
-let hex = chunk.map { String(format: "%02X", $0) }.joined(separator: " ")
-let pad = String(repeating: "   ", count: max(0, 16 - chunk.count))
-let ascii = chunk.map { (32...126).contains($0) ? String(UnicodeScalar($0)) : "." }.joined()
-out.append(String(format: "%08X  ", offset) + hex + pad + "  |" + ascii + "|")
-}
-lines = out.isEmpty ? ["(Tệp trống)"] : out
-} catch {
-info = error.localizedDescription
-lines = []
-}
-}
-}
-struct NiKLocalFiles: View {
-let directory: URL
-@ObservedObject private var clipboard = NiKFileClipboard.shared
-@State private var files: [URL] = []
-@State private var query = ""
-@State private var showHidden = false
-@State private var sortField: NiKSortField = .name
-@State private var sortAscending = true
-@State private var isSelecting = false
-@State private var selectedURLs: Set<URL> = []
-@State private var preview: NiKPreviewDocument?
-@State private var hexTarget: NiKPreviewDocument?
-@State private var shareTarget: NiKShareItem?
-@State private var folderTarget: NiKFolderTarget?
-@State private var ipaTarget: URL?
-@State private var zipTarget: URL?
-@State private var importing = false
-@State private var newFolderPrompt = false
-@State private var newFolderName = ""
-@State private var newFilePrompt = false
-@State private var newFileName = ""
-@State private var renameTarget: URL?
-@State private var renameName = ""
-@State private var message = ""
-
-private var filtered: [URL] {
-let base = files.filter { url in
-(showHidden || !url.lastPathComponent.hasPrefix(".")) &&
-(query.isEmpty || url.lastPathComponent.localizedCaseInsensitiveContains(query))
-}
-return base.sorted { a, b in
-let da = isDir(a), db = isDir(b)
-if da != db { return da }
-let cmp: Bool
-switch sortField {
-case .name:
-cmp = a.lastPathComponent.localizedStandardCompare(b.lastPathComponent) == .orderedAscending
-case .date:
-cmp = modDate(a) < modDate(b)
-case .size:
-cmp = fileSize(a) < fileSize(b)
-case .type:
-cmp = a.pathExtension.localizedStandardCompare(b.pathExtension) == .orderedAscending
-}
-return sortAscending ? cmp : !cmp
-}
-}
-
-var body: some View {
-applyDialogsAndAlerts(applySheets(baseContentView))
-}
-
-private var baseContentView: some View {
-List {
-if !message.isEmpty { Text(message).font(.caption).foregroundStyle(.secondary) }
-ForEach(filtered, id: \.self) { url in
-rowItem(url)
-.contextMenu { contextButtons(for: url) }
-}
-}
-.navigationTitle(directory.lastPathComponent)
-.searchable(text: $query, prompt: "Tìm tệp")
-.toolbar { toolbarMenuContent }
-.safeAreaInset(edge: .bottom) { selectionBottomBar }
-}
-
-@ToolbarContentBuilder
-private var toolbarMenuContent: some ToolbarContent {
-ToolbarItem(placement: .topBarTrailing) {
-Menu {
-Button {
-isSelecting.toggle()
-if !isSelecting { selectedURLs.removeAll() }
-} label: {
-Label(isSelecting ? "Xong" : "Chọn", systemImage: "checkmark.circle")
-}
-Menu {
-Button("Thư mục") { newFolderName = ""; newFolderPrompt = true }
-Button("Tệp trống") { newFileName = ""; newFilePrompt = true }
-Button("Nhập tệp") { importing = true }
-} label: {
-Label("Mới", systemImage: "plus")
-}
-if !clipboard.urls.isEmpty {
-Button { pasteFromClipboard() } label: {
-Label("Dán (\(clipboard.urls.count))", systemImage: "doc.on.clipboard")
-}
-}
-Menu {
-Picker("Theo", selection: $sortField) {
-ForEach(NiKSortField.allCases, id: \.self) { f in Text(f.rawValue).tag(f) }
-}
-Divider()
-Picker("Thứ tự", selection: $sortAscending) {
-Text("Tăng dần").tag(true)
-Text("Giảm dần").tag(false)
-}
-} label: {
-Label("Sắp xếp", systemImage: "arrow.up.arrow.down")
-}
-Button { showHidden.toggle() } label: {
-Label(showHidden ? "Ẩn tệp ẩn" : "Hiện ẩn", systemImage: showHidden ? "eye.slash" : "eye")
-}
-} label: {
-Image(systemName: "ellipsis.circle")
-}
-}
-}
-@ViewBuilder
-private var selectionBottomBar: some View {
-if isSelecting {
-HStack {
-Button("Sao chép") { clipboard.set(Array(selectedURLs), isCut: false); isSelecting = false; selectedURLs.removeAll() }.disabled(selectedURLs.isEmpty)
-Spacer()
-Button("Cắt") { clipboard.set(Array(selectedURLs), isCut: true); isSelecting = false; selectedURLs.removeAll() }.disabled(selectedURLs.isEmpty)
-Spacer()
-Button("Chia sẻ") { shareTarget = NiKShareItem(urls: Array(selectedURLs)) }.disabled(selectedURLs.isEmpty)
-Spacer()
-Button("Xóa", role: .destructive) { deleteItems(Array(selectedURLs)); selectedURLs.removeAll(); isSelecting = false }.disabled(selectedURLs.isEmpty)
-Spacer()
-Button("Xong") { isSelecting = false; selectedURLs.removeAll() }.bold()
-}
-.font(.subheadline)
-.padding(.horizontal)
-.padding(.vertical, 10)
-.background(.bar)
-}
-}
-
-private func applySheets<V: View>(_ view: V) -> some View {
-view
-    
-   .onAppear { reload() }
-.refreshable { reload() }
-.sheet(item: $preview) { NiKQuickLook(url: $0.url) }
-.sheet(item: $hexTarget) { NiKHexViewerSheet(url: $0.url) }
-.sheet(item: $shareTarget) { NiKShareSheet(items: $0.urls) }
-.sheet(item: $folderTarget) { target in
-NavigationStack {
-NiKFolderPickerSheet(current: rootDocs(), title: target.isMove ? "Chuyển đến" : "Sao chép đến") { dest in
-moveOrCopy(target.urls, to: dest, isMove: target.isMove)
-folderTarget = nil
-}
-}
-}
-.sheet(isPresented: $importing) {
-NiKFilePicker { result in
-               if case .success(let url) = result { Task { _ = try? NiKFileImport.copy(url, into: directory); reload() } }
-}
-}
-}
-
-private func applyDialogsAndAlerts<V: View>(_ view: V) -> some View {
-view
-    
-.confirmationDialog(ipaTarget?.lastPathComponent ?? "IPA", isPresented: Binding(get: { ipaTarget != nil }, set: { if !$0 { ipaTarget = nil } }), titleVisibility: .visible, presenting: ipaTarget) { url in
-Button("Ký & Cài đặt") { Task { await NiKLibrary.shared.receive(url) } }
-Button("Giải nén thành App") { unzipIPA(url) }
-Button("Xem trước") { preview = NiKPreviewDocument(url: url) }
-Button("Hủy", role: .cancel) {}
-}
-.confirmationDialog(zipTarget?.lastPathComponent ?? "ZIP", isPresented: Binding(get: { zipTarget != nil }, set: { if !$0 { zipTarget = nil } }), titleVisibility: .visible, presenting: zipTarget) { url in
-Button("Giải nén tại đây") { unzipHere(url) }
-Button("Xem trước") { preview = NiKPreviewDocument(url: url) }
-Button("Hủy", role: .cancel) {}
-}
-.alert("Thư mục mới", isPresented: $newFolderPrompt) {
-TextField("Tên thư mục", text: $newFolderName)
-Button("Tạo") { createFolder() }
-Button("Hủy", role: .cancel) {}
-}
-.alert("Tệp trống mới", isPresented: $newFilePrompt) {
-TextField("Tên tệp", text: $newFileName)
-Button("Tạo") { createEmptyFile() }
-Button("Hủy", role: .cancel) {}
-}
-.alert("Đổi tên", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
-TextField("Tên mới", text: $renameName)
-Button("Lưu") { commitRename() }
-Button("Hủy", role: .cancel) {}
-}
-}
-   @ViewBuilder
-private func rowItem(_ url: URL) -> some View {
-if isSelecting {
-Button {
-if selectedURLs.contains(url) { selectedURLs.remove(url) } else { selectedURLs.insert(url) }
-} label: {
-HStack(spacing: 12) {
-Image(systemName: selectedURLs.contains(url) ? "checkmark.circle.fill" : "circle")
-.foregroundStyle(selectedURLs.contains(url) ? Color.blue : Color.secondary)
-rowContent(url)
-}
-}
-} else if isDir(url) {
-NavigationLink { NiKLocalFiles(directory: url) } label: { rowContent(url) }
-} else {
-Button { handleTap(url) } label: { rowContent(url) }
-}
-}
-
-private func rowContent(_ url: URL) -> some View {
-let (icon, color) = iconInfo(for: url)
-return HStack(spacing: 12) {
-Image(systemName: icon)
-.font(.title3)
-.foregroundStyle(color)
-.frame(width: 28)
-VStack(alignment: .leading, spacing: 2) {
-Text(url.lastPathComponent)
-.foregroundStyle(.primary)
-.lineLimit(1)
-Text(subtitle(for: url))
-.font(.caption)
-.foregroundStyle(.secondary)
-}
-}
-}
-
-private func iconInfo(for url: URL) -> (String, Color) {
-if isDir(url) { return ("folder.fill", .blue) }
-switch url.pathExtension.lowercased() {
-case "ipa": return ("app.badge.fill", .purple)
-case "zip": return ("doc.zipper", .orange)
-case "dylib", "deb": return ("puzzlepiece.extension.fill", .teal)
-case "p12", "mobileprovision": return ("key.fill", .yellow)
-case "json", "plist", "3105": return ("doc.text.fill", .green)
-default: return ("doc.fill", .secondary)
-}
-}
-
-private func subtitle(for url: URL) -> String {
-let fmt = DateFormatter()
-fmt.dateFormat = "HH:mm dd/MM/yy"
-let dateStr = fmt.string(from: modDate(url))
-if isDir(url) { return "\(dateStr) · Thư mục" }
-let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize(url), countStyle: .file)
-return "\(dateStr) · \(sizeStr)"
-}
-
-@ViewBuilder
-private func contextButtons(for url: URL) -> some View {
-Button { isSelecting = true; selectedURLs.insert(url) } label: { Label("Chọn", systemImage: "checkmark.circle") }
-Button { clipboard.set([url], isCut: false) } label: { Label("Sao chép", systemImage: "doc.on.doc") }
-Button { clipboard.set([url], isCut: true) } label: { Label("Cắt", systemImage: "scissors") }
-Button { folderTarget = NiKFolderTarget(urls: [url], isMove: true) } label: { Label("Chuyển đến...", systemImage: "folder") }
-Button { folderTarget = NiKFolderTarget(urls: [url], isMove: false) } label: { Label("Sao chép đến...", systemImage: "folder.badge.plus") }
-Button { renameTarget = url; renameName = url.lastPathComponent } label: { Label("Đổi tên", systemImage: "pencil") }
-Button { shareTarget = NiKShareItem(urls: [url]) } label: { Label("Chia sẻ", systemImage: "square.and.arrow.up") }
-Button { hexTarget = NiKPreviewDocument(url: url) } label: { Label("Mở bằng Hex", systemImage: "number.square") }
-Button(role: .destructive) { deleteItems([url]) } label: { Label("Xóa", systemImage: "trash") }
-}
-   private func handleTap(_ url: URL) {
-let ext = url.pathExtension.lowercased()
-if ext == "ipa" { ipaTarget = url }
-else if ext == "zip" { zipTarget = url }
-else { preview = NiKPreviewDocument(url: url) }
-}
-
-private func isDir(_ url: URL) -> Bool {
-(try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-}
-
-private func modDate(_ url: URL) -> Date {
-(try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-}
-
-private func fileSize(_ url: URL) -> Int64 {
-Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-}
-
-private func rootDocs() -> URL {
-FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ?? directory
-}
-
-private func reload() {
-files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey])) ?? []
-}
-
-private func createFolder() {
-let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
-guard !name.isEmpty else { return }
-try? FileManager.default.createDirectory(at: uniqueURL(in: directory, name: name), withIntermediateDirectories: true)
-reload()
-}
-
-private func createEmptyFile() {
-let name = newFileName.trimmingCharacters(in: .whitespacesAndNewlines)
-guard !name.isEmpty else { return }
-FileManager.default.createFile(atPath: uniqueURL(in: directory, name: name).path, contents: Data())
-reload()
-}
-
-private func commitRename() {
-guard let src = renameTarget else { return }
-let name = renameName.trimmingCharacters(in: .whitespacesAndNewlines)
-guard !name.isEmpty, name != src.lastPathComponent else { renameTarget = nil; return }
-let dst = src.deletingLastPathComponent().appendingPathComponent(name)
-try? FileManager.default.moveItem(at: src, to: dst)
-renameTarget = nil
-reload()
-}
-
-private func pasteFromClipboard() {
-moveOrCopy(clipboard.urls, to: directory, isMove: clipboard.isCut)
-if clipboard.isCut { clipboard.clear() }
-}
-
-private func moveOrCopy(_ urls: [URL], to destDir: URL, isMove: Bool) {
-for src in urls {
-let dst = uniqueURL(in: destDir, name: src.lastPathComponent)
-if isMove {
-try? FileManager.default.moveItem(at: src, to: dst)
-} else {
-try? FileManager.default.copyItem(at: src, to: dst)
-}
-}
-reload()
-}
-
-private func uniqueURL(in dir: URL, name: String) -> URL {
-var candidate = dir.appendingPathComponent(name)
-if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-let ext = (name as NSString).pathExtension
-let base = (name as NSString).deletingPathExtension
-var idx = 1
-while FileManager.default.fileExists(atPath: candidate.path) {
-let newName = ext.isEmpty ? "\(base)-\(idx)" : "\(base)-\(idx).\(ext)"
-candidate = dir.appendingPathComponent(newName)
-idx += 1
-}
-return candidate
-}
-
-private func deleteItems(_ urls: [URL]) {
-for url in urls { try? FileManager.default.removeItem(at: url) }
-reload()
-}
-
-private func unzipIPA(_ url: URL) {
-let folderName = url.deletingPathExtension().lastPathComponent
-let dest = uniqueURL(in: directory, name: folderName)
-message = "Đang giải nén \(url.lastPathComponent)..."
-Task.detached {
-do {
-try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
-try FileManager.default.unzipItem(at: url, to: dest)
-await MainActor.run { message = "Đã giải nén thành \(dest.lastPathComponent)"; reload() }
-} catch {
-await MainActor.run { message = error.localizedDescription }
-}
-}
-}
-
-private func unzipHere(_ url: URL) {
-message = "Đang giải nén \(url.lastPathComponent)..."
-Task.detached {
-do {
-try FileManager.default.unzipItem(at: url, to: directory)
-await MainActor.run { message = "Đã giải nén \(url.lastPathComponent)"; reload() }
-} catch {
-await MainActor.run { message = error.localizedDescription }
-}
-}
-}
-} 
