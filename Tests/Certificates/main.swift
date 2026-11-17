@@ -11,6 +11,7 @@ func expectFailure(_ operation: () throws -> Void) {
     do { try operation() } catch { return }
     fatalError("Expected invalid certificate/password rejection")
 }
+do {
 let directory = URL(fileURLWithPath: CommandLine.arguments[1])
 let modern = try Data(contentsOf: directory.appendingPathComponent("modern.p12"))
 let legacy = try Data(contentsOf: directory.appendingPathComponent("legacy.p12"))
@@ -48,3 +49,8 @@ precondition(payloads[0]["PayloadContent"] as? Data == firstTLS.1)
 precondition(payloads[0]["PayloadVersion"] as? Int == 1)
 precondition(profile["PayloadRemovalDisallowed"] as? Bool == false)
 print("PASS: real mobileconfig builder, root certificate payload and DER round trip")
+
+} catch {
+    fputs("Certificate regression failed: \(error.localizedDescription)\n", stderr)
+    exit(1)
+}

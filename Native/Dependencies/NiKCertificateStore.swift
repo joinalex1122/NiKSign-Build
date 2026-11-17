@@ -225,7 +225,10 @@ var lastStatus: OSStatus = errSecSuccess
 
 for candidate in candidates {
 var imported: CFArray?
-let options: [String: Any] = [kSecImportExportPassphrase as String: candidate]
+var options: [String: Any] = [kSecImportExportPassphrase as String: candidate]
+#if os(macOS)
+if #available(macOS 15.0, *) { options[kSecImportToMemoryOnly as String] = true }
+#endif
 let status = SecPKCS12Import(data as CFData, options as CFDictionary, &imported)
 lastStatus = status
 if status == errSecSuccess, let items = imported as? [[String: Any]] {
