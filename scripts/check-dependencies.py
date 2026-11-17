@@ -19,7 +19,8 @@ for name in ['MachOKit','ArArchiveKit','SWCompression']:
 server = (r/'Native/Dependencies/NiKLoopbackServer.m').read_text()
 assert 'GCDWebServerOption_BindToLocalhost:@YES' in server
 assert 'GCDWebServerOption_Port:@0' in server
-assert 'manifest.plist' in server and 'itms-services://?action=download-manifest&url=' in server
+assert 'manifest.plist' in server and 'self.itmsInstallURL = nil;' in server
+assert 'https://%@:%lu' not in server
 assert 'beginBackgroundTaskWithName' in server
 signer = (r/'Native/Signer.swift').read_text()
 assert 'NiKZipCheck(' in signer
@@ -39,4 +40,4 @@ sys_feat = (r/'Native/Dependencies/NiKSystemFeaturesService.swift').read_text()
 assert 'LockScreenFootnote' in sys_feat and 'IsSupervised' in sys_feat and 'isCleanerInstalled' in sys_feat
 hub = (r/'Native/Dependencies/NiK3105V2HubView.swift').read_text()
 assert 'NiK3105V2HubView' in hub
-print('PASS: all 11 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 completions (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) verified.')
+print('PASS: all 11 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')

@@ -44,6 +44,8 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.data</string>
+				<string>public.item</string>
+				<string>com.apple.itunes.ipa</string>
 			</array>
 		</dict>
 	</array>
@@ -141,6 +143,26 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>application/x-3105-dialer</string>
+			</dict>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.apple.itunes.ipa</string>
+			<key>UTTypeDescription</key>
+			<string>iOS Application Archive</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.zip-archive</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ipa</string>
+				</array>
 			</dict>
 		</dict>
 	</array>

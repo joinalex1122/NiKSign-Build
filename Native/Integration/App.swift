@@ -10,7 +10,8 @@ struct NiKSignApp: App {
     @StateObject private var patchStore = PatchProjectStore()
     @StateObject private var repositoryStore = PackageRepositoryStore()
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.english.rawValue
-    @State private var showOnboarding = OnboardingStore.shouldShow()
+    @State private var showOnboarding = false
+    @AppStorage("nik.mode") private var nikMode = ""
     @State private var showAttribution = false
     @State private var toolImport: NiKToolImport?
     @State private var updateOffer: AppUpdateChecker.Offer?
@@ -33,7 +34,7 @@ struct NiKSignApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                ContentView()
+                NiKPreviewRoot()
                     .environmentObject(appState)
                     .environmentObject(patchDraftCoordinator)
                     .environmentObject(fileOperationCoordinator)
@@ -80,20 +81,22 @@ struct NiKSignApp: App {
                 )
             }
             .onAppear {
-                if !showOnboarding {
+                if !showOnboarding && !nikMode.isEmpty && nikMode != "sign" {
                     appState.detectSupport()
                     checkForUpdate()
                 }
             }
             .onChange(of: scenePhase) { phase in
-                guard phase == .active, !showOnboarding else { return }
+                guard phase == .active, !showOnboarding, !nikMode.isEmpty, nikMode != "sign" else { return }
                 appState.detectSupport()
             }
             .sheet(item: $toolImport) { request in
                 NiKToolsSheet(initialURL: request.url)
             }
             .onOpenURL { url in
-                if url.isFileURL && ["ipa", "p12", "mobileprovision", "json", "plist", "dylib", "deb", "3105pass"].contains(url.pathExtension.lowercased()) {
+                if url.isFileURL && url.pathExtension.lowercased() == "ipa" {
+                    Task { await NiKLibrary.shared.receive(url) }
+                } else if url.isFileURL && [ "p12", "mobileprovision", "json", "plist", "dylib", "deb", "3105pass"].contains(url.pathExtension.lowercased()) {
                     toolImport = NiKToolImport(url: url)
                 } else if url.scheme?.lowercased() == "niksign" {
                     var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
