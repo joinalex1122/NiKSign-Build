@@ -61,15 +61,15 @@ throw NiKLocalTLSIdentity.Failure.certificateGenerationFailed
 }
 defer { X509_free(x509) }
 
-X509_set_version(x509, 2)
-ASN1_INTEGER_set(X509_get_serialNumber(x509), Int.random(in: 1...Int.max))
-X509_gmtime_adj(X509_getm_notBefore(x509), 0)
-X509_gmtime_adj(X509_getm_notAfter(x509), 60 * 60 * 24 * 365)
-X509_set_pubkey(x509, key)
-
-if let name = X509_get_subject_name(x509) {
-X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0)
-X509_set_issuer_name(x509, name)
+guard X509_set_version(x509, 2) == 1,
+      ASN1_INTEGER_set(X509_get_serialNumber(x509), Int.random(in: 1...Int.max)) == 1,
+      X509_gmtime_adj(X509_getm_notBefore(x509), 0) != nil,
+      X509_gmtime_adj(X509_getm_notAfter(x509), 60 * 60 * 24 * 365) != nil,
+      X509_set_pubkey(x509, key) == 1,
+      let name = X509_get_subject_name(x509),
+      X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0) == 1,
+      X509_set_issuer_name(x509, name) == 1 else {
+    throw Failure.certificateGenerationFailed
 }
 
 var extCtx = X509V3_CTX()
@@ -83,12 +83,13 @@ let extensions: [(Int32, String)] = [
 (NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1")
 ]
 for (nid, value) in extensions {
-let cValue = strdup(value)
+guard let cValue = strdup(value) else { throw Failure.certificateGenerationFailed }
 defer { free(cValue) }
-if let ext = X509V3_EXT_conf_nid(nil, &extCtx, nid, cValue) {
-X509_add_ext(x509, ext, -1)
-X509_EXTENSION_free(ext)
+guard let ext = X509V3_EXT_conf_nid(nil, &extCtx, nid, cValue) else {
+    throw Failure.certificateGenerationFailed
 }
+defer { X509_EXTENSION_free(ext) }
+guard X509_add_ext(x509, ext, -1) == 1 else { throw Failure.certificateGenerationFailed }
 }
 
 guard X509_sign(x509, key, EVP_sha256()) > 0 else {

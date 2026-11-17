@@ -26,61 +26,46 @@ jobs:
           python3 Tests/patch_v9_test.py
           python3 Tests/verify_ipa_test.py
           node Tests/web.test.js
-          bash -n scripts/build-ios.sh
+          bash -n scripts/*.sh
   ios:
     needs: source-checks
-    strategy:
-      fail-fast: true
-      max-parallel: 1
-      matrix:
-        runner: [macos-26]
-        audit_pass: [1, 2]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 40
+    runs-on: macos-15-intel
+    timeout-minutes: 60
     env:
       NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.apple.mobile.MobileHouseArrest' }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Install XcodeGen
+      - name: Install build tools
         run: brew install xcodegen openssl@3
-      - name: Check source integration
-        run: python3 scripts/check-integration.py
-      - name: Codec and Patch v9 regression tests
+      - name: Two consecutive clean audits on one runner
+        shell: bash
         run: |
-          xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Tests/CodecSmoke.swift -o /tmp/codec-test
-          /tmp/codec-test
-          xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9Smoke.swift -o /tmp/patch-v9-test
-          /tmp/patch-v9-test
-          xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9TransactionSmoke.swift -o /tmp/patch-v9-transaction-test
-          /tmp/patch-v9-transaction-test
-          xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/file-import-test
-          /tmp/file-import-test
-      - name: File manager and certificate ZIP regression tests
-        run: bash scripts/test-file-tools.sh
-      - name: Modern and legacy certificate regression tests
-        run: bash scripts/test-certificates.sh
-      - name: Build unsigned arm64 IPA
-        run: bash scripts/build-ios.sh
-      - name: Reject compiler warnings and errors
-        run: python3 scripts/check-build-log.py build/build.log
+          set -euo pipefail
+          mkdir -p audit-results
+          for audit_pass in 1 2; do
+            bash scripts/audit-ios.sh "$audit_pass" 2>&1 | tee "audit-results/pass${audit_pass}.log"
+            python3 scripts/check-build-log.py "audit-results/pass${audit_pass}.log"
+          done
       - name: Package source archive
         run: |
           mkdir -p dist
           /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json upstream-overlays.json server-overlays.json
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: NiKSign-unsigned-IPA-${{ matrix.runner }}-pass${{ matrix.audit_pass }}
+          name: NiKSign-unsigned-IPA-macos-15-intel
           path: |
-            dist/NiKSign-unsigned.ipa
+            audit-results/pass1/NiKSign-unsigned.ipa
+            audit-results/pass2/NiKSign-unsigned.ipa
             dist/NiKSign-3.3-source.zip
-            build/binary-info.txt
           if-no-files-found: error
-      - name: Preserve build diagnostics
+      - name: Preserve audit diagnostics
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: NiKSign-build-diagnostics-${{ matrix.runner }}-pass${{ matrix.audit_pass }}
+          name: NiKSign-build-diagnostics-macos-15-intel
           path: |
+            audit-results/*.log
+            audit-results/**/binary-info.txt
             build/build.log
             NiKSign.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           if-no-files-found: ignore

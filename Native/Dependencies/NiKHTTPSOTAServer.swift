@@ -70,9 +70,8 @@ if identity == nil || certificateDER == nil {
 guard let secIdentity = identity else { throw OTAError.identityImportFailed }
 
 let tlsOptions = NWProtocolTLS.Options()
-if let secId = sec_identity_create(secIdentity) {
+guard let secId = sec_identity_create(secIdentity) else { throw OTAError.identityImportFailed }
 sec_protocol_options_set_local_identity(tlsOptions.securityProtocolOptions, secId)
-}
 sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOptions, .TLSv12)
 
 let parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
@@ -98,10 +97,14 @@ break
 }
 }
 }
-newListener.newConnectionHandler = { [weak self] connection in
-Task { @MainActor [weak self] in
-self?.handle(connection: connection)
-}
+newListener.newConnectionHandler = { [weak self, weak newListener] connection in
+    Task { @MainActor [weak self] in
+        guard let self, let newListener, self.listener === newListener else {
+            connection.cancel()
+            return
+        }
+        self.handle(connection: connection)
+    }
 }
 self.listener = newListener
 backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "NiKSign Local OTA") { [weak self] in
@@ -170,7 +173,9 @@ private func handle(connection: NWConnection) {
 private func receiveRequest(connection: NWConnection, buffer: Data) {
     connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384 - buffer.count) { [weak self] data, _, complete, error in
         Task { @MainActor [weak self] in
-            guard let self, error == nil, let data, !data.isEmpty else { connection.cancel(); return }
+            guard let self, self.listener != nil,
+                  self.connections[ObjectIdentifier(connection)] === connection,
+                  error == nil, let data, !data.isEmpty else { connection.cancel(); return }
             var request = buffer
             request.append(data)
             guard let end = request.range(of: Data("\r\n\r\n".utf8)) else {
