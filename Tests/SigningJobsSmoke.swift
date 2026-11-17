@@ -41,7 +41,7 @@ import Foundation
         precondition(reopened.jobs.isEmpty)
         try Data("not json".utf8).write(to: url)
         expectFailure { _ = try NiKSigningJobJournal(url: url) }
-        let preserved = try String(contentsOf: url)
+        let preserved = try String(contentsOf: url, encoding: .utf8)
         precondition(preserved == "not json")
         print("PASS: immutable job snapshot, duplicate rejection, interrupted recovery, failed commit leaves state intact, safe history removal and corrupt journal preservation")
     }

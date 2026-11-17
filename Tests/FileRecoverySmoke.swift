@@ -101,7 +101,7 @@ import Foundation
         expectFailure { _ = try protected.snapshot(file) }
         try Data("corrupt journal".utf8).write(to: index)
         expectFailure { _ = try NiKFileRecoveryStore(directory: backups, editableRoots: [docs]) }
-        try check(try String(contentsOf: index) == "corrupt journal")
+        try check(try String(contentsOf: index, encoding: .utf8) == "corrupt journal")
         print("PASS: SHA256, snapshot/backup, stale edit rejection, restore conflict/retry, permissions, failures at three write boundaries, journal-before-write, root/symlink guards, corrupt backup/index and interrupted recovery")
     }
 }

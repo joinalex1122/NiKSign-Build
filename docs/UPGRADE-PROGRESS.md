@@ -7,7 +7,7 @@ P0 của nhánh codex/niksign-handoff-final còn chờ workflow 44148347210; ch�
 
 | Mốc | Trạng thái | Bằng chứng còn cần |
 |---|---|---|
-| P0 / 10C: 2-pass sạch | Đang chờ runner | Swift/Xcode/IPA thật |
+| P0 / 10C: 2-pass sạch | c7ee74c: build arm64 sạch, audit dừng vì 2 warning trong tests; đã sửa | Chạy đủ 2 pass ở commit mới |
 | P1: job/journal/đầu ra an toàn | Đã viết, chờ kiểm định | SigningJobsSmoke + output ZIP fixtures + build |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
 | P3: 4B tệp + workspace | Chưa triển khai bổ sung | Editors/tab/trash/backup |
@@ -85,3 +85,10 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Thêm DiagnosticsSmoke với sentinel trong options/path/UDID/error/log/digest/ID để phát hiện lộ dữ liệu; fixture giới hạn 1.005 job và NaN/duration bất thường. Nối test vào hai lượt audit.
 - Chưa thực thi test mới vì workspace unavailable; cần Xcode/Swift CI trước khi xác nhận. Báo cáo không thay xác minh trust/cài đặt/hệ thống, không tự khẳng định gate build đã qua. Recovery counts là snapshot đang nạp, chưa báo được tình trạng storage unavailable riêng (cần bổ sung ở controller).
 - Khi khôi phục workspace, merge scripts/audit-ios.sh giữ cả TextDocumentSmoke local và DiagnosticsSmoke remote. NiKSettingsView.swift remote chứa cả 8B và report. Không làm mất editor WIP của mốc 4.
+
+## Sửa gate sau CI thực tế — run 44156319150 / c7ee74c
+
+- macos-15-intel, Xcode 16.4/iPhoneOS18.5: BUILD SUCCEEDED; build/build.log được validator xác nhận zero warning/error. Đóng gói arm64, ZIP CRC, Bundle ID và localizations PASS.
+- Các fixture macOS đã PASS: jobs/migration, certificate compatibility, recovery store, ZIP/output validation, p12 modern/legacy, Keychain TLS identity và mobileconfig, corrupt certificate index. Đây là bằng chứng Apple tốt hơn Linux cho các mốc 1–3.
+- Full pass1 audit bị chặn bởi 2 warning deprecation trong Tests/SigningJobsSmoke.swift:44 và Tests/FileRecoverySmoke.swift:104: String(contentsOf:) cần encoding. Đã đổi sang encoding: .utf8; không tắt cảnh báo.
+- Chưa chạy pass2 vì gate dừng đúng. Không có artifact IPA phát hành ở run này. Cần run lại commit mới gồm 8B + diagnostics; chưa suy diễn từ build c7ee74c sang code mới.
