@@ -178,9 +178,9 @@ private func handle(connection: NWConnection) {
     guard connections.count < 8 else { connection.cancel(); return }
     let id = ObjectIdentifier(connection)
     connections[id] = connection
-    connection.stateUpdateHandler = { [weak self] state in
+    connection.stateUpdateHandler = { [weak self, weak connection] state in
         if case .cancelled = state { Task { @MainActor in self?.connections.removeValue(forKey: id) } }
-        if case .failed = state { connection.cancel() }
+        if case .failed = state { connection?.cancel() }
     }
     connection.start(queue: queue)
     queue.asyncAfter(deadline: .now() + 120) { [weak connection] in connection?.cancel() }

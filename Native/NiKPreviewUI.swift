@@ -653,7 +653,10 @@ struct NiKIPADetail: View {
         .disabled(signing)
         .navigationBarBackButtonHidden(signing)
         .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) } }
-        .onDisappear { if library.items.contains(where: { $0.id == item.id }) { library.save(item) } }
+        .onDisappear {
+            otaServer.stop()
+            if library.items.contains(where: { $0.id == item.id }) { library.save(item) }
+        }
         .alert(t("Lỗi ký IPA", "Signing Error"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
