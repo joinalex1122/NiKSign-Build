@@ -1,3 +1,4 @@
+import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
 import ZIPFoundation
@@ -79,6 +80,7 @@ struct NiKBrand: View {
 struct NiKPreviewRoot: View {
     @AppStorage("nik.mode") private var mode = ""
     @AppStorage("nik.theme") private var theme = "system"
+    @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.certPrompted") private var certPrompted = false
     @StateObject private var library = NiKLibrary.shared
     @StateObject private var certificates = NiKCertificateStore()
@@ -86,6 +88,7 @@ struct NiKPreviewRoot: View {
     @State private var tab = 0
     @State private var prompt = false
     @EnvironmentObject private var appState: AppState
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     private var hasSigner: Bool { mode == "sign" || mode == "both" }
     var body: some View {
         Group {
@@ -93,13 +96,13 @@ struct NiKPreviewRoot: View {
             else {
                 TabView(selection: $tab) {
                     if hasSigner {
-                        NiKLibraryView(library: library, certificates: certificates).tabItem { Label("Ký IPA", systemImage: "signature") }.tag(0)
+                        NiKLibraryView(library: library, certificates: certificates).tabItem { Label(t("Ký IPA", "Sign IPA"), systemImage: "signature") }.tag(0)
                     }
                     if mode != "sign" { NiKHubPreview().tabItem { Label("3105", systemImage: "square.stack.3d.up") }.tag(1) }
                     NavigationStack {
                         NiKFilesHome()
-                    }.tabItem { Label("Tệp", systemImage: "folder") }.tag(2)
-                    settings.tabItem { Label("Cài đặt", systemImage: "gearshape") }.tag(3)
+                    }.tabItem { Label(t("Tệp", "Files"), systemImage: "folder") }.tag(2)
+                    settings.tabItem { Label(t("Cài đặt",, "Settings"), systemImage: "gearshape") }.tag(3)
                 }
             }
         }
@@ -108,10 +111,10 @@ struct NiKPreviewRoot: View {
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
         .onChange(of: library.notice) { _, notice in if !notice.isEmpty && hasSigner { tab = 0 } }
-        .alert("Thêm chứng chỉ ký?", isPresented: $prompt) {
-            Button("Nhập chứng chỉ") { tab = 3 }
-            Button("Để sau", role: .cancel) {}
-        } message: { Text("Quản lý nhiều chứng chỉ tại Cài đặt. Bạn có thể chọn riêng cho từng IPA.") }
+        .alert(t("Thêm chứng chỉ ký?",, "Add Signing Certificate?") isPresented: $prompt) {
+            Button(t("Nhập chứng chỉ", "Import Certificate")) { tab = 3 }
+            Button(t("Để sau", "Later"), role: .cancel) {}
+        } message: { Text(t("Quản lý nhiều chứng chỉ tại Cài đặt. Bạn có thể chọn riêng cho từng IPA.") }, "Manage multiple certificates in Settings. You can choose one for each IPA.")
     }
     private func configure() {
         guard !mode.isEmpty else { return }
@@ -124,13 +127,13 @@ struct NiKPreviewRoot: View {
         VStack(spacing: 22) {
             Spacer(); NiKBrand()
             Text("Chào mừng đến NiKSign").font(.largeTitle.bold()).multilineTextAlignment(.center)
-            Text("Chọn cách bạn muốn sử dụng").foregroundStyle(.secondary)
+            Text(t(("Chọn cách bạn muốn sử dụng"), "Choose how you want to use it").foregroundStyle(.secondary)
             ForEach(["sign", "tools", "both"], id: \.self) { value in
                 Button { choice = value } label: {
                     HStack {
                         Image(systemName: value == "sign" ? "signature" : "square.stack.3d.up").font(.title2)
                         VStack(alignment: .leading) {
-                            Text(value == "sign" ? "Ký IPA" : value == "tools" ? "3105" : "Cả hai").font(.headline)
+                            Text(value == "sign" ? t("Ký IPA", "Sign IPA") : value == "tools" ? "3105" : "Cả hai").font(.headline)
                             Text(value == "sign" ? "Quản lý, tùy chỉnh và ký ứng dụng" : value == "tools" ? "Dự án, ứng dụng và công cụ" : "Đầy đủ tính năng NiKSign").font(.caption).foregroundStyle(.secondary)
                         }; Spacer(); Image(systemName: choice == value ? "checkmark.circle.fill" : "circle")
                     }.padding().background(choice == value ? Color.cyan.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -142,17 +145,7 @@ struct NiKPreviewRoot: View {
         }.padding(24).frame(maxWidth: .infinity).background(Color(uiColor: .systemGroupedBackground))
     }
     private var settings: some View {
-        NavigationStack {
-            Form {
-                Section { HStack { NiKBrand(); VStack(alignment: .leading) { Text("NiKSign").font(.title2.bold()); Text("Bản thử giao diện 3.4").foregroundStyle(.secondary) } } }
-                Section("Trải nghiệm") {
-                    Picker("Chế độ", selection: $mode) { Text("Chỉ ký IPA").tag("sign"); Text("Chỉ 3105").tag("tools"); Text("Cả hai").tag("both") }
-                    Picker("Giao diện", selection: $theme) { Text("Theo hệ thống").tag("system"); Text("Sáng").tag("light"); Text("Tối").tag("dark") }
-                }
-                NavigationLink("Chứng chỉ") { NiKCertificateSettings(store: certificates) }
-                NavigationLink("Giấy phép mã nguồn mở") { NiKLicensesView() }
-                Section("Bản thử") { Text("Bộ ký hiện có đã được nối vào giao diện mới. Trình sửa Mach-O/entitlements và mức nén tùy chọn chưa có trong bản thử này.").font(.footnote) }
-            }.navigationTitle("Cài đặt")
+       let ver = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "3.3.0"; let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "330"; func card<C: View>(@ViewBuilder _ c: () -> C) -> some View { c().padding(14).frame(maxWidth: .infinity, alignment: .leading).background(Color(uiColor: .secondarySystemGroupedBackground)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)) }; func row(_ icon: String, _ color: Color, _ title: String, _ sub: String) -> some View { HStack(spacing: 12) { Image(systemName: icon).font(.title3).foregroundStyle(color).frame(width: 30); VStack(alignment: .leading, spacing: 2) { Text(title).font(.body.weight(.medium)).foregroundStyle(.primary); Text(sub).font(.caption).foregroundStyle(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) } }; return NavigationStack { ScrollView { VStack(spacing: 12) { card { HStack(spacing: 14) { NiKBrand(); VStack(alignment: .leading, spacing: 4) { Text("NiKSign").font(.title2.bold()); Text("\(t("Phiên bản", "Version")) \(ver) (\(build))").font(.caption).foregroundStyle(.secondary) }; Spacer() } }; card { VStack(spacing: 14) { Menu { Button("Tiếng Việt") { language = "vi" }; Button("English") { language = "en" } } label: { row("globe", .blue, t("Ngôn ngữ", "Language"), language == "en" ? "English" : "Tiếng Việt") }; Divider(); Menu { Button(t("Chỉ ký IPA", "Sign IPA only")) { mode = "sign" }; Button(t("Chỉ 3105", "3105 only")) { mode = "tools" }; Button(t("Cả hai", "Both")) { mode = "both" } } label: { row("slider.horizontal.3", .indigo, t("Chế độ", "Mode"), mode == "sign" ? t("Chỉ ký IPA", "Sign IPA only") : mode == "tools" ? t("Chỉ 3105", "3105 only") : t("Cả hai", "Both")) }; Divider(); Menu { Button(t("Theo hệ thống", "System")) { theme = "system" }; Button(t("Sáng", "Light")) { theme = "light" }; Button(t("Tối", "Dark")) { theme = "dark" } } label: { row("paintbrush", .purple, t("Giao diện", "Appearance"), theme == "light" ? t("Sáng", "Light") : theme == "dark" ? t("Tối", "Dark") : t("Theo hệ thống", "System")) } } }; card { NavigationLink { NiKCertificateSettings(store: certificates) } label: { row("signature", .orange, t("Chứng chỉ", "Certificates"), "\(certificates.certificates.count) \(t("chứng chỉ đã lưu", "saved certificates"))") } }; card { VStack(spacing: 14) { Link(destination: URL(string: "https://t.me/nikvn21")!) { row("paperplane.fill", .cyan, t("Kênh Telegram", "Telegram Channel"), t("@nikvn21 · Cộng đồng & cập nhật NiKSign", "@nikvn21 · Community & NiKSign updates")) }; Divider(); Link(destination: URL(string: "https://github.com/joinalex1122/NiKSign-Build")!) { row("globe", .teal, t("Trang web & Mã nguồn", "Website & Source Code"), "github.com/joinalex1122/NiKSign-Build") }; Divider(); NavigationLink { List { Section(t("Sao chép nhanh", "Quick Copy")) { Button { UIPasteboard.general.string = "niksign://" } label: { Label("niksign://", systemImage: "doc.on.doc") }; Button { UIPasteboard.general.string = "threeoneosfive://" } label: { Label("threeoneosfive://", systemImage: "doc.on.doc") } }; Section(t("Hướng dẫn", "Guide")) { Text(t("Dùng niksign:// hoặc threeoneosfive:// để mở nhanh ứng dụng hoặc truyền tệp IPA từ ứng dụng khác.", "Use niksign:// or threeoneosfive:// to quickly open the app or pass IPA files from other apps.")).font(.footnote).foregroundStyle(.secondary) } }.navigationTitle("URL Scheme") } label: { row("link", .green, "URL Scheme", "niksign:// · threeoneosfive://") }; Divider(); NavigationLink { List { Section(t("Trạng thái hiện tại", "Current Status")) { Text(library.notice.isEmpty ? t("Không có thông báo mới", "No recent notices") : library.notice).font(.footnote) }; Section(t("Thư mục tạm", "Temporary Directory")) { Text(FileManager.default.temporaryDirectory.path).font(.caption2).foregroundStyle(.secondary); Button(t("Dọn bộ nhớ đệm", "Clear Cache"), role: .destructive) { let tmp = FileManager.default.temporaryDirectory; (try? FileManager.default.contentsOfDirectory(at: tmp, includingPropertiesForKeys: nil))?.forEach { try? FileManager.default.removeItem(at: $0) } } } }.navigationTitle(t("Nhật ký", "Logs")) } label: { row("text.alignleft", .gray, t("Nhật ký", "Logs"), t("Trạng thái & dọn bộ nhớ đệm", "Status & cache cleanup")) } } }; card { VStack(spacing: 14) { NavigationLink { ScrollView { Text(t("NiKSign xử lý hoàn toàn ngoại tuyến trên thiết bị của bạn. Bạn tự chịu trách nhiệm về chứng chỉ và tệp IPA sử dụng.", "NiKSign processes everything completely offline on your device. You are responsible for the certificates and IPA files you use.")).padding() }.navigationTitle(t("Điều khoản dịch vụ", "Terms of Service")) } label: { row("doc.text.fill", .blue, t("Điều khoản dịch vụ", "Terms of Service"), t("Sử dụng ngoại tuyến trên thiết bị", "Offline on-device usage")) }; Divider(); NavigationLink { ScrollView { Text(t("NiKSign cam kết xử lý ngoại tuyến trên thiết bị, không thu thập, lưu trữ hay gửi dữ liệu cá nhân, chứng chỉ hay tệp IPA lên máy chủ bên ngoài.", "NiKSign is committed to offline on-device processing and does not collect, store, or transmit personal data, certificates, or IPA files to external servers.")).padding() }.navigationTitle(t("Chính sách bảo mật", "Privacy Policy")) } label: { row("lock.shield.fill", .mint, t("Chính sách bảo mật", "Privacy Policy"), t("Cam kết xử lý ngoại tuyến", "Offline processing commitment")) }; Divider(); NavigationLink { NiKLicensesView() } label: { row("doc.plaintext", .secondary, t("Thành phần bên thứ ba và giấy phép", "Third-Party Components & Licenses"), "ZIPFoundation · OpenSSL") } } } }.padding() }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle(t("Cài đặt", "Settings"))
         }
     }
 }
