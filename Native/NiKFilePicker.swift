@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import QuickLook
 
-/// Copy mode asks File Providers to download/materialize the document before returning it.
+/// Copy mode asks File Providers to download/materializer the document before returning it.
 struct NiKFilePicker: UIViewControllerRepresentable {
     var onResult: (Result<URL, Error>) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -32,124 +32,310 @@ struct NiKFilesHome: View {
         let v = AppInfo.versionTuple
         return ExploitSupportPolicy.isSupported(major: v.major, minor: v.minor, patch: v.patch, build: AppInfo.osBuild)
     }
+
     var body: some View {
-        List {
-            Section("Trong NiKSign") {
-                NavigationLink("Tệp đã nhập") { NiKLocalFiles(directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) }
-                NavigationLink("Thư viện IPA") { NiKLocalFiles(directory: NiKLibrary.root) }
-            }
-            Section("Trên thiết bị") {
-                NavigationLink("Tệp hệ thống · Chỉ đọc") { NiKSystemFiles(directory: URL(fileURLWithPath: "/", isDirectory: true)) }
-                NavigationLink("Dữ liệu ứng dụng đã cài") { AppDataBrowserView(tabSession: $session) }
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    NavigationLink {
+                        NiKLocalFiles(directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+                    } label: {
+                        homeCard(
+                            title: "Tệp đã nhập",
+                            subtitle: "Tài liệu và tệp đã nhập vào ứng dụng",
+                            icon: "tray.and.arrow.down.fill",
+                            color: .blue
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        NiKLocalFiles(directory: NiKLibrary.root)
+                    } label: {
+                        homeCard(
+                            title: "Thư viện IPA",
+                            subtitle: "Kho lưu trữ gói IPA cục bộ",
+                            icon: "shippingbox.fill",
+                            color: .orange
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        NiKSystemFiles(directory: URL(fileURLWithPath: "/", isDirectory: true))
+                    } label: {
+                        homeCard(
+                            title: "Tệp hệ thống · Chỉ đọc",
+                            subtitle: "Duyệt hệ thống tệp ở chế độ chỉ đọc",
+                            icon: "internaldrive.fill",
+                            color: .purple
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
+                        AppDataBrowserView(tabSession: $session)
+                    } label: {
+                        homeCard(
+                            title: "Dữ liệu ứng dụng đã cài",
+                            subtitle: "Quản lý và xem dữ liệu ứng dụng",
+                            icon: "app.badge.fill",
+                            color: .green
+                        )
+                    }
+                    .buttonStyle(.plain)
                     .disabled(mode == "sign" || !supported)
-                if mode == "sign" { Text("Bật chế độ 3105 hoặc Cả hai trong Cài đặt để dùng trình duyệt dữ liệu ứng dụng.") }
-                if !supported {
-                    Text("iOS \(AppInfo.osVersion) (\(AppInfo.osBuild)) chưa được bộ 3105 hiện tại hỗ trợ. Dữ liệu riêng của ứng dụng khác vẫn bị iOS giới hạn.")
+                    .opacity((mode == "sign" || !supported) ? 0.45 : 1)
+
+                    if mode == "sign" {
+                        Text("Bật chế độ 3105 hoặc Cả hai trong Cài đặt để dùng trình duyệt dữ liệu ứng dụng.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
+                    if !supported {
+                        Text("Không hỗ trợ trên iOS \(AppInfo.osVersion) (\(AppInfo.osBuild)).")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
                 }
-                Text("Trình duyệt hệ thống chỉ hiển thị đường dẫn được iOS cho phép đọc; không tự cấp thêm quyền.")
-            }.font(.subheadline)
-        }.navigationTitle("Tệp")
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 100)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Tệp")
+        }
+    }
+
+    private func homeCard(title: String, subtitle: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(color.opacity(0.18))
+                    .frame(width: 40, height: 40)
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
     }
 }
 
 struct NiKSystemFiles: View {
     let directory: URL
     @State private var entries: [URL] = []
-    @State private var preview: NiKPreviewDocument?
     @State private var message = ""
     @State private var query = ""
+    @State private var preview: NiKPreviewDocument?
 
-    private var filteredEntries: [URL] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return entries }
-        return entries.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(trimmed) }
+    private var filtered: [URL] {
+        query.isEmpty ? entries : entries.filter { $0.lastPathComponent.localizedCaseInsensitiveContains(query) }
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm dd/MM/yy"
-        return formatter
-    }()
-
     var body: some View {
-        List {
-            Section { Text(directory.path).font(.caption.monospaced()).textSelection(.enabled) }
-            if !message.isEmpty { Section("Không đọc được thư mục") { Text(message); Text("iOS có thể giới hạn quyền truy cập đường dẫn này.") } }
-            ForEach(filteredEntries, id: \.self) { url in
-                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                if isDirectory {
-                    NavigationLink {
-                        NiKSystemFiles(directory: url)
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(url.lastPathComponent)
-                                Text(metadataText(for: url, isDirectory: true))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "folder")
-                        }
-                    }
-                } else {
-                    HStack {
+        ScrollView {
+            LazyVStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Tìm tệp", text: $query)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    if !query.isEmpty {
                         Button {
-                            preview = NiKPreviewDocument(url: url)
+                            query = ""
                         } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(url.lastPathComponent)
-                                    Text(metadataText(for: url, isDirectory: false))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } icon: {
-                                Image(systemName: "doc")
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    Capsule()
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                )
+                .padding(.bottom, 8)
+
+                Text(directory.path)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+
+                if !message.isEmpty {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                        .padding(.bottom, 6)
+                }
+
+                ForEach(filtered, id: \.self) { url in
+                    let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                    if isDir {
+                        NavigationLink {
+                            NiKSystemFiles(directory: url)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 30)
+                                Text(url.lastPathComponent)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
                             }
                         }
-                        Spacer()
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
+                        .buttonStyle(NiKLCSignRowButtonStyle())
+                    } else {
+                        HStack(spacing: 8) {
+                            Button {
+                                preview = NiKPreviewDocument(url: url)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "doc.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 30)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(url.lastPathComponent)
+                                            .font(.body.weight(.medium))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(metadataText(for: url))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .buttonStyle(NiKLCSignRowButtonStyle())
+
+                            ShareLink(item: url) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 34, height: 34)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 100)
         }
-        .buttonStyle(.borderless)
-        .navigationTitle(directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
-        .searchable(text: $query, prompt: "Tìm tệp")
-        .onAppear { reload() }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(directory.path == "/" ? "Tệp hệ thống" : directory.lastPathComponent)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .refreshable { reload() }
+        .onAppear { reload() }
         .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
     }
 
-    private func metadataText(for url: URL, isDirectory: Bool) -> String {
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey])
-        let dateText = values?.contentModificationDate.map { Self.dateFormatter.string(from: $0) } ?? "--:-- --/--/--"
-        if isDirectory {
-            return "\(dateText) • Thư mục"
+    private func metadataText(for url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let size = ByteCountFormatter.string(fromByteCount: Int64(values?.fileSize ?? 0), countStyle: .file)
+        if let date = values?.contentModificationDate {
+            let formatted = DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .short)
+            return "\(size) · \(formatted)"
         }
-        if let fileSize = values?.fileSize {
-            let sizeText = ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
-            return "\(dateText) • \(sizeText)"
-        }
-        return dateText
+        return size
     }
 
     private func reload() {
         do {
             entries = try FileManager.default.contentsOfDirectory(
                 at: directory,
-                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .fileSizeKey]
-            )
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            message = ""
+                includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ).sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+            message = entries.isEmpty ? "Thư mục trống hoặc bị hạn chế sandbox." : ""
         } catch {
             entries = []
             message = error.localizedDescription
         }
+    }
+}
+
+private struct NiKLCSignRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(configuration.isPressed ? Color(uiColor: .secondarySystemGroupedBackground) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(configuration.isPressed ? Color.white.opacity(0.12) : Color.clear, lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
