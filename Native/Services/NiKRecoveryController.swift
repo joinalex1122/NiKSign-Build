@@ -35,9 +35,14 @@ import Combine
         busy = true
         defer { busy = false }
         let store = try await opening.value
-        let record = try await Task.detached { try store.write(data, to: snapshot.url, expectedDigest: snapshot.digest) }.value
-        await refresh()
-        return .init(url: snapshot.url, data: data, digest: record.replacementDigest)
+        do {
+            let record = try await Task.detached { try store.write(data, to: snapshot.url, expectedDigest: snapshot.digest) }.value
+            await refresh()
+            return .init(url: snapshot.url, data: data, digest: record.replacementDigest)
+        } catch {
+            await refresh()
+            throw error
+        }
     }
     func restore(_ id: UUID) async {
         guard !busy else { return }

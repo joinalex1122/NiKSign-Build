@@ -92,3 +92,12 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Các fixture macOS đã PASS: jobs/migration, certificate compatibility, recovery store, ZIP/output validation, p12 modern/legacy, Keychain TLS identity và mobileconfig, corrupt certificate index. Đây là bằng chứng Apple tốt hơn Linux cho các mốc 1–3.
 - Full pass1 audit bị chặn bởi 2 warning deprecation trong Tests/SigningJobsSmoke.swift:44 và Tests/FileRecoverySmoke.swift:104: String(contentsOf:) cần encoding. Đã đổi sang encoding: .utf8; không tắt cảnh báo.
 - Chưa chạy pass2 vì gate dừng đúng. Không có artifact IPA phát hành ở run này. Cần run lại commit mới gồm 8B + diagnostics; chưa suy diễn từ build c7ee74c sang code mới.
+
+## Checkpoint phục hồi mốc 4 qua GitHub
+
+- Đã tái tạo và lưu model/editor/test từ nội dung đã đọc trước khi workspace mất kết nối; nối menu/tap và refresh-on-error ở controller. Không còn phụ thuộc workspace để lấy mã editor.
+- Cùng logic đã PASS Linux (JSON/plist/no-op/fractional date guard), nhưng bản tái tạo + giới hạn XML hiển thị mới cần chạy CI; không gán kết quả Linux cho typecheck UI mới.
+- Giữ cả 8B và diagnostic test trong cùng cây nguồn. scripts/audit-ios.sh chạy cả TextDocumentSmoke và DiagnosticsSmoke.
+- Khi workspace trở lại, giữ một bản diff local để đối chiếu; các file editor local về cơ bản đã có remote. Native/Signer.swift local thêm Zsign.checkSigned vẫn CHƯA đưa vào commit remote này, cần kiểm tra/giữ thay đổi đó riêng.
+- Các file có WIP local không được reset --hard. Fetch remote rồi so sánh/merge; không push đè nhánh remote bằng HEAD local c7ee74c.
+- Mốc 4 chưa hoàn tất 4B: còn tab/favorites/trash/hash UI và typed plist (2C). Gate hai lượt sạch vẫn chưa qua ở commit mới.

@@ -27,6 +27,8 @@ xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Services/NiKFileDi
 /tmp/nik-file-recovery-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Native/Models/NiKFileRecoveryRecord.swift Native/Models/NiKDiagnosticReport.swift Tests/DiagnosticsSmoke.swift -o /tmp/nik-diagnostics-test
 /tmp/nik-diagnostics-test
+xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Models/NiKEditableTextDocument.swift Native/Services/NiKFileDigest.swift Tests/TextDocumentSmoke.swift -o /tmp/nik-text-document-test
+/tmp/nik-text-document-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
