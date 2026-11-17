@@ -161,11 +161,11 @@ struct NiKSignView: View {
                                 HStack(spacing: 8) {
                                     Text(active.certMatchesProvision ? "Khớp Profile" : "Lệch Profile")
                                         .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(active.certMatchesProvision ? .green : .orange)
+                                        .foregroundStyle(active.certMatchesProvision ? Color.green : Color.orange)
                                     if let days = active.daysRemaining {
                                         Text(days >= 0 ? "Còn \(days) ngày" : "Đã hết hạn")
                                             .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(days >= 0 ? .secondary : .red)
+                                            .foregroundStyle(days >= 0 ? Color.secondary : Color.red)
                                     }
                                     Text("\(active.provisionedUDIDs.count) UDID")
                                         .font(.caption2).foregroundStyle(.secondary)
