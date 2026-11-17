@@ -11,7 +11,7 @@ struct ExportDocument: FileDocument {
 
 struct NiKSignView: View {
     var initialURL: URL? = nil
-    @StateObject private var certStore = NiKCertificateStore()
+    @StateObject private var certStore = NiKCertificateStore.shared
     @StateObject private var altSourceStore = NiKAltSourceStore()
     @State private var selectedTab = 1
     @State private var showImporter = false
@@ -170,7 +170,8 @@ struct NiKSignView: View {
                                 }
                             }
                             Button("Xóa bộ chứng chỉ đang chọn", role: .destructive) {
-                                certStore.removeProfile(active)
+                                do { try certStore.removeProfile(active) }
+                                catch { message = error.localizedDescription }
                             }
                             .font(.caption)
                         }

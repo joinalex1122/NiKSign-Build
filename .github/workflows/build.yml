@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15]
+        runner: [macos-15-intel]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     env:
@@ -53,6 +53,8 @@ jobs:
           /tmp/patch-v9-transaction-test
           xcrun swiftc Native/NiKFileImport.swift Vendor/3105/ThreeOneOSFive/helpers/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/file-import-test
           /tmp/file-import-test
+      - name: File manager and certificate ZIP regression tests
+        run: bash scripts/test-file-tools.sh
       - name: Build unsigned arm64 IPA
         run: bash scripts/build-ios.sh
       - name: Package source archive
