@@ -389,7 +389,7 @@ struct NiKLocalFiles: View {
                     }
                 }
             }
-        }.navigationTitle(directory.lastPathComponent == "Documents" ? "Tệp" : directory.lastPathComponent)
+        }.buttonStyle(.borderless).navigationTitle(directory.lastPathComponent == "Documents" ? "Tệp" : directory.lastPathComponent)
         .searchable(text: $query, prompt: "Tìm tệp")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {

@@ -68,7 +68,7 @@ struct NiKSystemFiles: View {
                     HStack { Button { preview = NiKPreviewDocument(url: url) } label: { Label(url.lastPathComponent, systemImage: "doc") }; Spacer(); ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
                 }
             }
-        }.navigationTitle(directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
+        }.buttonStyle(.borderless).navigationTitle(directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent)
         .onAppear { reload() }.refreshable { reload() }
         .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
     }
