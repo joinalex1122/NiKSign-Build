@@ -55,6 +55,8 @@ xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Models/NiKPlistVal
 /tmp/nik-plist-draft-test
 xcrun swiftc Native/Services/NiKPatchContainerAccess.swift Tests/PatchContainerAccessSmoke.swift -o /tmp/nik-patch-access-test
 /tmp/nik-patch-access-test
+xcrun swiftc Native/Services/NiKSignedFileAccess.swift Tests/SignedFileAccessSmoke.swift -o /tmp/nik-signed-file-test
+/tmp/nik-signed-file-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh

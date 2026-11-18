@@ -530,7 +530,7 @@ HStack(alignment: .top) {
 NiKAppIcon(url: item.iconURL, size: 52)
 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 Spacer(minLength: 0)
-if item.signedPath != nil {
+if NiKSignedFileAccess.available(item.signedPath) != nil {
 Text(t("Đã ký", "Signed"))
 .font(.caption2.weight(.semibold))
 .padding(.horizontal, 8)
@@ -573,7 +573,7 @@ Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))
 .padding(.vertical, 2)
 .background(Color.secondary.opacity(0.14), in: Capsule())
 .foregroundStyle(.secondary)
-if item.signedPath != nil {
+if NiKSignedFileAccess.available(item.signedPath) != nil {
 Text(t("Đã ký", "Signed"))
 .font(.caption2.weight(.semibold))
 .padding(.horizontal, 7)
@@ -584,7 +584,7 @@ Text(t("Đã ký", "Signed"))
 }
 }
 Spacer(minLength: 0)
-if item.signedPath != nil {
+if NiKSignedFileAccess.available(item.signedPath) != nil {
     Button {
         installSigned(item)
     } label: {
@@ -604,8 +604,10 @@ Image(systemName: "chevron.right")
 }
 
 private func installSigned(_ item: NiKLibraryItem) {
-    guard let signedPath = item.signedPath else { return }
-    let url = URL(fileURLWithPath: signedPath)
+    guard let url = NiKSignedFileAccess.available(item.signedPath) else {
+        errorMessage = t("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.", "Signed IPA is missing. Restore the file or sign again.")
+        return
+    }
     do {
         guard let bid = item.signedBundleID, !bid.isEmpty,
               let ver = item.signedVersion, !ver.isEmpty,
@@ -714,7 +716,7 @@ struct NiKIPADetail: View {
                     ProgressView(value: activeJob.fraction)
                     Text(activeJob.step).font(.caption).foregroundStyle(.secondary)
                 }
-                if let signedURL {
+                if let signedURL, NiKSignedFileAccess.available(signedURL.path) != nil {
                     signedResultCard(signedURL)
                 }
             }
@@ -758,7 +760,12 @@ struct NiKIPADetail: View {
                 } catch { errorMessage = error.localizedDescription }
             }
         }
-        .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) }; syncCompletedJob() }
+        .sheet(isPresented: $showSigningProgressSheet) {
+            NiKLCSignProgressSheet(job: trackedJob, itemTitle: item.title,
+                onInstall: { url in startHTTPSInstall(for: url) },
+                onClose: { showSigningProgressSheet = false })
+        }
+        .onAppear { signedURL = NiKSignedFileAccess.available(item.signedPath); syncCompletedJob() }
         .onChange(of: completedJob?.id) { _, _ in syncCompletedJob() }
         .onDisappear {
             otaServer.stop()
@@ -968,7 +975,7 @@ struct NiKIPADetail: View {
             }
             .disabled(signDisabled)
 
-            if let readyURL = signedURL ?? item.signedPath.map({ URL(fileURLWithPath: $0) }) {
+            if let readyURL = NiKSignedFileAccess.available(signedURL?.path ?? item.signedPath) {
                 Button {
                     startHTTPSInstall(for: readyURL)
                 } label: {
@@ -1066,6 +1073,9 @@ Label(t("Lưu vào thư mục Tệp", "Save to Files Folder"), systemImage: "fol
 
 private func startHTTPSInstall(for url: URL) {
 do {
+guard NiKSignedFileAccess.available(url.path) != nil else {
+    throw NiKError("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.")
+}
 guard item.signedPath == url.path,
       let bid = item.signedBundleID, !bid.isEmpty,
       let ver = item.signedVersion, !ver.isEmpty,
@@ -1113,7 +1123,8 @@ saveStatusMessage = error.localizedDescription
 }
 
     private var trackedJob: NiKSigningJob? {
-        trackedJobID.flatMap { id in signingQueue.jobs.first { $0.id == id } } ?? activeJob ?? completedJob
+        if let trackedJobID { return signingQueue.jobs.first { $0.id == trackedJobID } }
+        return activeJob
     }
 
     private func sign(autoInstall: Bool = false) async {
@@ -1128,8 +1139,8 @@ saveStatusMessage = error.localizedDescription
             let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: snapshot)
             trackedJobID = job.id
             autoInstallAfterSigning = autoInstall
-            showSigningProgressSheet = true
             try signingQueue.enqueue([job])
+            showSigningProgressSheet = true
         } catch {
             autoInstallAfterSigning = false
             errorMessage = error.localizedDescription
@@ -1138,7 +1149,7 @@ saveStatusMessage = error.localizedDescription
 
     private func syncCompletedJob() {
         guard let artifact = completedJob?.output else { return }
-        signedURL = artifact.ipaURL
+        signedURL = NiKSignedFileAccess.available(artifact.ipaURL.path)
         item.signedPath = artifact.ipaURL.path
         item.signedBundleID = artifact.bundleID
         item.signedVersion = artifact.version
@@ -1160,12 +1171,12 @@ private struct NiKLCSignProgressSheet: View {
     
     private var steps: [(Double, String)] {
         [
-            (0.00, t("1. Chuẩn bị & giải nén IPA", "1. Preparing & Extracting IPA")),
-            (0.18, t("2. Đọc chứng chỉ & hồ sơ", "2. Loading Certificate & Profile")),
-            (0.36, t("3. Cập nhật Info.plist & quyền", "3. Patching Info.plist & Entitlements")),
-            (0.55, t("4. Ký mã thực thi & Frameworks", "4. Signing Binaries & Frameworks")),
-            (0.78, t("5. Đóng gói lại IPA", "5. Repackaging Signed IPA")),
-            (0.95, t("6. Hoàn tất & sẵn sàng cài đặt", "6. Finalizing & Ready to Install"))
+            (0.12, t("1. Kiểm tra khóa và profile", "1. Check key and profile")),
+            (0.30, t("2. Kiểm tra và giải nén IPA", "2. Validate and extract IPA")),
+            (0.50, t("3. Phân tích ứng dụng", "3. Inspect application")),
+            (0.68, t("4. Áp dụng tùy chỉnh", "4. Apply customizations")),
+            (0.84, t("5. Ký với Zsign", "5. Sign with Zsign")),
+            (0.96, t("6. Đóng gói và kiểm tra đầu ra", "6. Package and validate output"))
         ]
     }
 
@@ -1209,6 +1220,9 @@ private struct NiKLCSignProgressSheet: View {
                 .padding()
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
+                if let error = job?.error, !error.isEmpty {
+                    Text(error).font(.footnote).foregroundStyle(.red).textSelection(.enabled)
+                }
                 Spacer()
 
                 if job?.state == .succeeded, let ipaURL = job?.output?.ipaURL {

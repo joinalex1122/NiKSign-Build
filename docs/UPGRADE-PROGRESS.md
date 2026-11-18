@@ -284,3 +284,10 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Không có cơ chế tự cấp quyền sandbox mới: custom Bundle ID có thể mất MHA access, iOS27.2 chưa được xác minh. Không được nói patch apply đã sửa triệt để trên máy thật; cần kiểm tra exact target ID/app đã mở/quyền truy cập và log 3105. Không remap ID gần giống hoặc ghi sang app khác.
 - PatchContainerAccessSmoke Linux PASS (primary/fallback/invalid/denied); FileToolsSmoke Linux PASS gồm missing-profile error và cấu trúc ZIP. SwiftPM Linux còn warning resource PrivacyInfo.xcprivacy của ZIPFoundation; không gọi Linux run zero-warning. Native syntax/source/dependency PASS; Apple gate của code mới pending. Chưa có Garena IPA/chứng chỉ để tái hiện ký thực trên máy.
 - Run44240972874/5f56845 được API kiểm tra completed/success: latest stable CI chứa mốc1–22. Không gán gate đó cho mốc23. Bàn giao Gemini tại BAN-GIAO-GEMINI.md.
+
+## Mốc 24 — rà soát bản mới 28b0ba0/main4fef0b5
+
+- Đồng bộ fast-forward main4fef0b5 (merge PR5), tree trùng 28b0ba0 trên nhánh upgrades. Run44297429836/28b0ba0 completed/success; không gán gate đó cho thay đổi24. Main đã merge tới mốc23 và thay đổi UI người dùng, các đoạn bàn giao nói chưa merge main là lịch sử cũ.
+- Phát hiện showSigningProgressSheet được set nhưng chưa có sheet presentation. Nối modal vào detail, theo dõi đúng jobID, chỉ mở sau enqueue thành công và hiện job.error; sửa các mốc tiến độ theo report() thực của Signer.
+- Kiểm tra đường dẫn IPA đã ký tồn tại trong Documents/Signed, là file IPA thường, không symlink/ngoài root trước hiển thị badge/install và trước OTA. Giữ signedPath để restore có thể dùng lại; không xóa metadata chỉ vì tệp tạm không có.
+- SignedFileAccessSmoke Linux PASS (có file/missing/delete/symlink/outside root); Native parse/source checks PASS. Apple UI/typecheck cần gate mới. Còn cần cải thiện giữ navigation khi đổi tab (switch ZStack mới có thể dựng lại view), xử lý auto-install khi rời detail và xác minh ký/patch/OTA trên thiết bị. Không gọi iOS27.2 system access đã sửa.
