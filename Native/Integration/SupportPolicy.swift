@@ -34,6 +34,13 @@ enum ExploitSupportPolicy {
         return false
     }
 
+    // A compatibility candidate is not permission to run a different backend.
+    // iOS 27.2 was observed working via worse_query, which is not integrated here yet.
+    static func canUseIntegratedLegacyBackend(major: Int, minor: Int, patch: Int, build: String) -> Bool {
+        guard !(major == 27 && minor >= 2) else { return false }
+        return isSupported(major: major, minor: minor, patch: patch, build: build)
+    }
+
     static func isSupported(major: Int, minor: Int, patch: Int, build: String) -> Bool {
         if supportsKernelExploit(major: major, minor: minor, patch: patch) {
             return true

@@ -26,6 +26,10 @@ import Foundation
         let pending = try fm.contentsOfDirectory(atPath: destination.path).filter { $0.hasPrefix(".import-") }
         precondition(pending.isEmpty)
         precondition(ExploitSupportPolicy.isSupported(major: 27, minor: 2, patch: 0, build: "official"))
+        precondition(!ExploitSupportPolicy.canUseIntegratedLegacyBackend(major: 27, minor: 2, patch: 0, build: "24B119"))
+        precondition(ExploitSupportPolicy.canUseIntegratedLegacyBackend(major: 27, minor: 0, patch: 0, build: "24A5355q"))
+        precondition(ExploitSupportPolicy.canUseIntegratedLegacyBackend(major: 18, minor: 7, patch: 1, build: "fixture"))
+        precondition(!ExploitSupportPolicy.canUseIntegratedLegacyBackend(major: 27, minor: 3, patch: 0, build: "future"))
         precondition(!ExploitSupportPolicy.isSupported(major: 27, minor: 3, patch: 0, build: "unknown"))
         precondition(!ExploitSupportPolicy.isSupported(major: 28, minor: 0, patch: 0, build: "unknown"))
         print("PASS: coordinated import, Unicode, duplicate names, same-directory copy, directory/missing/unwritable rejection, cleanup and iOS 27.2 support guard")

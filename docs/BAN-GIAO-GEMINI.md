@@ -12,6 +12,10 @@ Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` tro
 
 Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
 
+## Cập nhật mốc28 — nguồn chênh lệch đã xác định
+
+Người dùng đưa ảnh3105 gốc2.2 Beta1 chạy27.2.0(24B119), backend worse_query/AppGroup Có, không cần ghép đôi hoặcVPN. Đã xác nhận patch gốc làm được trên máy. NiKSign thiếu backend này; không tiếp tục nói “bật Developer Mode” hoặc chỉ đổi SupportPolicy là xong. Đọc3105-27.2-ACCESS-FINDINGS.md. Mốc28 mới thêm chẩn đoán entitlement của app và ngăn chọn sai legacy kernel trên27.2, CHƯA tích hợp worse_query/CHƯA sửa xong patch. Cần AppGroup được provisioning/chữ ký cho phép và container thật; giữ BundleID riêng có thể được, không mặc định buộcMHA hayenterprise cho tuyến mới. Khi portPoC cần giữ cache/journal/recovery, không dọn cache gốc mù.
+
 ## Cập nhật mốc27 — luồng cài và xóa queue
 
 Người dùng xác nhận ký được trên9f28840 (run44328497383 success), nhưng chưa hiện prompt cài. Mốc27 thêm shared installer, URL itms-services:// đúng authority, system HTTPS manifest preflight, hướng dẫn cài public CA profile/full trust localhost qua Safari/Settings, không giả định open URL = cài thành công. Cài từ Saved library/detail/progress và Files/Signed dùng cùng view. Metadata đọc trực tiếp từ IPA nên vẫn cài được sau xóa lịch sử queue. HTTPS service không bị stop theo detail.onDisappear; background expiry vẫn có thể dừng. Cần kiểm thiết bị thật cho flow này.

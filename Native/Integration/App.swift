@@ -122,7 +122,7 @@ class AppState: ObservableObject {
     private var autoRunAttempted = false
 
     var kernelExploitApplicable: Bool {
-        KernelExploit.isApplicable(
+        ExploitSupportPolicy.canUseIntegratedLegacyBackend(
             major: AppInfo.versionTuple.major,
             minor: AppInfo.versionTuple.minor,
             patch: AppInfo.versionTuple.patch,
@@ -152,13 +152,12 @@ class AppState: ObservableObject {
             return
         }
 
-        let applicable = KernelExploit.isApplicable(
-            major: v.major,
-            minor: v.minor,
-            patch: v.patch,
-            build: AppInfo.osBuild
-        )
-        guard applicable else { return }
+        guard kernelExploitApplicable else {
+            if v.major == 27 && v.minor >= 2 {
+                exploitStatus = .unsupported("Cần worse_query và App Group hợp lệ; bộ truy cập này chưa được tích hợp trong NiKSign.")
+            }
+            return
+        }
 
         refreshKernelExploitStatus()
         maybeAutoRunKernelExploit()
@@ -193,6 +192,7 @@ class AppState: ObservableObject {
     }
 
     func runKernelExploitIfNeeded() {
+        guard kernelExploitApplicable else { return }
         refreshKernelExploitStatus()
         guard !kernelExploitRunning,
               !exploitStatus.isSuccess,

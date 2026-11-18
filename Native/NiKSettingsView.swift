@@ -93,6 +93,7 @@ struct NiKSettingsView: View {
                 Divider()
                 NavigationLink { schemes } label: { row("link", .green, "URL Scheme", "niksign:// · threeoneosfive://") }
                 Divider()
+                NavigationLink { NiK3105AccessView() } label: { row("checkmark.shield", .blue, t("Truy cập 3105", "3105 Access"), t("Kiểm tra App Group và bộ truy cập đang có", "Check App Groups and available access backend")) }
                 NavigationLink { NiKDiagnosticsView() } label: { row("stethoscope", .gray, t("Chẩn đoán & Báo cáo", "Diagnostics & Report"), t("Xem trước và xuất trạng thái đã ẩn thông tin riêng", "Preview and export status without private details")) }
             }
         }
