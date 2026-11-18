@@ -50,23 +50,33 @@ import ImageIO
             try FileManager.default.removeItem(at: item.ipaURL)
         }
     }
-    func receive(_ url: URL) async {
-        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return }
-        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return }
+    @discardableResult func receive(_ url: URL, expectedBundleID: String? = nil) async -> Bool {
+        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return false }
+        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return false }
         error = ""
         receiving = true
-        defer { receiving = false }
-        do {
-            let item = try await Task.detached { try Self.importIPA(url) }.value
-            guard save(item) else {
-                try? FileManager.default.removeItem(at: item.ipaURL)
-                if let icon = item.iconURL { try? FileManager.default.removeItem(at: icon) }
-                return
+        var stagedItem: NiKLibraryItem?
+        var committed = false
+        defer {
+            receiving = false
+            if !committed, let stagedItem {
+                try? FileManager.default.removeItem(at: stagedItem.ipaURL)
+                if let icon = stagedItem.iconURL { try? FileManager.default.removeItem(at: icon) }
             }
+        }
+        do {
+            try Task.checkCancellation()
+            let importing = Task.detached { try Self.importIPA(url, expectedBundleID: expectedBundleID) }
+            let item = try await withTaskCancellationHandler(operation: { try await importing.value }, onCancel: { importing.cancel() })
+            stagedItem = item
+            try Task.checkCancellation()
+            guard save(item) else { return false }
+            committed = true
             notice = "Đã nhập \(item.title) vào thư viện IPA."
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
-    nonisolated static func importIPA(_ url: URL) throws -> NiKLibraryItem {
+    nonisolated static func importIPA(_ url: URL, expectedBundleID: String? = nil) throws -> NiKLibraryItem {
         guard url.pathExtension.lowercased() == "ipa" else { throw NiKError("Hãy chọn tệp IPA.") }
         let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -78,20 +88,35 @@ import ImageIO
         guard metadata.count == 1, metadata[0].uncompressedSize <= 1_048_576 else { throw NiKError("Info.plist không hợp lệ.") }
         var data = Data()
         let crc = try zip.extract(metadata[0]) { chunk in
+            try Task.checkCancellation()
             guard data.count + chunk.count <= 1_048_576 else { throw NiKError("Info.plist vượt 1 MB.") }
             data.append(chunk)
         }
         guard crc == metadata[0].checksum,
               let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { throw NiKError("Không đọc được IPA.") }
+        if let expectedBundleID, info["CFBundleIdentifier"] as? String != expectedBundleID {
+            throw NiKError("Bundle ID trong IPA không khớp nguồn; không nhập thư viện.")
+        }
+        try Task.checkCancellation()
         let filename = UUID().uuidString + ".ipa"
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: local, to: root.appendingPathComponent(filename))
+        let ownedIPA = root.appendingPathComponent(filename)
+        let ownedIcon = root.appendingPathComponent(filename + ".png")
+        var completed = false
+        defer {
+            if !completed {
+                try? FileManager.default.removeItem(at: ownedIPA)
+                try? FileManager.default.removeItem(at: ownedIcon)
+            }
+        }
+        try FileManager.default.copyItem(at: local, to: ownedIPA)
         // Icon extraction is optional. Missing/asset-catalog-only icons use the UI fallback.
         let appPath = String(metadata[0].path.dropLast("Info.plist".count))
         let icons = info["CFBundleIcons"] as? [String: Any]
         let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
         let names = primary?["CFBundleIconFiles"] as? [String] ?? info["CFBundleIconFiles"] as? [String] ?? []
         for name in names.reversed() {
+            try Task.checkCancellation()
             let stem = (name as NSString).deletingPathExtension
             var found = false
             for suffix in ["@3x.png", "@2x.png", ".png"] {
@@ -115,6 +140,8 @@ import ImageIO
             }
             if found { break }
         }
+        try Task.checkCancellation()
+        completed = true
         return NiKLibraryItem(title: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? url.deletingPathExtension().lastPathComponent,
             version: info["CFBundleShortVersionString"] as? String ?? "?", bundleID: info["CFBundleIdentifier"] as? String ?? "?", filename: filename)
     }
@@ -562,6 +589,7 @@ Image(systemName: "chevron.right")
     @ViewBuilder
     private var trailingMenu: some View {
         Menu {
+            NavigationLink(t("Nguồn IPA", "IPA Sources")) { NiKSourceLibraryView(library: library) }
             NavigationLink(t("Ký nhiều IPA", "Batch Signing")) { NiKBatchSigningView(library: library, certificates: certificates) }
             NavigationLink(t("Hàng đợi ký", "Signing Queue")) { NiKSigningQueueView(queue: NiKSigningQueue.shared) }
             Button { grid.toggle() } label: {

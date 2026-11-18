@@ -31,7 +31,8 @@ assert 'SecPKCS12Import' in cert_store and 'parseMobileProvision' in cert_store 
 injector = (r/'Native/Dependencies/NiKDylibInjector.swift').read_text()
 assert 'lcLoadDylib' in injector and 'extractDylibsFromDeb' in injector
 altsource = (r/'Native/Dependencies/NiKAltSourceView.swift').read_text()
-assert 'NiKAltSourceStore' in altsource and 'NiKAltSourceFeed' in altsource
+assert 'NiKAltSourceStore' in altsource and 'NiKSourceDownloadService' in altsource
+assert 'struct NiKAltSourceFeed' in (r/'Native/Models/NiKAltSourceModels.swift').read_text()
 v9_engine = (r/'Native/Dependencies/NiKPatchV9Engine.swift').read_text()
 assert '%3105_Overwrite%' in v9_engine and '%3105_MatchPrefix%' in v9_engine and '%3105_Remove%' in v9_engine and 'AppGroup' in v9_engine
 dialer = (r/'Native/Dependencies/NiKDialerService.swift').read_text()

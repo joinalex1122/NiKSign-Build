@@ -14,7 +14,7 @@ Trạng thái hiện tại 2026-11-18: c7ee74c đã build arm64 sạch một lư
 | P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
-| P7: 7B nguồn | Có nền, chưa hoàn tất | Tải tệp/hash/cancel/thư viện |
+| P7: 7B nguồn | Tải stream/hash/cancel/parser đã viết, core/network fixtures PASS | Xcode và luồng nhập thật trên iPhone |
 | 8B: Cơ bản/Nâng cao | Đã viết; chờ Xcode/UI | Persistence và chuyển chế độ trên iPhone |
 | 9B/10C: backup/report/QA | Có nền, chưa hoàn tất | Giao dịch/report/redaction/tests |
 
@@ -111,3 +111,16 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - LibraryIndexSmoke Linux PASS: round-trip Unicode, duplicate/case collision/path rejection, failed/stale writes giữ items, corrupt index giữ byte, xóa index bên ngoài và symlink/dangling symlink.
 - Thêm test vào audit. CI concurrency theo nhánh để các push tiếp theo tự hủy lượt build cũ; connector hiện không cung cấp lệnh cancel nên không hứa đã hủy thủ công các run cũ.
 - Cần tiếp: typecheck/build mới, hoàn tất tab/favorites/trash và typed IPA workspace, patch lifecycle, download feed; bổ sung flag storage unavailable vào diagnostic thay vì chỉ snapshot counts.
+
+## Mốc 8 — 7B nguồn và tải vào thư viện
+
+- Tách metadata/parser khỏi UI, giữ nguồn AltStore/Feather dạng JSON có apps và versions[0]/downloadURL. URL tương đối resolve theo nguồn; tối đa 40 nguồn, 5.000 app/feed, 16 MB JSON, kiểm duplicate IDs/metadata/hash sai. Không tuyên bố hỗ trợ mọi feed.
+- Thay data(for:) / download(from:) không giới hạn bằng HTTP(S) delegate stream ra tệp riêng 0700/0600 (iOS complete protection), tối đa 1 GB IPA. Kiểm Content-Length và byte thực, tối đa 5 redirect, từ chối URL credentials/protocol khác/HTTPS downgrade. Session ephemeral không cookie/credential storage; giữ kiểm TLS của hệ thống.
+- Có tiến độ giới hạn 10 cập nhật/giây, hủy xuyên Task tới URLSession, cleanup staging khi lỗi/hủy; SHA-256 streaming trên Apple, đối chiếu sha256 từ version/app nếu có. SHA-256 không được nguồn cung cấp không phải bằng chứng xác thực nhà phát hành.
+- Nguồn có mục trong menu thư viện; công cụ AltSource cũ cũng dùng luồng này. Chỉ tải/nhập, không tự ký/cài. Hiển thị nhà cung cấp, mô tả, version, size/hash và cảnh báo HTTP; giao diện nguồn Việt/Anh.
+- Nhập dùng cùng NiKLibrary.receive, trả kết quả Bool thật, đối chiếu Bundle ID từ Info.plist trước copy/publish. Cancellation tới import worker và dọn file mới nếu chưa commit; giữ bản gốc. ZIP/CRC/Info.plist được kiểm như nhập thủ công.
+- HTTPDownloadSmoke Linux PASS: HTTP/redirect, limit header/body, empty/500/protocol, progress và hủy giữa luồng, không còn staging sau lỗi. SourceDownloadSmoke Linux PASS: schema, URL tương đối, version/hash, duplicate/protocol/size, tải bytes thật và SHA-256 mismatch cleanup.
+- Fixture mạng dùng Python HTTP server loopback, không mạng ngoài/credentials; nối cả hai vào audit Apple. Native parser + integration/dependency/bash/whitespace PASS; UIKit typecheck/source UI và import IPA thật cần CI/device.
+- Khi app bị hệ thống kết thúc giữa tải, staging tạm chưa được index vào thư viện; chưa có resume tải sau relaunch. Cleanup sau crash dựa trên temp OS, còn cần bổ sung dọn staging cũ có ownership.
+- CI 5229db4 / 44210893692 đã có runner và đang audit. Giữ kết quả này để sửa lỗi, không gọi mốc mới đạt build từ kết quả commit cũ.
+- Còn lại chính: tab/favorites/trash + typed plist/workspace/entitlements/components/diff/undo, patch conflicts/lifecycle/history, OTA/device, diagnostics storage availability và gate 2 lần sạch.
