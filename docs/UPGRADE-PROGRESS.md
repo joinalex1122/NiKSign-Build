@@ -151,3 +151,12 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - FilePropertiesSmoke Linux PASS: metadata Unicode, known digest, directory semantics, giới hạn hash và symlink/outside-root. Thêm audit; UIKit/controller Apple typecheck và thao tác UI cần CI.
 - Mốc 10 đã push 446060385fe4192560c739b14d6a2ad07aba650d vào cả codex/niksign-upgrades và handoff/niksign-upgrade-checkpoints, kích hoạt gate cho các mốc 8–10. Mốc 11 sẽ checkpoint ở handoff trước để giữ runner đang chạy nếu đã có.
 - Tiếp theo ưu tiên 4B: trash/restore không overwrite, bảo vệ file/index/input/component của job đang chạy, clipboard và nền I/O. Chưa có trash; thao tác delete hiện vẫn là xóa trực tiếp, cần sửa trước gọi 4B hoàn tất.
+
+## Mốc 12 — bảo vệ dữ liệu job trước thao tác tệp
+
+- Phát hiện đường xóa/rename/move ở file browser có thể bỏ qua guard Library.remove và tác động input/components của job đang chờ/chạy. Thêm reservation broker MainActor, kiểm giao nhau theo ranh giới path và đường dẫn canonical; thao tác nền giữ lease đến khi I/O kết thúc.
+- Queue enqueue kiểm lease cho cả input và injectedFiles; thao tác tệp kiểm tất cả job chưa terminal. Bảo vệ cả thư mục cha, không chỉ file bằng tên trùng. Không cho raw file browser đổi/xóa vùng IPALibrary quản lý riêng; copy đọc ra ngoài vẫn được phép.
+- Nối guard vào delete/rename/move/copy destination/new folder/unzip, editor/recovery write/restore. Nhập file thông thường chặn thư mục đang có mutation và hướng nhập IPA về thư viện để giữ index nhất quán.
+- FileMutationReservationsSmoke Linux PASS: input/components/ancestor, managed root, leases/release, sibling boundary, root/case/protocol. Nối audit; Native UI integration cần Xcode của code mới.
+- Broker này là nền cho trash/restore ở bước tiếp theo, chưa phải thùng rác. Delete vẫn xóa trực tiếp đối với tệp không bị guard; cần thay sang giao dịch trash và xác nhận permanent delete.
+- Mốc 11 checkpoint 94ec3a24b0ebdffeaea9a01681d8b786e24d787c trên handoff/niksign-upgrade-checkpoints; build branch đang audit 4460603. Không dùng SHA 5229db4 đã sạch để gán PASS cho mốc 8–12.

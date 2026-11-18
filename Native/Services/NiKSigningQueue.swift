@@ -22,6 +22,9 @@ import Combine
     }
 
     func enqueue(_ batch: [NiKSigningJob]) throws {
+        guard !batch.contains(where: { job in ([job.input] + job.options.injectedFiles).contains { NiKFileMutationReservations.shared.isReserved($0) } }) else {
+            throw NiKError("Đầu vào/thành phần của IPA đang được thay đổi. Hãy đợi thao tác tệp hoàn tất trước khi xếp hàng.")
+        }
         guard let journal else { throw NiKError("Không mở được nhật ký công việc. Giữ nguyên tệp để kiểm tra/khôi phục.") }
         guard !batch.contains(where: { job in jobs.contains(where: { $0.libraryID == job.libraryID && !$0.state.isTerminal }) }) else {
             throw NiKError("IPA này đã có công việc đang chờ/chạy.")

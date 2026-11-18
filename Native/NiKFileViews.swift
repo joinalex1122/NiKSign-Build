@@ -564,6 +564,9 @@ private struct NiKFolderDestination: View {
                 Task {
                     do {
                         let source = item.url, destination = directory, copy = isCopy
+                        let target = try NiKFileOperations.child(named: source.lastPathComponent, in: destination)
+                        let lease = try NiKManagedFileAccess.reserve(copy ? [target] : [source, target])
+                        defer { NiKFileMutationReservations.shared.release(lease) }
                         try await Task.detached { try NiKFileOperations.transfer(source, into: destination, copy: copy) }.value
                         onComplete()
                     } catch { errorMessage = error.localizedDescription }

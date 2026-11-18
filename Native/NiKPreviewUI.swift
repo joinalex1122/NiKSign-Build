@@ -1865,7 +1865,11 @@ struct NiKLocalFiles: View {
             Label(t("Chia sẻ", "Share"), systemImage: "square.and.arrow.up")
         }
         Button(role: .destructive) {
-            do { try FileManager.default.removeItem(at: item.url); reload() }
+            do {
+                let lease = try NiKManagedFileAccess.reserve([item.url])
+                defer { NiKFileMutationReservations.shared.release(lease) }
+                try FileManager.default.removeItem(at: item.url); reload()
+            }
             catch { alertMessage = error.localizedDescription }
         } label: {
             Label(t("Xóa", "Delete"), systemImage: "trash")
@@ -1979,6 +1983,8 @@ struct NiKLocalFiles: View {
     private func createFolder() {
         do {
             let target = try NiKFileOperations.child(named: newFolderName, in: directory)
+            let lease = try NiKManagedFileAccess.reserve([target])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
             newFolderName = ""
             reload()
@@ -1989,6 +1995,8 @@ struct NiKLocalFiles: View {
         guard let target = renameTarget else { return }
         do {
             let dest = try NiKFileOperations.child(named: renameText, in: target.url.deletingLastPathComponent())
+            let lease = try NiKManagedFileAccess.reserve([target.url, dest])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             if dest != target.url { try FileManager.default.moveItem(at: target.url, to: dest) }
             renameTarget = nil
             reload()
@@ -1998,7 +2006,11 @@ struct NiKLocalFiles: View {
     private func deleteSelected() {
         var failures: [String] = []
         for item in items where selectedIDs.contains(item.id) {
-            do { try FileManager.default.removeItem(at: item.url); selectedIDs.remove(item.id) }
+            do {
+                let lease = try NiKManagedFileAccess.reserve([item.url])
+                defer { NiKFileMutationReservations.shared.release(lease) }
+                try FileManager.default.removeItem(at: item.url); selectedIDs.remove(item.id)
+            }
             catch { failures.append(item.name + ": " + error.localizedDescription) }
         }
         isSelecting = !selectedIDs.isEmpty
@@ -2013,6 +2025,8 @@ struct NiKLocalFiles: View {
             defer { fileBusy = false }
             do {
                 let dest = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+                let lease = try NiKManagedFileAccess.reserve([dest])
+                defer { NiKFileMutationReservations.shared.release(lease) }
                 try await Task.detached { try NiKArchive.extract(url, to: dest) }.value
                 reload()
             } catch { alertMessage = error.localizedDescription }
@@ -2092,6 +2106,7 @@ private struct SheetModifier: ViewModifier {
                             defer { busy = false }
                             do {
                                 let destination = directory
+                                try NiKManagedFileAccess.validateCreationDirectory(destination)
                                 _ = try await Task.detached { try NiKFileImport.copy(url, into: destination) }.value
                                 onReload()
                             } catch { alertMessage = error.localizedDescription }

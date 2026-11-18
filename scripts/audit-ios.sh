@@ -41,6 +41,8 @@ xcrun swiftc Native/Models/NiKFileBrowserState.swift Tests/FileBrowserStateSmoke
 /tmp/nik-file-browser-test
 xcrun swiftc Native/Models/NiKFileBrowserState.swift Native/Services/NiKFileDigest.swift Native/Models/NiKFileProperties.swift Tests/FilePropertiesSmoke.swift -o /tmp/nik-file-properties-test
 /tmp/nik-file-properties-test
+xcrun swiftc Native/Services/NiKFileMutationReservations.swift Tests/FileMutationReservationsSmoke.swift -o /tmp/nik-file-mutation-test
+/tmp/nik-file-mutation-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh

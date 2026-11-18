@@ -38,6 +38,8 @@ import Combine
         defer { busy = false }
         let store = try await opening.value
         do {
+            let lease = try NiKManagedFileAccess.reserve([snapshot.url])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             let record = try await Task.detached { try store.write(data, to: snapshot.url, expectedDigest: snapshot.digest) }.value
             await refresh()
             return .init(url: snapshot.url, data: data, digest: record.replacementDigest)
@@ -52,6 +54,9 @@ import Combine
         defer { busy = false }
         do {
             let store = try await opening.value
+            guard let record = await Task.detached(operation: { store.history().first { $0.id == id } }).value else { throw NiKError("Không tìm thấy bản khôi phục.") }
+            let lease = try NiKManagedFileAccess.reserve([record.target])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             _ = try await Task.detached { try store.restore(id) }.value
         } catch { message = error.localizedDescription }
         await refresh()
