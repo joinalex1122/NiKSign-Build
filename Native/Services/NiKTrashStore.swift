@@ -264,7 +264,8 @@ final class NiKTrashStore: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard records.contains(where: { $0.id == id }) else { throw failure("Không tìm thấy mục.") }
         try checkEntry(id)
-        _ = try NiKTrashIdentity.read(payload(id))
+        let values = try FileManager.default.attributesOfItem(atPath: payload(id).path)
+        guard let type = values[.type] as? FileAttributeType, type == .typeRegular || type == .typeDirectory else { throw failure("Không xuất symlink hoặc tệp đặc biệt.") }
         return payload(id)
     }
     func backupURL(_ id: UUID) throws -> URL {

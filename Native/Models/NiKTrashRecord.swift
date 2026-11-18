@@ -12,6 +12,11 @@ struct NiKTrashIdentity: Codable, Equatable, Sendable {
               let inode = values[.systemFileNumber] as? NSNumber else {
             throw NiKFileBrowserState.Failure(message: "Không nhận diện được tệp/thư mục thường; không theo symlink.")
         }
+        if type == .typeRegular {
+            guard let links = values[.referenceCount] as? NSNumber, links.uint64Value == 1 else {
+                throw NiKFileBrowserState.Failure(message: "Tệp có nhiều liên kết cứng hoặc chưa xác định được ownership; hãy tạo bản sao riêng trước.")
+            }
+        }
         return .init(device: device.uint64Value, inode: inode.uint64Value, isDirectory: type == .typeDirectory)
     }
 }

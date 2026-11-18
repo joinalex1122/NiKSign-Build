@@ -178,6 +178,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Thêm trashedNeedsIndex và pendingAction để recover không nhầm thao tác purge dở thành backup có thể restore. Prepared/needsReview có thể đối chiếu lại sau khi xử lý xung đột. Case cũ không đủ bằng chứng vẫn giữ để review, không overwrite.
 - Tách NiKTrashLibraryTransaction dùng chung mã production/test: lỗi index removal rollback file, lỗi rollback metadata giữ restoredNeedsIndex; retry idempotent, không ghi đè metadata ID trỏ IPA khác, giữ các tùy chọn mới hơn khi rollback. IndexStore có helper removeForTrash/restoreFromTrash và verify stale data.
 - TrashLibraryTransactionSmoke Linux PASS: normal remove/restore, lỗi trước/sau commit index, pending/retry, newer options, foreign metadata conflicts và chuẩn hóa completion chỉ sau recover durable. Core smoke chạy lại PASS, thêm sparse-file quota 4 GB, per-item >4 GB và review/retry. Sparse fixture không đọc/ghi GB vào RAM.
+- Chặn hardlink thường nhiều ownership trước move; fixture xác nhận giữ nguyên hai liên kết.
 - Export review sao chép sang temp theo tên gốc, giữ backup riêng; không khẳng định tính toàn vẹn nếu record cần review. Nhận diện restore dựa device/inode, không phải full-app backup/migration. Các icon thư viện/IPA đã ký tách riêng chưa có GC khi purge bản gốc; không xóa rộng để dọn rác.
 - Native syntax/source/dependency/bash/whitespace qua. UI/controller/mới pending Apple audit; mốc 13 (1ee6be17) đang chạy build, chưa gán kết quả đó cho mốc 14.
 - Tiếp theo: gate Apple; bổ sung diagnostic cho trash pending states và clipboard/nền I/O, typed IPA workspace (2C), patch lifecycle/conflicts (5C), OTA/device. Chưa tuyên bố toàn lộ trình hoàn tất.
+
+### Kết quả Apple ở mốc 13 trước khi checkpoint mốc 14
+
+- 1ee6be17e68e8eeb9f23ac70ff0e47e69daf6218 / workflow 44216577081: source-checks và job iOS 134507851088 đều success; gate 2 clean audits đã qua.
+- Bản này chứa mốc 11 properties, mốc 12 mutation protection và mốc 13 trash core. Chưa có Trash UI/controller/cross-library metadata transaction của mốc 14, không gán PASS cho mốc 14 từ kết quả này.
+- Khi checkpoint mốc 14 xong, fast-forward nhánh codex/niksign-upgrades và chạy audit mới; giữ các IPA đã xác minh 4460603 để đối chiếu.

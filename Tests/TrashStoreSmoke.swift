@@ -139,6 +139,16 @@ import Foundation
             try check(try Data(contentsOf: index) == data)
         }
         do {
+            let (docs, directory, file) = try fixture("hardlinks")
+            let alias = docs.appendingPathComponent("hardlink.txt")
+            try fm.linkItem(at: file, to: alias)
+            let store = try NiKTrashStore(directory: directory, root: docs)
+            fails { _ = try store.trash(file) }
+            precondition(fm.fileExists(atPath: file.path) && fm.fileExists(atPath: alias.path))
+            try fm.removeItem(at: alias)
+            _ = try store.trash(file)
+        }
+        do {
             let (docs, directory, small) = try fixture("quota")
             let store = try NiKTrashStore(directory: directory, root: docs)
             func sparse(_ name: String, bytes: UInt64) throws -> URL {

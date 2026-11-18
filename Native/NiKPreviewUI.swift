@@ -676,6 +676,8 @@ struct NiKIPADetail: View {
             .padding(.top, 10)
             .padding(.bottom, 96)
         }
+        .disabled(deleting)
+        .overlay { if deleting { ProgressView(t("Đang chuyển vào Thùng rác…", "Moving to Trash…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -714,7 +716,7 @@ struct NiKIPADetail: View {
         .onChange(of: completedJob?.id) { _, _ in syncCompletedJob() }
         .onDisappear {
             otaServer.stop()
-            if library.items.contains(where: { $0.id == item.id }) { library.save(item) }
+            if !deleting && library.items.contains(where: { $0.id == item.id }) { library.save(item) }
         }
         .alert(t("Lỗi ký IPA", "Signing Error"), isPresented: Binding(
             get: { errorMessage != nil },
