@@ -11,7 +11,7 @@ Trạng thái 2026-11-18: 4460603 đã vượt hai lượt clean audit/Xcode và
 | P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
 | P3: 4B tệp + workspace | Tabs/favorites/source qua 446; properties/reservations/trash đã viết; core PASS | Xcode mới + trash UI/device; clipboard/nền I/O |
-| P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
+| P4: 2C IPA chuyên sâu | Typed plist core đã viết/core PASS | UI, workspace/entitlements/components/diff/package |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
 | P7: 7B nguồn | Tải stream/hash/cancel/parser đã viết, core/network fixtures PASS | Xcode và luồng nhập thật trên iPhone |
@@ -188,3 +188,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - 1ee6be17e68e8eeb9f23ac70ff0e47e69daf6218 / workflow 44216577081: source-checks và job iOS 134507851088 đều success; gate 2 clean audits đã qua.
 - Bản này chứa mốc 11 properties, mốc 12 mutation protection và mốc 13 trash core. Chưa có Trash UI/controller/cross-library metadata transaction của mốc 14, không gán PASS cho mốc 14 từ kết quả này.
 - Khi checkpoint mốc 14 xong, fast-forward nhánh codex/niksign-upgrades và chạy audit mới; giữ các IPA đã xác minh 4460603 để đối chiếu.
+
+## Mốc 15 — typed plist engine và semantic diff (chưa nối UI)
+
+- NiKTypedPlistDocument hỗ trợ dictionary/array và String/Int64/UInt64/real/Bool/Data/Date, path có kiểu key/index; replace/insert/remove/append/reorder với mutation atomically vào bản nháp. Gốc không thể xóa, duplicate key/index sai bị từ chối.
+- Giữ binary/XML, no-op trả đúng bytes gốc, encoded round-trip so kiểu/giá trị trước cho lưu. Binary Date có phần lẻ được giữ khi sửa field khác; chọn XML làm mất độ chính xác thì từ chối trước I/O. Cả Unicode literal normalization và dấu zero IEEE của real được phân biệt khi xem thay đổi.
+- Semantic diff theo key/index, preview mặc định 200 và đếm tổng; array diff theo vị trí, không phải LCS tối thiểu. Format conversion có thể không đổi field, UI phải hiển thị riêng.
+- Giới hạn nguồn/output 4 MB, 64 cấp/100.000 node và 8 MB expanded values. Preflight Foundation graph trước tạo Swift tree để tránh bplist lặp reference tới Data/String lớn. Fixture alias là binary plist hợp lệ ~1 MB/20 MB expanded, không chỉ dữ liệu parse lỗi.
+- TypedPlistSmoke Swift Linux PASS: typed CRUD/arrays, giữ Bool/Int64/UInt64/Data/fractional Date, no-op bytes, Unicode và negative zero, failed mutation giữ draft, bounds/expansion guard. Binary serialization sau chỉnh có thể đổi thứ tự dictionary nên test state theo semantic value; không giả bytes deterministic ngoài no-op.
+- Nối audit Apple; chưa có UI mới hoặc workspace IPA hoàn chỉnh. Bước tiếp: tree/scalar editor, review/save qua recovery snapshot, undo draft, export draft; sau đó immutable-source workspace và package/validation.
+- Mốc 14 toàn bộ Trash UI + fix hardlink/deletion được checkpoint ở 4d9b7e25f6642deef9596f7667466afa00bb67c7, nhánh build đang chạy run 44222092235. Mốc 15 chưa thuộc commit đó. Không gán gate cũ cho code mới.

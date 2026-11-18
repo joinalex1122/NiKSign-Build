@@ -47,6 +47,8 @@ xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKLibraryItem.s
 /tmp/nik-trash-store-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKLibraryItem.swift Native/Services/NiKLibraryIndex.swift Native/Models/NiKFileBrowserState.swift Native/Models/NiKTrashRecord.swift Native/Services/NiKTrashStore.swift Native/Services/NiKTrashLibraryTransaction.swift Tests/TrashLibraryTransactionSmoke.swift -o /tmp/nik-trash-library-test
 /tmp/nik-trash-library-test
+xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Models/NiKPlistValue.swift Native/Models/NiKTypedPlistDocument.swift Tests/TypedPlistSmoke.swift -o /tmp/nik-typed-plist-test
+/tmp/nik-typed-plist-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
