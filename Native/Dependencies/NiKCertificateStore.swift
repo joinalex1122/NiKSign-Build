@@ -63,6 +63,8 @@ final class NiKCertificateStore: ObservableObject {
     @Published private(set) var loadFailure: String?
     var recoveryIndexURL: URL { indexURL }
 
+    @Published private(set) var revocationChecks: Set<UUID> = []
+
     private let rootDirectory: URL
     private let indexURL: URL
 
@@ -164,6 +166,26 @@ final class NiKCertificateStore: ObservableObject {
         NiKCertificateKeychain.deletePassword(for: profile.id)
         let folder = rootDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
         if FileManager.default.fileExists(atPath: folder.path) { try FileManager.default.removeItem(at: folder) }
+    }
+
+    func checkRevocation(_ profile: NiKCertificateProfile) async throws {
+        guard loadFailure == nil, !revocationChecks.contains(profile.id),
+              profiles.contains(where: { $0.id == profile.id }) else { return }
+        let credentials = try credentials(for: profile)
+        revocationChecks.insert(profile.id)
+        defer { revocationChecks.remove(profile.id) }
+        let result = try await Task.detached {
+            let data = try Self.readCertificateFile(credentials.p12)
+            let info = try Self.inspectP12(data: data, password: credentials.password)
+            guard info.sha1Hex == profile.sha1Fingerprint else { throw NiKError("Chứng chỉ đã thay đổi; hãy nhập lại.") }
+            return NiKCertificateRevocation.check(der: info.derData)
+        }.value
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id && $0.sha1Fingerprint == profile.sha1Fingerprint }) else { return }
+        var updated = profiles
+        updated[index].revocationStatus = result
+        updated[index].revocationCheckedAt = Date()
+        try persist(updated)
+        profiles = updated
     }
 
     private func loadProfiles() throws {

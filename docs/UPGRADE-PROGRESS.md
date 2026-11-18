@@ -237,3 +237,10 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Bundle/profile mismatch chuyển thành warning trong assessment dùng chung UI và Signer backend; không chặn nút ký hoặc preflight chỉ vì ID khác profile. Không tự đổi Bundle ID. Đổi theo profile vẫn là tùy chọn.
 - Phân biệt tạo chữ ký với cài/chạy: provisioning/trust/entitlements vẫn do iOS kiểm tra. Không cam kết ký mọi IPA mã hóa/hỏng hay bỏ qua quyền hệ thống. Các guard certificate expiry/credentials/profile validity hiện hữu giữ nguyên.
 - Fixture xác minh fixed/wildcard mismatch cho phép ký, warning vẫn hiện, certificate expired vẫn chặn. Cần Xcode và thử thiết bị cho commit mới.
+
+## Mốc 19 — trạng thái chứng chỉ và đếm ngược
+
+- Saved Certificates hiển thị countdown cập nhật mỗi phút theo hạn sớm hơn cert/profile, báo dữ liệu thiếu và expired. Ngày dùng ceil giờ, không mặc định profile còn hạn nghĩa là cert tốt.
+- Nút kiểm tra thu hồi dùng Security trust + OCSP require positive response, network fetch, không upload p12/password tới API bên thứ ba; kết quả good chỉ khi trust evaluation thành công, revoked chỉ khi OSStatus certificate revoked, mọi lỗi khác unknown. Check chạy worker; chống trùng mỗi ID, persist state/time và kiểm fingerprint trước cập nhật. Không tự kiểm tra khi mở app. OCSP dùng chứng chỉ công khai và có thể truy vấn responder/issuer.
+- Trạng thái còn mới trong 24h; sau đó hoặc clock rollback chuyển unverified. Không bảo đảm trust/OTA/app entitlement chỉ vì OCSP đạt. Bản lưu cũ decode optional fields không lỗi.
+- Fixture countdown/min-expiry/zero, cache TTL/clock rollback/revoked cùng compatibility PASS trên Linux; Native parse/source/dependency PASS. Security API và SwiftUI cần audit Xcode; chưa có live Apple OCSP/device result.

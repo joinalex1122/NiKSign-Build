@@ -22,14 +22,30 @@ struct NiKCertificateProfile: Codable, Identifiable, Equatable, Sendable {
     var allowsDebugging: Bool?
     var entitlements: [String: NiKPlistValue]?
 
+    enum RevocationStatus: String, Codable, Sendable { case good, revoked, unknown }
+    var revocationStatus: RevocationStatus?
+    var revocationCheckedAt: Date?
+
+    var effectiveExpirationDate: Date? {
+        [expirationDate, certificateExpirationDate].compactMap { $0 }.min()
+    }
+    func remainingSeconds(at now: Date) -> TimeInterval? {
+        effectiveExpirationDate.map { max(0, $0.timeIntervalSince(now)) }
+    }
+    func freshRevocationStatus(at now: Date) -> RevocationStatus {
+        guard let checked = revocationCheckedAt, now >= checked,
+              now.timeIntervalSince(checked) < 86400 else { return .unknown }
+        return revocationStatus ?? .unknown
+    }
+
     var isExpired: Bool {
-        guard let expirationDate else { return false }
-        return expirationDate < Date()
+        guard let effectiveExpirationDate else { return false }
+        return effectiveExpirationDate <= Date()
     }
 
     var daysRemaining: Int? {
-        guard let expirationDate else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: expirationDate).day
+        guard let seconds = remainingSeconds(at: Date()) else { return nil }
+        return Int(ceil(seconds / 86400))
     }
 }
 

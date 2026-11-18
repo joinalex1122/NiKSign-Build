@@ -26,6 +26,18 @@ import Foundation
         precondition(!NiKCertificateCompatibility.bundleMatches(pattern: "com.example.*", bundleID: "com.example"))
         precondition(!NiKCertificateCompatibility.bundleMatches(pattern: "*", bundleID: "*"))
         precondition(NiKCertificateCompatibility.bundleMatches(pattern: "*", bundleID: "com.any.app"))
+        var statusProfile = profile
+        statusProfile.expirationDate = now.addingTimeInterval(172800)
+        statusProfile.certificateExpirationDate = now.addingTimeInterval(3600)
+        precondition(statusProfile.remainingSeconds(at: now) == 3600)
+        precondition(statusProfile.remainingSeconds(at: now.addingTimeInterval(7200)) == 0)
+        precondition(statusProfile.freshRevocationStatus(at: now) == .unknown)
+        statusProfile.revocationStatus = .good; statusProfile.revocationCheckedAt = now
+        precondition(statusProfile.freshRevocationStatus(at: now) == .good)
+        precondition(statusProfile.freshRevocationStatus(at: now.addingTimeInterval(86400)) == .unknown)
+        precondition(statusProfile.freshRevocationStatus(at: now.addingTimeInterval(-1)) == .unknown)
+        statusProfile.revocationStatus = .revoked
+        precondition(statusProfile.freshRevocationStatus(at: now) == .revoked)
         profile.certificateExpirationDate = now.addingTimeInterval(-1)
         precondition(!assess(profile, nil).canSign)
         profile.certificateExpirationDate = now.addingTimeInterval(86400)

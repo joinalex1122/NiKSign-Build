@@ -1136,7 +1136,10 @@ struct NiKCertificateSettings: View {
                     .padding(.vertical, 4)
             } else {
                 ForEach(store.profiles) { profile in
-                    savedProfileRow(profile)
+                    VStack(alignment: .leading, spacing: 8) {
+                        savedProfileRow(profile)
+                        NiKCertificateStatusView(profile: profile, store: store)
+                    }
                 }
             }
         }
