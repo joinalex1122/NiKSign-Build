@@ -43,6 +43,8 @@ xcrun swiftc Native/Models/NiKFileBrowserState.swift Native/Services/NiKFileDige
 /tmp/nik-file-properties-test
 xcrun swiftc Native/Services/NiKFileMutationReservations.swift Tests/FileMutationReservationsSmoke.swift -o /tmp/nik-file-mutation-test
 /tmp/nik-file-mutation-test
+xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKLibraryItem.swift Native/Services/NiKLibraryIndex.swift Native/Models/NiKFileBrowserState.swift Native/Models/NiKTrashRecord.swift Native/Services/NiKTrashStore.swift Tests/TrashStoreSmoke.swift -o /tmp/nik-trash-store-test
+/tmp/nik-trash-store-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh

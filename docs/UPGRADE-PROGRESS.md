@@ -3,11 +3,11 @@
 Phạm vi: 1B 2C 3B 4B 5C 6B 7B 8B 9B 10C. Đặc tả/tiêu chí: APPROVED-UPGRADE-SCOPE.md.
 
 Base: 099f0b087ed537b38ee25e6e6f8041052a78354d. Nhánh: codex/niksign-upgrades.
-Trạng thái 2026-11-18: 5229db4 đã vượt hai lượt clean audit/Xcode và tạo IPA arm64 unsigned; đã tải và kiểm lại cả hai IPA. Chi tiết hash/link: VERIFIED-BUILD-5229db4.md. Các mốc viết sau commit này vẫn cần gate riêng.
+Trạng thái 2026-11-18: 4460603 đã vượt hai lượt clean audit/Xcode và tạo IPA arm64 unsigned; đã tải và kiểm lại cả hai IPA. Chi tiết hash/link: VERIFIED-BUILD-4460603.md. Các mốc 11 trở đi vẫn cần gate riêng.
 
 | Mốc | Trạng thái | Bằng chứng còn cần |
 |---|---|---|
-| P0 / 10C: 2-pass sạch | 5229db4: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 8 trở đi; device |
+| P0 / 10C: 2-pass sạch | 4460603: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 11 trở đi; device |
 | P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
 | P3: 4B tệp + workspace | Backup/editor qua Xcode 5229; tab/favorites/hidden đã viết, core PASS | Xcode tab UI, trash/properties/clipboard, device |
@@ -160,3 +160,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - FileMutationReservationsSmoke Linux PASS: input/components/ancestor, managed root, leases/release, sibling boundary, root/case/protocol. Nối audit; Native UI integration cần Xcode của code mới.
 - Broker này là nền cho trash/restore ở bước tiếp theo, chưa phải thùng rác. Delete vẫn xóa trực tiếp đối với tệp không bị guard; cần thay sang giao dịch trash và xác nhận permanent delete.
 - Mốc 11 checkpoint 94ec3a24b0ebdffeaea9a01681d8b786e24d787c trên handoff/niksign-upgrade-checkpoints; build branch đang audit 4460603. Không dùng SHA 5229db4 đã sạch để gán PASS cho mốc 8–12.
+
+## Mốc 13 — nền tảng trash transaction (CHƯA nối thao tác xóa UI)
+
+- Thêm TrashRecord/TrashIdentity/TrashStore, namespace AppSupport ngoài Documents. Index schema 1, tối đa 8 MB/5.000 records; quota 4 GB và 50.000 mục khi quét thư mục. Di chuyển giữ nguyên inode; journal trước rename, nhận diện metadata thư viện nếu có.
+- Phases trashPrepared/trashed/restorePrepared/restoredNeedsIndex/restored/purgePrepared/purged và aborted/missing/needsReview; recover chỉ đối chiếu filesystem + identity, không tự overwrite đích. Library restore có trạng thái chờ commit index riêng, không tự báo đầy đủ trước cập nhật metadata.
+- Restore không ghi đè file mới, có tạo parent thiếu sau kiểm path; symlink/root/entry guard, NSFileCoordinator cho rename trên Apple. Purge cần explicit confirm, chỉ payload thuộc UUID namespace; dọn lịch sử chỉ trạng thái kết thúc không còn payload.
+- Index hỏng/stale được bảo toàn; backup còn giữ khi gặp trạng thái không rõ. Identity dựa device/inode, nên migration filesystem/backup làm đổi inode cần review, không tự suy đoán dữ liệu đúng. Không gọi đây là cơ chế sao lưu toàn bộ app 9C.
+- TrashStoreSmoke Linux PASS: round-trip, conflict/retry, purge confirmation giữ file mới, journal-before-move, lỗi ở 3 biên trash + 3 biên restore + purge-final, folder/missing parents, symlink/root guards, pending library metadata, corrupt/stale index, clear finished history. Apple test được nối audit, chưa chạy.
+- Chưa có controller/Trash UI, Library.remove và file delete vẫn cần thay; không nói thùng rác đã dùng được. Bước tiếp theo: reserve paths trên MainActor → backend worker, refresh/recover; lưu snapshot LibraryItem trước move, commit removal index sau move, rollback physical nếu index fail; restore library giữ restoredNeedsIndex tới khi save metadata thành công. Không dùng store.write(Data()) để giả delete.
+- Build 446060385fe4192560c739b14d6a2ad07aba650d / run 44213739009 đã PASS 2 clean audits, gồm fixtures HTTP/source/tab trên macOS, có artifact IPA/source 14388591883. Phạm vi mốc 1–10; mốc 11–13 chưa thuộc bản đã sạch này.
