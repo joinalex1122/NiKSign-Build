@@ -18,6 +18,9 @@ for e in items:
                 value = (r/'Vendor/Zsign'/name).read_bytes()
                 if name == 'src/bundle.cpp':
                     value = value.replace(b'if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', b'if (bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', 1)
+                if name == 'src/common/mach-o.h':
+                    prefix = b'// Use SDK CPU/VM definitions on Apple; portable definitions remain for other hosts.\n#if defined(__APPLE__)\n#include <mach/machine.h>\n#include <mach/vm_prot.h>\n#else\n'
+                    value = value.replace(prefix, b'', 1).replace(b'#endif // NiKSign portable CPU/VM definitions\n\n', b'', 1)
                 assert hashlib.sha256(value).hexdigest() == digest, name
         else:
             assert e['revision'] in config or 'exactVersion: '+e['ref'] in config

@@ -74,3 +74,5 @@ New source additions and build wiring are not yet Xcode/device validated.
 ### Local Zsign correction (2026-11-18)
 
 Zsign is built from Vendor/Zsign at claration/zsign c4ba9da4283031c07efa03bce42c4b8602d22e73 (MIT). One native condition in src/bundle.cpp is corrected so removeProvision=false embeds the selected profile before resource sealing, while true removes it. Original source hashes and the patch description are recorded in Vendor/Zsign/UPSTREAM.json. The MIT license is included in Vendor/Zsign/LICENSE.
+
+The Zsign portable Mach-O header also uses SDK CPU/VM definitions on Apple platforms to avoid duplicate macro definitions; portable definitions remain unchanged on other hosts. Header provenance is recorded separately in UPSTREAM.json.

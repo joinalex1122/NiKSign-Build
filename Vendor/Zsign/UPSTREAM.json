@@ -44,5 +44,11 @@
     "description": "Embed when removal is false, preserving the profile through CodeResources generation.",
     "originalSHA256": "3a2c3c807951394a9ce0ee8d7f4aec0164d3c0b09ec78474b929833b5cce25ab",
     "patchedSHA256": "835418d8581442a2097add826ab5314367665006acf3023b5d7d324445181ea2"
+  },
+  "headerPatch": {
+    "file": "src/common/mach-o.h",
+    "description": "Use mach/machine.h and mach/vm_prot.h on Apple; avoid redefining SDK CPU macros. Portable block unchanged on other hosts.",
+    "originalSHA256": "3ce145df15e3fc2b1267916b23b7e4eb3455950492ed1ef26d10910d1abdb305",
+    "patchedSHA256": "f85285bfda0c3005597aaae95afd46e0841760085fb1091c36867b92ebfe9c82"
   }
 }

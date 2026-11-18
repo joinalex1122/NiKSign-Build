@@ -1,5 +1,10 @@
 #pragma once
 
+// Use SDK CPU/VM definitions on Apple; portable definitions remain for other hosts.
+#if defined(__APPLE__)
+#include <mach/machine.h>
+#include <mach/vm_prot.h>
+#else
 typedef int cpu_type_t;
 typedef int cpu_subtype_t;
 typedef int	vm_prot_t;
@@ -126,6 +131,8 @@ typedef int	vm_prot_t;
 #define CPU_SUBTYPE_ARM64E 			2
 #define CPU_SUBTYPE_ARM64_32_V8		1
 
+
+#endif // NiKSign portable CPU/VM definitions
 
 #define FAT_MAGIC 		0xcafebabe
 #define FAT_CIGAM 		0xbebafeca

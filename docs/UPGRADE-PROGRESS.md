@@ -305,3 +305,9 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Tests/zsign_provisioning_test.py biên dịch NGUYÊN native sources app sẽ dùng, dựng lại bundle.cpp gốc theo hash để tái hiện trước/sau; 12 ca (gốc/sửa × giữ/xóa × exact/wildcard/mismatched ID). Linux PASS: SignFolder chạy trên Mach-O arm64 sở hữu bởi NiKSign, profile binary có NUL, stale old profile được thay, resources hash2 khớp SHA256, original source bytes/Bundle ID không đổi. Đây là ad-hoc signature fixture, KHÔNG chứng minh Apple CMS/trust/install của chứng chỉ người dùng. Trên macOS fixture được compile arm64 bằng xcrun; nối test vào cả hai clean audits. Host C++ được compile với -Werror, không suppress compiler warnings.
 - Queue catch lấy lại bản job đã nhận progress trước khi ghi failed/cancelled, tránh fraction quay về0 như ảnh.
 - Native syntax/source/dependency/IPA fixtures/local package manifest PASS. Code mới cần Xcode gate và thử ký lại Garena trên thiết bị. Không tuyên bố mọi IPA cài được hoặc quyền sandbox được sửa bởi thay đổi này.
+
+## Mốc26 — sửa warning header Zsign trên Apple
+
+- Run44316629382/54741c3: native before/after provisioning regression PASS lúc14:09:27 UTC, BUILD SUCCEEDED lúc14:29:39 UTC. QA fail vì CPU_TYPE/CPU_SUBTYPE macro redefined trong local mach-o.h, không phải thất bại regression profile. Chưa gọi gate hai lượt thành công.
+- Trên Apple dùng mach/machine.h và mach/vm_prot.h; chỉ giữ block portable CPU/VM definitions cho non-Apple. Không suppress warning, không đổi QA gate. UPSTREAM/header provenance và vendor hash cập nhật; check-dependencies hoàn nguyên patch để kiểm hash gốc.
+- Native regression thêm Apple header include-order checks cả SDK→portable và portable→SDK, compile với -Werror. Cần audit Xcode mới để xác nhận không còn diagnostics.

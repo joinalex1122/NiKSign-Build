@@ -36,6 +36,11 @@ def main():
         else:
             flags += shlex.split(subprocess.check_output(['pkg-config', '--cflags', 'openssl'], text=True))
             libraries = shlex.split(subprocess.check_output(['pkg-config', '--libs', 'openssl'], text=True))
+        if sys.platform == 'darwin':
+            for headers in [['<mach/machine.h>', '<mach/vm_prot.h>', '"mach-o.h"'], ['"mach-o.h"', '<mach/machine.h>', '<mach/vm_prot.h>']]:
+                text = '\n'.join('#include ' + header for header in headers)
+                text += '\nstatic_assert(CPU_TYPE_ARM64 == (CPU_TYPE_ARM | CPU_ARCH_ABI64), "CPU type");\n'
+                subprocess.run(compiler + flags + ['-fsyntax-only', '-x', 'c++', '-'], input=text, text=True, check=True)
         sources = [VENDOR/'src'/name for name in ['archo.cpp','macho.cpp','openssl.cpp','signing.cpp']]
         sources += [VENDOR/'src/common'/name for name in ['base64.cpp','fs.cpp','json.cpp','log.cpp','sha.cpp','timer.cpp','util.cpp']]
         sources += [ROOT/'Tests/ZsignProvisioning/main.cpp']
