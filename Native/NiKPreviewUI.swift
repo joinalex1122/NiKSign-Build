@@ -4,17 +4,6 @@ import UniformTypeIdentifiers
 import ZIPFoundation
 import ImageIO
 
-struct NiKLibraryItem: Codable, Identifiable {
-    var id = UUID()
-    var title: String
-    var version: String
-    var bundleID: String
-    var filename: String
-    var certificateID: UUID?
-    var options = NiKSigningOptions()
-    var signedPath: String?
-}
-
 @MainActor final class NiKLibrary: ObservableObject {
     @Published var items: [NiKLibraryItem] = []
     @Published var error = ""
@@ -22,50 +11,74 @@ struct NiKLibraryItem: Codable, Identifiable {
     nonisolated static var root: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("IPALibrary") }
     @Published var receiving = false
     @Published var notice = ""
+    @Published private(set) var loadFailure: String?
+    private var indexStore: NiKLibraryIndexStore?
+    var recoveryIndexURL: URL { index }
     private var index: URL { Self.root.appendingPathComponent("library.json") }
     init() {
         do {
             try FileManager.default.createDirectory(at: Self.root, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: index.path) { items = try JSONDecoder().decode([NiKLibraryItem].self, from: Data(contentsOf: index)) }
-        } catch { self.error = error.localizedDescription }
+            guard try Self.root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                throw NiKError("Thư mục thư viện không được là symlink.")
+            }
+            let store = try NiKLibraryIndexStore(url: index)
+            indexStore = store; items = store.items
+        } catch { self.error = error.localizedDescription; loadFailure = error.localizedDescription }
     }
     @discardableResult func save(_ item: NiKLibraryItem) -> Bool {
+        guard let indexStore else { error = loadFailure ?? "Không mở được index thư viện; giữ nguyên để khôi phục."; return false }
         var updated = items
         if let i = updated.firstIndex(where: { $0.id == item.id }) { updated[i] = item }
         else { updated.insert(item, at: 0) }
         do {
-            try JSONEncoder().encode(updated).write(to: index, options: .atomic)
+            try indexStore.commit(updated)
             items = updated
             error = ""
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
-    func remove(_ item: NiKLibraryItem) throws {
-        let updated = items.filter { $0.id != item.id }
-        let data = try JSONEncoder().encode(updated)
-        // Commit the index before publishing the changed list.
-        try data.write(to: index, options: .atomic)
-        items = updated
-        if FileManager.default.fileExists(atPath: item.ipaURL.path) {
-            try FileManager.default.removeItem(at: item.ipaURL)
-        }
+    func remove(_ item: NiKLibraryItem) async throws {
+        guard indexStore != nil else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
+        guard let stored = items.first(where: { $0.id == item.id }) else { throw NiKError("Không còn IPA này trong thư viện.") }
+        guard !NiKSigningQueue.shared.jobs.contains(where: { $0.libraryID == stored.id && !$0.state.isTerminal }) else { throw NiKError("Hãy hủy hoặc hoàn tất công việc ký trước khi xóa IPA này.") }
+        do { try await NiKTrashController.shared.removeLibraryItem(stored) }
+        catch { self.error = error.localizedDescription; throw error }
     }
-    func receive(_ url: URL) async {
-        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return }
+    func commitTrashRemoval(_ snapshot: NiKLibraryItem) throws {
+        guard let indexStore else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
+        try indexStore.removeForTrash(snapshot); items = indexStore.items
+    }
+    func commitTrashRestoration(_ snapshot: NiKLibraryItem) throws {
+        guard let indexStore else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
+        try indexStore.restoreFromTrash(snapshot); items = indexStore.items
+    }
+    @discardableResult func receive(_ url: URL, expectedBundleID: String? = nil) async -> Bool {
+        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return false }
+        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return false }
         error = ""
         receiving = true
-        defer { receiving = false }
-        do {
-            let item = try await Task.detached { try Self.importIPA(url) }.value
-            guard save(item) else {
-                try? FileManager.default.removeItem(at: item.ipaURL)
-                if let icon = item.iconURL { try? FileManager.default.removeItem(at: icon) }
-                return
+        var stagedItem: NiKLibraryItem?
+        var committed = false
+        defer {
+            receiving = false
+            if !committed, let stagedItem {
+                try? FileManager.default.removeItem(at: stagedItem.ipaURL)
+                if let icon = stagedItem.iconURL { try? FileManager.default.removeItem(at: icon) }
             }
+        }
+        do {
+            try Task.checkCancellation()
+            let importing = Task.detached { try Self.importIPA(url, expectedBundleID: expectedBundleID) }
+            let item = try await withTaskCancellationHandler(operation: { try await importing.value }, onCancel: { importing.cancel() })
+            stagedItem = item
+            try Task.checkCancellation()
+            guard save(item) else { return false }
+            committed = true
             notice = "Đã nhập \(item.title) vào thư viện IPA."
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
-    nonisolated static func importIPA(_ url: URL) throws -> NiKLibraryItem {
+    nonisolated static func importIPA(_ url: URL, expectedBundleID: String? = nil) throws -> NiKLibraryItem {
         guard url.pathExtension.lowercased() == "ipa" else { throw NiKError("Hãy chọn tệp IPA.") }
         let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -77,20 +90,35 @@ struct NiKLibraryItem: Codable, Identifiable {
         guard metadata.count == 1, metadata[0].uncompressedSize <= 1_048_576 else { throw NiKError("Info.plist không hợp lệ.") }
         var data = Data()
         let crc = try zip.extract(metadata[0]) { chunk in
+            try Task.checkCancellation()
             guard data.count + chunk.count <= 1_048_576 else { throw NiKError("Info.plist vượt 1 MB.") }
             data.append(chunk)
         }
         guard crc == metadata[0].checksum,
               let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { throw NiKError("Không đọc được IPA.") }
+        if let expectedBundleID, info["CFBundleIdentifier"] as? String != expectedBundleID {
+            throw NiKError("Bundle ID trong IPA không khớp nguồn; không nhập thư viện.")
+        }
+        try Task.checkCancellation()
         let filename = UUID().uuidString + ".ipa"
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: local, to: root.appendingPathComponent(filename))
+        let ownedIPA = root.appendingPathComponent(filename)
+        let ownedIcon = root.appendingPathComponent(filename + ".png")
+        var completed = false
+        defer {
+            if !completed {
+                try? FileManager.default.removeItem(at: ownedIPA)
+                try? FileManager.default.removeItem(at: ownedIcon)
+            }
+        }
+        try FileManager.default.copyItem(at: local, to: ownedIPA)
         // Icon extraction is optional. Missing/asset-catalog-only icons use the UI fallback.
         let appPath = String(metadata[0].path.dropLast("Info.plist".count))
         let icons = info["CFBundleIcons"] as? [String: Any]
         let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
         let names = primary?["CFBundleIconFiles"] as? [String] ?? info["CFBundleIconFiles"] as? [String] ?? []
         for name in names.reversed() {
+            try Task.checkCancellation()
             let stem = (name as NSString).deletingPathExtension
             var found = false
             for suffix in ["@3x.png", "@2x.png", ".png"] {
@@ -114,6 +142,8 @@ struct NiKLibraryItem: Codable, Identifiable {
             }
             if found { break }
         }
+        try Task.checkCancellation()
+        completed = true
         return NiKLibraryItem(title: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? url.deletingPathExtension().lastPathComponent,
             version: info["CFBundleShortVersionString"] as? String ?? "?", bundleID: info["CFBundleIdentifier"] as? String ?? "?", filename: filename)
     }
@@ -195,16 +225,17 @@ struct NiKPreviewRoot: View {
         NiKSettingsView(certificates: certificates, library: library)
     }
     private var activeTabView: some View {
-        TabView(selection: $tab) {
-            if hasSigner {
+        ZStack {
+            switch tab {
+            case 0:
                 NiKLibraryView(library: library, certificates: certificates)
-                    .tag(0).toolbar(.hidden, for: .tabBar)
+            case 1:
+                NiKHubPreview()
+            case 2:
+                NiKFilesHome()
+            default:
+                settings
             }
-            if mode != "sign" {
-                NiKHubPreview().tag(1).toolbar(.hidden, for: .tabBar)
-            }
-            NiKFilesHome().tag(2).toolbar(.hidden, for: .tabBar)
-            settings.tag(3).toolbar(.hidden, for: .tabBar)
         }
     }
 
@@ -322,6 +353,7 @@ struct NiKCardPressButtonStyle: ButtonStyle {
 
 
 struct NiKLibraryView: View {
+    @StateObject private var otaServer = NiKHTTPSOTAServer()
     @AppStorage("nik.libraryGrid") private var grid = false
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
@@ -344,6 +376,10 @@ struct NiKLibraryView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    if let failure = library.loadFailure {
+                        Text(failure).font(.footnote).foregroundStyle(.red)
+                        ShareLink(t("Xuất index để khôi phục", "Export Index for Recovery"), item: library.recoveryIndexURL)
+                    }
                     searchBarCard
                     certificateBannerCard
                     libraryListCard
@@ -477,8 +513,9 @@ struct NiKLibraryView: View {
         NavigationLink {
             NiKIPADetail(item: item, library: library, certificates: certificates)
         } label: {
-if grid { ipaGridCard(item) } else { ipaListCard(item) }
-            
+            Group {
+                if grid { ipaGridCard(item) } else { ipaListCard(item) }
+            }
             .padding(14)
             .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -547,15 +584,59 @@ Text(t("Đã ký", "Signed"))
 }
 }
 Spacer(minLength: 0)
+if item.signedPath != nil {
+    Button {
+        installSigned(item)
+    } label: {
+        Text(t("Cài đặt", "Install"))
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.accentColor.opacity(0.16), in: Capsule())
+            .foregroundStyle(Color.accentColor)
+    }
+    .buttonStyle(.borderless)
+}
 Image(systemName: "chevron.right")
 .font(.caption.weight(.semibold))
 .foregroundStyle(.tertiary)
 }
 }
 
+private func installSigned(_ item: NiKLibraryItem) {
+    guard let signedPath = item.signedPath else { return }
+    let url = URL(fileURLWithPath: signedPath)
+    do {
+        guard let bid = item.signedBundleID, !bid.isEmpty,
+              let ver = item.signedVersion, !ver.isEmpty,
+              let title = item.signedDisplayName else {
+            errorMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
+            return
+        }
+        otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
+        try otaServer.start()
+        Task {
+            do {
+                try await otaServer.waitUntilReady()
+                let opened = await otaServer.openInstallURL()
+                if !opened {
+                    errorMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    } catch {
+        errorMessage = error.localizedDescription
+    }
+}
+
     @ViewBuilder
     private var trailingMenu: some View {
         Menu {
+            NavigationLink(t("Nguồn IPA", "IPA Sources")) { NiKSourceLibraryView(library: library) }
+            NavigationLink(t("Ký nhiều IPA", "Batch Signing")) { NiKBatchSigningView(library: library, certificates: certificates) }
+            NavigationLink(t("Hàng đợi ký", "Signing Queue")) { NiKSigningQueueView(queue: NiKSigningQueue.shared) }
             Button { grid.toggle() } label: {
                 Label(grid ? t("Danh sách", "List") : t("Lưới", "Grid"), systemImage: grid ? "list.bullet" : "square.grid.2x2")
             }
@@ -579,21 +660,36 @@ struct NiKIPADetail: View {
     @State var item: NiKLibraryItem
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
+    @ObservedObject private var signingQueue = NiKSigningQueue.shared
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
+    @AppStorage("nik.deviceUDID") private var targetDeviceUDID = ""
     @AppStorage("nik.language") private var language = "vi"
+    @AppStorage("nik.interfaceMode") private var interfaceMode = "basic"
     @Environment(\.dismiss) private var dismiss
 
-    @State private var signing = false
-    @State private var progressText = ""
     @State private var tweakPicker = false
+    @State private var deleting = false
     @State private var signedURL: URL?
     @State private var errorMessage: String?
 @StateObject private var otaServer = NiKHTTPSOTAServer()
 @State private var otaStatusMessage = ""
+    @State private var showSigningProgressSheet = false
+    @State private var trackedJobID: UUID?
+    @State private var autoInstallAfterSigning = false
 @State private var saveStatusMessage = ""
 @State private var mobileConfigShare: NiKOTAShareURL?
 
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+
+    private var activeJob: NiKSigningJob? { signingQueue.jobs.first { $0.libraryID == item.id && !$0.state.isTerminal } }
+    private var completedJob: NiKSigningJob? { signingQueue.jobs.last { $0.libraryID == item.id && $0.state == .succeeded } }
+
+    private var certificateAssessment: NiKCertificateAssessment? {
+        guard let cert = activeCertificate else { return nil }
+        let custom = item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NiKCertificateCompatibility.assess(cert, bundleID: custom.isEmpty ? item.bundleID : custom,
+            deviceUDID: targetDeviceUDID, allowMismatch: item.options.allowCertificateMismatch)
+    }
 
     private var activeCertificate: NiKCertificateProfile? {
         if let id = item.certificateID {
@@ -613,6 +709,11 @@ struct NiKIPADetail: View {
                 certificateCard
                 optionsCard
                 signActionCard
+                NavigationLink(t("Theo dõi hàng đợi ký", "Monitor Signing Queue")) { NiKSigningQueueView(queue: signingQueue) }
+                if let activeJob {
+                    ProgressView(value: activeJob.fraction)
+                    Text(activeJob.step).font(.caption).foregroundStyle(.secondary)
+                }
                 if let signedURL {
                     signedResultCard(signedURL)
                 }
@@ -621,6 +722,8 @@ struct NiKIPADetail: View {
             .padding(.top, 10)
             .padding(.bottom, 96)
         }
+        .disabled(deleting)
+        .overlay { if deleting { ProgressView(t("Đang chuyển vào Thùng rác…", "Moving to Trash…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(item.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -628,10 +731,15 @@ struct NiKIPADetail: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
-                        do { try library.remove(item); dismiss() }
-                        catch { errorMessage = error.localizedDescription }
+                        guard !deleting else { return }
+                        deleting = true
+                        Task {
+                            defer { deleting = false }
+                            do { try await library.remove(item); dismiss() }
+                            catch { errorMessage = error.localizedDescription }
+                        }
                     } label: {
-                        Label(t("Xóa IPA khỏi thư viện", "Remove IPA"), systemImage: "trash")
+                        Label(t("Chuyển IPA vào Thùng rác", "Move IPA to Trash"), systemImage: "trash")
                     }
                 } label: {
                     NiKGlassCircleIcon(systemName: "ellipsis")
@@ -650,10 +758,12 @@ struct NiKIPADetail: View {
                 } catch { errorMessage = error.localizedDescription }
             }
         }
-        .disabled(signing)
-        .navigationBarBackButtonHidden(signing)
-        .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) } }
-        .onDisappear { if library.items.contains(where: { $0.id == item.id }) { library.save(item) } }
+        .onAppear { signedURL = item.signedPath.map { URL(fileURLWithPath: $0) }; syncCompletedJob() }
+        .onChange(of: completedJob?.id) { _, _ in syncCompletedJob() }
+        .onDisappear {
+            otaServer.stop()
+            if !deleting && library.items.contains(where: { $0.id == item.id }) { library.save(item) }
+        }
         .alert(t("Lỗi ký IPA", "Signing Error"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -721,6 +831,33 @@ struct NiKIPADetail: View {
                     }
                 }
                 .pickerStyle(.menu)
+                if let assessment = certificateAssessment {
+                    ForEach(assessment.issues.sorted { $0.severity == .blocking && $1.severity != .blocking }) { issue in
+                        Text(language == "en" ? issue.en : issue.vi).font(.caption)
+                            .foregroundStyle(issue.severity == .blocking ? Color.red : Color.orange)
+                    }
+                }
+                if let certificate = activeCertificate,
+                   certificateAssessment?.issues.contains(where: { $0.code == "bundle.mismatch" }) == true {
+                    Text(t("Bundle ID trong profile: ", "Profile Bundle ID: ") + certificate.bundleIDPattern)
+                        .font(.caption.monospaced()).textSelection(.enabled)
+                    Text(t("NiKSign vẫn ký và giữ nguyên Bundle ID nếu bạn không sửa. Đổi ID bên dưới là tùy chọn; có thể ảnh hưởng đăng nhập, thông báo và nhóm ứng dụng.", "NiKSign can sign and keep the original Bundle ID. Changing it below is optional and can affect sign-in, notifications and app groups."))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !certificate.bundleIDPattern.contains("*") && !certificate.bundleIDPattern.isEmpty {
+                        Button(t("Dùng Bundle ID của profile cho IPA này", "Use the profile Bundle ID for this IPA")) {
+                            item.options.customBundleID = certificate.bundleIDPattern
+                            library.save(item)
+                        }
+                        .disabled(activeJob != nil)
+                    }
+                }
+                if let certificate = activeCertificate {
+                    NavigationLink(t("Phân tích chứng chỉ với IPA này", "Assess Certificate for This IPA")) {
+                        NiKCertificateAssessmentView(profile: certificate,
+                            bundleID: item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? item.bundleID : item.options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+                            allowMismatch: item.options.allowCertificateMismatch)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -729,12 +866,37 @@ struct NiKIPADetail: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private var activeAdvancedOptions: [String] {
+        var result: [String] = []
+        if !item.options.minimumOSVersion.isEmpty { result.append("iOS ≥ " + item.options.minimumOSVersion) }
+        if item.options.enableFileSharing { result.append(t("Chia sẻ tệp", "File sharing")) }
+        if item.options.removeSupportedDevicesRestriction { result.append(t("Bỏ giới hạn thiết bị", "Remove device restriction")) }
+        if item.options.removeExtensions { result.append(t("Gỡ Extensions / Watch", "Remove Extensions / Watch")) }
+        if item.options.weakDylibInjection { result.append("Weak dylib") }
+        if item.options.allowCertificateMismatch { result.append(t("Cho phép cert/profile lệch", "Allow cert/profile mismatch")) }
+        if !item.options.injectedFiles.isEmpty { result.append("\(item.options.injectedFiles.count) " + t("thành phần chèn", "injected components")) }
+        return result
+    }
+
     @ViewBuilder
     private var optionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(t("Tùy chọn chỉnh sửa", "Signing Options"))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(t("Tùy chọn chỉnh sửa", "Signing Options"))
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Button(interfaceMode == "advanced" ? t("Cơ bản", "Basic") : t("Nâng cao", "Advanced")) {
+                    interfaceMode = interfaceMode == "advanced" ? "basic" : "advanced"
+                }.font(.caption.weight(.semibold))
+            }
+            if !activeAdvancedOptions.isEmpty {
+                Text(t("Đang áp dụng: ", "Currently applied: ") + activeAdvancedOptions.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            if interfaceMode != "advanced" {
+                Text(t("Chế độ cơ bản giữ nguyên mọi tùy chọn nâng cao đã lưu. Chuyển Nâng cao để xem hoặc thay đổi.", "Basic mode preserves all saved advanced options. Switch to Advanced to inspect or change them."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             TextField(t("Tên ứng dụng mới (tùy chọn)", "Custom Display Name"), text: $item.options.customDisplayName)
                 .textFieldStyle(.roundedBorder)
             TextField(t("Bundle ID mới (tùy chọn)", "Custom Bundle ID"), text: $item.options.customBundleID)
@@ -743,7 +905,7 @@ struct NiKIPADetail: View {
                 .textFieldStyle(.roundedBorder)
             TextField(t("Phiên bản mới (tùy chọn)", "Custom Version"), text: $item.options.customVersion)
                 .textFieldStyle(.roundedBorder)
-            DisclosureGroup(t("Cấu hình nâng cao", "Advanced Options")) {
+            if interfaceMode == "advanced" {
                 TextField("Minimum iOS", text: $item.options.minimumOSVersion).textFieldStyle(.roundedBorder)
                 Toggle(t("Chia sẻ tệp", "File Sharing"), isOn: $item.options.enableFileSharing)
                 Toggle(t("Bỏ UISupportedDevices", "Remove UISupportedDevices"), isOn: $item.options.removeSupportedDevicesRestriction)
@@ -768,25 +930,61 @@ struct NiKIPADetail: View {
 
     @ViewBuilder
     private var signActionCard: some View {
-        Button {
-            Task { await sign() }
-        } label: {
-            HStack(spacing: 10) {
-                if signing {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: "signature")
+        let signDisabled = activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false
+        VStack(spacing: 10) {
+            Button {
+                Task { await sign(autoInstall: false) }
+            } label: {
+                HStack(spacing: 10) {
+                    if activeJob != nil {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "signature")
+                    }
+                    Text(activeJob != nil ? t("Đang chờ / đang xử lý", "Queued / Processing") : t("Ký IPA ngay", "Sign IPA Now"))
+                        .font(.headline)
                 }
-                Text(signing ? progressText : t("Ký IPA ngay", "Sign IPA Now"))
-                    .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(signDisabled ? Color.gray.opacity(0.45) : Color.accentColor)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(activeCertificate == nil || signing ? Color.gray.opacity(0.45) : Color.accentColor)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .disabled(signDisabled)
+
+            Button {
+                Task { await sign(autoInstall: true) }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "bolt.badge.checkmark.fill")
+                    Text(t("Ký & Cài đặt luôn", "Sign & Install Now"))
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(signDisabled ? Color.gray.opacity(0.45) : Color.green)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .disabled(signDisabled)
+
+            if let readyURL = signedURL ?? item.signedPath.map({ URL(fileURLWithPath: $0) }) {
+                Button {
+                    startHTTPSInstall(for: readyURL)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.down.app.fill")
+                        Text(t("Cài đặt ngay", "Install Now"))
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
         }
-        .disabled(activeCertificate == nil || signing)
     }
 
     @ViewBuilder
@@ -820,7 +1018,7 @@ Text(saveStatusMessage)
         }
         .padding(16)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 .sheet(item: $mobileConfigShare) { share in
 NiKShareSheet(items: [share.url])
                                  }
@@ -868,18 +1066,25 @@ Label(t("Lưu vào thư mục Tệp", "Save to Files Folder"), systemImage: "fol
 
 private func startHTTPSInstall(for url: URL) {
 do {
-let bid = item.options.customBundleID.isEmpty ? item.bundleID : item.options.customBundleID
-let ver = item.options.customVersion.isEmpty ? item.version : item.options.customVersion
-let title = item.options.customDisplayName.isEmpty ? item.title : item.options.customDisplayName
+guard item.signedPath == url.path,
+      let bid = item.signedBundleID, !bid.isEmpty,
+      let ver = item.signedVersion, !ver.isEmpty,
+      let title = item.signedDisplayName else {
+    otaStatusMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
+    return
+}
 otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
 try otaServer.start()
 otaStatusMessage = t("Đang khởi động máy chủ HTTPS OTA...", "Starting HTTPS OTA server...")
-DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-if otaServer.openInstallURL() {
+Task {
+do {
+try await otaServer.waitUntilReady()
+if await otaServer.openInstallURL() {
 otaStatusMessage = t("Đã mở hộp thoại cài đặt OTA.", "Opened OTA install prompt.")
 } else {
 otaStatusMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
 }
+} catch { otaStatusMessage = error.localizedDescription }
 }
 } catch {
 otaStatusMessage = error.localizedDescription
@@ -900,40 +1105,134 @@ otaStatusMessage = error.localizedDescription
 private func saveToDocuments(_ url: URL) {
 do {
 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-let dest = docs.appendingPathComponent(url.lastPathComponent)
-if FileManager.default.fileExists(atPath: dest.path) {
-try FileManager.default.removeItem(at: dest)
-}
-try FileManager.default.copyItem(at: url, to: dest)
+let dest = try NiKFileImport.copy(url, into: docs)
 saveStatusMessage = t("Đã lưu vào Tệp: \(dest.lastPathComponent)", "Saved to Files: \(dest.lastPathComponent)")
 } catch {
 saveStatusMessage = error.localizedDescription
 }
 }
 
-    private func sign() async {
+    private var trackedJob: NiKSigningJob? {
+        trackedJobID.flatMap { id in signingQueue.jobs.first { $0.id == id } } ?? activeJob ?? completedJob
+    }
+
+    private func sign(autoInstall: Bool = false) async {
         guard let cert = activeCertificate else {
-            errorMessage = t("Không đọc được thông tin chứng chỉ.", "Unable to load certificate credentials.")
+            errorMessage = t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate.")
             return
         }
-        library.save(item)
-        signing = true
-        progressText = t("Đang ký IPA...", "Signing IPA...")
-        defer { signing = false }
         do {
-            let credentials = try certificates.credentials(for: cert)
-            let output = try await SigningService.shared.signDetailed(
-                ipa: item.ipaURL,
-                p12: credentials.p12,
-                profile: credentials.provision,
-                password: credentials.password,
-                options: item.options
-            )
-            signedURL = output.ipaURL
-            item.signedPath = output.ipaURL.path
-            library.save(item)
+            guard library.save(item) else { throw NiKError(library.error) }
+            var snapshot = item.options
+            snapshot.targetDeviceUDID = targetDeviceUDID
+            let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: snapshot)
+            trackedJobID = job.id
+            autoInstallAfterSigning = autoInstall
+            showSigningProgressSheet = true
+            try signingQueue.enqueue([job])
         } catch {
+            autoInstallAfterSigning = false
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func syncCompletedJob() {
+        guard let artifact = completedJob?.output else { return }
+        signedURL = artifact.ipaURL
+        item.signedPath = artifact.ipaURL.path
+        item.signedBundleID = artifact.bundleID
+        item.signedVersion = artifact.version
+        item.signedDisplayName = artifact.displayName
+        if autoInstallAfterSigning, let job = completedJob, trackedJobID == nil || job.id == trackedJobID {
+            autoInstallAfterSigning = false
+            startHTTPSInstall(for: artifact.ipaURL)
+        }
+    }
+}
+
+private struct NiKLCSignProgressSheet: View {
+    let job: NiKSigningJob?
+    let itemTitle: String
+    let onInstall: (URL) -> Void
+    let onClose: () -> Void
+    @AppStorage("nik.language") private var language = "vi"
+        private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+    
+    private var steps: [(Double, String)] {
+        [
+            (0.00, t("1. Chuẩn bị & giải nén IPA", "1. Preparing & Extracting IPA")),
+            (0.18, t("2. Đọc chứng chỉ & hồ sơ", "2. Loading Certificate & Profile")),
+            (0.36, t("3. Cập nhật Info.plist & quyền", "3. Patching Info.plist & Entitlements")),
+            (0.55, t("4. Ký mã thực thi & Frameworks", "4. Signing Binaries & Frameworks")),
+            (0.78, t("5. Đóng gói lại IPA", "5. Repackaging Signed IPA")),
+            (0.95, t("6. Hoàn tất & sẵn sàng cài đặt", "6. Finalizing & Ready to Install"))
+        ]
+    }
+
+    private var progress: Double {
+        if job?.state == .succeeded { return 1.0 }
+        return min(max(job?.fraction ?? 0.0, 0.0), 1.0)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                VStack(spacing: 6) {
+                    Text(itemTitle).font(.headline).lineLimit(1)
+                    Text(job?.state == .succeeded ? t("Ký thành công!", "Signing Succeeded!") : (job?.state.isTerminal == true ? t("Ký thất bại", "Signing Failed") : t("Đang ký ứng dụng...", "Signing App...")))
+                        .font(.subheadline)
+                        .foregroundStyle(job?.state == .succeeded ? .green : (job?.state.isTerminal == true ? .red : .secondary))
+                    ProgressView(value: progress).tint(job?.state == .succeeded ? .green : .accentColor)
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { idx, step in
+                        let done = job?.state == .succeeded || (idx < steps.count - 1 ? progress >= steps[idx + 1].0 : progress >= 1.0)
+                        let active = !done && progress >= step.0 && job?.state.isTerminal != true
+                        HStack(spacing: 12) {
+                            if done {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            } else if active {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "circle").foregroundStyle(.tertiary)
+                            }
+                            Text(step.1)
+                                .font(.subheadline.weight(active || done ? .semibold : .regular))
+                                .foregroundStyle(done || active ? .primary : .secondary)
+                            Spacer()
+                        }
+                    }
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Spacer()
+
+                if job?.state == .succeeded, let ipaURL = job?.output?.ipaURL {
+                    Button {
+                        onInstall(ipaURL)
+                    } label: {
+                        Label(t("Cài đặt ngay", "Install Now"), systemImage: "arrow.down.app.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.green)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
+            .padding()
+            .navigationTitle(t("Tiến trình ký", "Signing Progress"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(t("Đóng", "Close"), action: onClose)
+                }
+            }
         }
     }
 }
@@ -970,6 +1269,10 @@ struct NiKCertificateSettings: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if let failure = store.loadFailure {
+                    Text(failure).font(.footnote).foregroundStyle(.red)
+                    ShareLink(t("Xuất index để khôi phục", "Export Index for Recovery"), item: store.recoveryIndexURL)
+                }
                 savedProfilesCard
                 importFilesCard
                 documentsQuickLoadCard
@@ -1016,7 +1319,10 @@ struct NiKCertificateSettings: View {
                     .padding(.vertical, 4)
             } else {
                 ForEach(store.profiles) { profile in
-                    savedProfileRow(profile)
+                    VStack(alignment: .leading, spacing: 8) {
+                        savedProfileRow(profile)
+                        NiKCertificateStatusView(profile: profile, store: store)
+                    }
                 }
             }
         }
@@ -1048,6 +1354,9 @@ struct NiKCertificateSettings: View {
             }
             .buttonStyle(.plain)
 
+            NavigationLink { NiKCertificateAssessmentView(profile: profile) } label: {
+                Image(systemName: "info.circle").padding(8)
+            }.buttonStyle(.plain)
             Button(role: .destructive) {
                 do {
                     try store.removeProfile(profile)
@@ -1383,22 +1692,128 @@ Image(systemName: showPassword ? "eye.slash" : "eye")
     }
 }
 
+private struct NiKSwipeToDeleteRow<Content: View>: View {
+    let itemID: String
+    @Binding var swipedItemID: String?
+    let isDisabled: Bool
+    let deleteTitle: String
+    let onDelete: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var dragOffset: CGFloat = 0
+    private let openOffset: CGFloat = -96
+
+    private var isOpen: Bool {
+        !isDisabled && swipedItemID == itemID
+    }
+
+    private var currentOffset: CGFloat {
+        if isDisabled { return 0 }
+        let base = isOpen ? openOffset : 0
+        return min(0, max(openOffset - 24, base + dragOffset))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if currentOffset < -4 {
+                Button(role: .destructive) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        swipedItemID = nil
+                        dragOffset = 0
+                    }
+                    onDelete()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "trash")
+                            .font(.subheadline.weight(.semibold))
+                        Text(deleteTitle)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(width: 84, height: 38)
+                    .background(
+                        Capsule()
+                            .fill(Color.white)
+                            .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+
+            content()
+                .offset(x: currentOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 16, coordinateSpace: .local)
+                        .onChanged { value in
+                            guard !isDisabled else { return }
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            guard abs(dx) > abs(dy) * 1.25 else { return }
+                            if dx < 0 && swipedItemID != itemID {
+                                swipedItemID = nil
+                            }
+                            dragOffset = dx
+                        }
+                        .onEnded { value in
+                            guard !isDisabled else {
+                                dragOffset = 0
+                                return
+                            }
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            let predicted = value.predictedEndTranslation.width
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                if abs(dx) > abs(dy) * 1.25 {
+                                    if isOpen {
+                                        if dx > 24 || predicted > 40 {
+                                            swipedItemID = nil
+                                        }
+                                    } else {
+                                        if dx < -44 || predicted < -72 {
+                                            swipedItemID = itemID
+                                        }
+                                    }
+                                }
+                                dragOffset = 0
+                            }
+                        }
+                )
+        }
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled {
+                dragOffset = 0
+                if swipedItemID == itemID {
+                    swipedItemID = nil
+                }
+            }
+        }
+    }
+}
+
 struct NiKLocalFiles: View {
-    let directory: URL
-    let title: String
+    private let rootTitle: String
+    @StateObject private var browser: NiKFileBrowserController
+    private var directory: URL { browser.directory }
+    private var title: String { browser.selected.location.components.last ?? rootTitle }
     init(directory: URL, title: String = "Tệp") {
-        self.directory = directory
-        self.title = title
+        rootTitle = title
+        _browser = StateObject(wrappedValue: NiKFileBrowserController(root: directory))
     }
 
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
 
     @State private var items: [NiKFileItem] = []
+    @State private var listingError: String?
+    @State private var visibleAnchor: String?
     @State private var query = ""
     @State private var sort: NiKFilesSort = .name
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
+    @State private var swipedItemID: String?
 
     @State private var importing = false
     @State private var creatingFolder = false
@@ -1406,6 +1821,9 @@ struct NiKLocalFiles: View {
 
     @State private var renameTarget: NiKFileItem?
     @State private var renameText = ""
+    @State private var editorDoc: NiKPreviewDocument?
+    @State private var typedPlistDoc: NiKPreviewDocument?
+    @State private var propertiesDoc: NiKPreviewDocument?
     @State private var folderTarget: NiKFolderTarget?
     @State private var previewDoc: NiKPreviewDocument?
     @State private var hexTarget: NiKPreviewDocument?
@@ -1448,12 +1866,16 @@ struct NiKLocalFiles: View {
             .overlay { if fileBusy { ProgressView("Đang xử lý…").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
             .modifier(applySheets)
             .modifier(applyDialogsAndAlerts)
+            .sheet(item: $editorDoc) { NiKTextEditorView(url: $0.url) }
+            .sheet(item: $typedPlistDoc) { NiKTypedPlistEditorView(url: $0.url) }
+            .sheet(item: $propertiesDoc) { NiKFilePropertiesView(url: $0.url, root: browser.root) }
     }
 
     @ViewBuilder
     private var mainView: some View {
         ScrollView {
             VStack(spacing: 12) {
+                browserControls
                 searchBar
                 if isSelecting {
                     selectionBar
@@ -1464,6 +1886,7 @@ struct NiKLocalFiles: View {
             .padding(.top, 8)
             .padding(.bottom, 96)
         }
+        .scrollPosition(id: $visibleAnchor)
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -1472,7 +1895,57 @@ struct NiKLocalFiles: View {
                 trailingToolbarMenu
             }
         }
-        .onAppear { reload() }
+        .onAppear { loadBrowserTab(); if let message = browser.message { alertMessage = message; browser.message = nil } }
+        .onChange(of: browser.state.selectedID) { oldID, _ in browser.rememberAnchor(visibleAnchor, tabID: oldID); loadBrowserTab() }
+        .onChange(of: browser.selected.location) { _, _ in loadBrowserTab() }
+        .onChange(of: browser.selected.showsHidden) { _, _ in reload() }
+        .onChange(of: browser.message) { _, message in
+            if let message { alertMessage = message; browser.message = nil }
+        }
+        .onChange(of: query) { _, value in
+            let bounded = String(value.prefix(512))
+            if bounded != value { query = bounded }
+            browser.setOptions(query: bounded, sort: sort)
+        }
+        .onChange(of: sort) { _, _ in browser.setOptions(query: query, sort: sort) }
+        .onChange(of: visibleAnchor) { _, anchor in browser.scrollAnchor = anchor }
+        .onChange(of: isSelecting) { _, selecting in if selecting { swipedItemID = nil } }
+    }
+
+    private func loadBrowserTab() {
+        query = browser.selected.query; sort = browser.selected.sort
+        selectedIDs.removeAll(); isSelecting = false; swipedItemID = nil
+        let anchor = browser.scrollAnchor
+        reload()
+        visibleAnchor = anchor
+    }
+
+    private var browserControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(browser.state.tabs) { tab in
+                        Button { browser.select(tab.id) } label: {
+                            Text(tab.location.components.last ?? rootTitle).font(.caption.weight(.semibold)).lineLimit(1)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(tab.id == browser.state.selectedID ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.08), in: Capsule())
+                        }.contextMenu {
+                            Button(t("Đóng tab", "Close Tab"), role: .destructive) { browser.closeTab(tab.id) }.disabled(browser.state.tabs.count == 1)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 16) {
+                Button { browser.travel(-1) } label: { Image(systemName: "chevron.left") }
+                    .disabled(browser.selected.historyIndex == 0).accessibilityLabel(t("Lùi", "Back"))
+                Button { browser.travel(1) } label: { Image(systemName: "chevron.right") }
+                    .disabled(browser.selected.historyIndex + 1 == browser.selected.history.count).accessibilityLabel(t("Tiến", "Forward"))
+                Button { browser.open(browser.root) } label: { Image(systemName: "house") }.accessibilityLabel(t("Thư mục gốc", "Root Folder"))
+                Text(browser.selected.location.components.isEmpty ? rootTitle : browser.selected.location.components.joined(separator: " / "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            }.buttonStyle(.plain)
+        }
     }
 
     @ViewBuilder
@@ -1502,7 +1975,7 @@ struct NiKLocalFiles: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(t("Xóa", "Delete"), role: .destructive) {
+            Button(t("Thùng rác", "Trash"), role: .destructive) {
                 deleteSelected()
             }
             .font(.caption.weight(.semibold))
@@ -1520,7 +1993,14 @@ struct NiKLocalFiles: View {
 
     @ViewBuilder
     private var filesListContent: some View {
-        if filtered.isEmpty {
+        if let listingError {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(t("Không đọc được thư mục", "Unable to Read Folder"), systemImage: "exclamationmark.triangle")
+                Text(listingError).font(.caption).foregroundStyle(.secondary)
+                Button(t("Thử lại", "Retry")) { reload() }
+                Button(t("Về thư mục gốc", "Open Root Folder")) { browser.open(browser.root) }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
+        } else if filtered.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "folder")
                     .font(.system(size: 34))
@@ -1539,17 +2019,29 @@ struct NiKLocalFiles: View {
         } else {
             LazyVStack(spacing: 4) {
                 ForEach(filtered) { item in
-                    rowEntry(item)
+                    NiKSwipeToDeleteRow(
+                        itemID: item.id,
+                        swipedItemID: $swipedItemID,
+                        isDisabled: isSelecting,
+                        deleteTitle: t("Xóa", "Delete"),
+                        onDelete: {
+                            swipedItemID = nil
+                            trashItems([item])
+                        }
+                    ) {
+                       rowEntry(item)
+                    }
+                    .id(item.name)
                 }
-            }
+            }.scrollTargetLayout()
         }
     }
 
     @ViewBuilder
     private func rowEntry(_ item: NiKFileItem) -> some View {
         if item.isDirectory && !isSelecting {
-            NavigationLink {
-                NiKLocalFiles(directory: item.url, title: item.name)
+            Button {
+                browser.open(item.url)
             } label: {
                 rowContent(item)
             }
@@ -1609,6 +2101,17 @@ struct NiKLocalFiles: View {
     @ViewBuilder
     private var trailingToolbarMenu: some View {
         Menu {
+            NavigationLink(t("Thùng rác", "Trash")) { NiKTrashView() }
+            Button(t("Tab mới tại đây", "New Tab Here")) { browser.newTab() }.disabled(browser.state.tabs.count >= 12)
+            Button(t("Đóng tab hiện tại", "Close Current Tab"), role: .destructive) { browser.closeTab(browser.state.selectedID) }.disabled(browser.state.tabs.count == 1)
+            Button(browser.state.favorites.contains(browser.selected.location) ? t("Bỏ yêu thích vị trí", "Unfavorite Location") : t("Yêu thích vị trí", "Favorite Location")) { browser.toggleFavorite() }
+            Menu(t("Vị trí yêu thích", "Favorite Locations")) {
+                ForEach(Array(browser.state.favorites.enumerated()), id: \.offset) { _, location in
+                    Button(location.components.isEmpty ? rootTitle : location.components.joined(separator: " / ")) { browser.openFavorite(location) }
+                }
+            }.disabled(browser.state.favorites.isEmpty)
+            Button(browser.selected.showsHidden ? t("Ẩn tệp ẩn", "Hide Hidden Files") : t("Hiện tệp ẩn", "Show Hidden Files")) { browser.toggleHidden() }
+            Divider()
             Button {
                 importing = true
             } label: {
@@ -1663,11 +2166,12 @@ struct NiKLocalFiles: View {
             } label: {
                 Label(t("Xem trước", "Preview"), systemImage: "eye")
             }
-            Button {
-                hexTarget = NiKPreviewDocument(url: item.url)
-            } label: {
-                Label(t("Xem Hex", "Hex View"), systemImage: "number.square")
-            }
+            Menu {
+                Button(t("Xem Hex", "Hex View")) { hexTarget = NiKPreviewDocument(url: item.url) }
+                Button(t("Thuộc tính & SHA-256", "Properties & SHA-256")) { propertiesDoc = NiKPreviewDocument(url: item.url) }
+            } label: { Label(t("Kiểm tra tệp", "Inspect File"), systemImage: "number.square") }
+        } else {
+            Button(t("Thuộc tính", "Properties")) { propertiesDoc = NiKPreviewDocument(url: item.url) }
         }
         Button {
             renameTarget = item
@@ -1689,10 +2193,9 @@ struct NiKLocalFiles: View {
             Label(t("Chia sẻ", "Share"), systemImage: "square.and.arrow.up")
         }
         Button(role: .destructive) {
-            do { try FileManager.default.removeItem(at: item.url); reload() }
-            catch { alertMessage = error.localizedDescription }
+            trashItems([item])
         } label: {
-            Label(t("Xóa", "Delete"), systemImage: "trash")
+            Label(t("Chuyển vào Thùng rác", "Move to Trash"), systemImage: "trash")
         }
     }
 
@@ -1778,6 +2281,10 @@ struct NiKLocalFiles: View {
             ipaTarget = item
         } else if ext == "p12" || ext == "mobileprovision" {
             startCertImportFromPair(item.url)
+        } else if ext == "plist" {
+            typedPlistDoc = NiKPreviewDocument(url: item.url)
+        } else if ["txt", "text", "json", "mobileconfig", "xml", "yaml", "yml", "md", "log", "csv", "strings", "conf", "cfg", "ini", "js", "css", "html", "swift", "sh"].contains(ext) || ext.isEmpty {
+            editorDoc = NiKPreviewDocument(url: item.url)
         } else {
             previewDoc = NiKPreviewDocument(url: item.url)
         }
@@ -1785,20 +2292,24 @@ struct NiKLocalFiles: View {
 
     private func reload() {
         do {
+            _ = try browser.selected.location.resolve(in: browser.root)
             let urls = try FileManager.default.contentsOfDirectory(at: directory,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey], options: [.skipsHiddenFiles])
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey], options: browser.selected.showsHidden ? [] : [.skipsHiddenFiles])
             items = try urls.compactMap { url in
                 let vals = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey])
                 guard vals.isSymbolicLink != true else { return nil }
                 return NiKFileItem(url: url, name: url.lastPathComponent, isDirectory: vals.isDirectory ?? false,
                     size: Int64(vals.fileSize ?? 0), modifiedAt: vals.contentModificationDate ?? Date())
             }
-        } catch { alertMessage = error.localizedDescription }
+            listingError = nil
+        } catch { items = []; listingError = error.localizedDescription }
     }
 
     private func createFolder() {
         do {
             let target = try NiKFileOperations.child(named: newFolderName, in: directory)
+            let lease = try NiKManagedFileAccess.reserve([target])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
             newFolderName = ""
             reload()
@@ -1809,21 +2320,32 @@ struct NiKLocalFiles: View {
         guard let target = renameTarget else { return }
         do {
             let dest = try NiKFileOperations.child(named: renameText, in: target.url.deletingLastPathComponent())
+            let lease = try NiKManagedFileAccess.reserve([target.url, dest])
+            defer { NiKFileMutationReservations.shared.release(lease) }
             if dest != target.url { try FileManager.default.moveItem(at: target.url, to: dest) }
             renameTarget = nil
             reload()
         } catch { alertMessage = error.localizedDescription }
     }
 
-    private func deleteSelected() {
-        var failures: [String] = []
-        for item in items where selectedIDs.contains(item.id) {
-            do { try FileManager.default.removeItem(at: item.url); selectedIDs.remove(item.id) }
-            catch { failures.append(item.name + ": " + error.localizedDescription) }
+    private func deleteSelected() { trashItems(items.filter { selectedIDs.contains($0.id) }) }
+    private func trashItems(_ targets: [NiKFileItem]) {
+        guard !fileBusy, !targets.isEmpty else { return }
+        fileBusy = true
+        Task {
+            defer { fileBusy = false }
+            var failures: [String] = []
+            for item in targets {
+                do { try await NiKTrashController.shared.trash(item.url); selectedIDs.remove(item.id) }
+                catch { failures.append(item.name + ": " + error.localizedDescription) }
+            }
+            isSelecting = !selectedIDs.isEmpty
+            reload()
+            if !failures.isEmpty {
+                alertMessage = failures.prefix(20).joined(separator: "\n")
+                if failures.count > 20 { alertMessage = (alertMessage ?? "") + "\n+ \(failures.count - 20) " + t("lỗi khác", "more errors") }
+            }
         }
-        isSelecting = !selectedIDs.isEmpty
-        reload()
-        if !failures.isEmpty { alertMessage = failures.joined(separator: "\n") }
     }
 
     private func unzipHere(_ url: URL) {
@@ -1833,6 +2355,8 @@ struct NiKLocalFiles: View {
             defer { fileBusy = false }
             do {
                 let dest = url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent)
+                let lease = try NiKManagedFileAccess.reserve([dest])
+                defer { NiKFileMutationReservations.shared.release(lease) }
                 try await Task.detached { try NiKArchive.extract(url, to: dest) }.value
                 reload()
             } catch { alertMessage = error.localizedDescription }
@@ -1912,6 +2436,7 @@ private struct SheetModifier: ViewModifier {
                             defer { busy = false }
                             do {
                                 let destination = directory
+                                try NiKManagedFileAccess.validateCreationDirectory(destination)
                                 _ = try await Task.detached { try NiKFileImport.copy(url, into: destination) }.value
                                 onReload()
                             } catch { alertMessage = error.localizedDescription }

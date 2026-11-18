@@ -1,0 +1,4 @@
+{
+  "Vendor/GCDWebServer/Core/GCDWebServerFunctions.m": "Native/ServerCompatibility/Core/GCDWebServerFunctions.m",
+  "Vendor/GCDWebServer/Core/GCDWebServerConnection.m": "Native/ServerCompatibility/Core/GCDWebServerConnection.m"
+}

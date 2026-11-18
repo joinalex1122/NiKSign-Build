@@ -6,6 +6,7 @@ struct NiKSettingsView: View {
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.mode") private var mode = "both"
     @AppStorage("nik.theme") private var theme = "system"
+    @AppStorage("nik.interfaceMode") private var interfaceMode = "basic"
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     var body: some View {
         NavigationStack {
@@ -18,7 +19,17 @@ struct NiKSettingsView: View {
                             row("signature", .orange, t("Chứng chỉ", "Certificates"), "\(certificates.profiles.count) " + t("chứng chỉ đã lưu", "saved certificates"))
                         }
                     }
-                    linksCard
+                    card {
+                        NavigationLink { NiKTrashView() } label: {
+                            row("trash", .orange, t("Thùng rác", "Trash"), t("Khôi phục tệp và IPA đã xóa", "Restore Deleted Files and IPAs"))
+                        }
+                    }
+                    card {
+                    NavigationLink { NiKRecoveryHistoryView() } label: {
+                        row("arrow.uturn.backward", .indigo, t("Khôi phục tệp", "File Recovery"), t("Backup và lịch sử chỉnh sửa", "Backups and Edit History"))
+                    }
+                }
+                linksCard
                     legalCard
                 }.padding()
             }
@@ -53,6 +64,15 @@ struct NiKSettingsView: View {
                 } label: { row("slider.horizontal.3", .indigo, t("Chế độ", "Mode"), mode == "sign" ? "IPA" : mode == "tools" ? "3105" : "IPA + 3105") }
                 Divider()
                 Menu {
+                    Button(t("Cơ bản", "Basic")) { interfaceMode = "basic" }
+                    Button(t("Nâng cao", "Advanced")) { interfaceMode = "advanced" }
+                } label: {
+                    row("switch.2", .teal, t("Mức tùy chỉnh", "Customization Level"), interfaceMode == "advanced" ? t("Nâng cao", "Advanced") : t("Cơ bản", "Basic"))
+                }
+                Text(t("Đổi mức hiển thị giữ nguyên tùy chọn của từng IPA và hàng đợi đang chạy.", "Changing the display level preserves each IPA’s options and running jobs."))
+                    .font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Menu {
                     Button(t("Theo hệ thống", "System")) { theme = "system" }
                     Button(t("Sáng", "Light")) { theme = "light" }
                     Button(t("Tối", "Dark")) { theme = "dark" }
@@ -73,7 +93,7 @@ struct NiKSettingsView: View {
                 Divider()
                 NavigationLink { schemes } label: { row("link", .green, "URL Scheme", "niksign:// · threeoneosfive://") }
                 Divider()
-                NavigationLink { logs } label: { row("text.alignleft", .gray, t("Nhật ký", "Logs"), t("Trạng thái xử lý", "Processing status")) }
+                NavigationLink { NiKDiagnosticsView() } label: { row("stethoscope", .gray, t("Chẩn đoán & Báo cáo", "Diagnostics & Report"), t("Xem trước và xuất trạng thái đã ẩn thông tin riêng", "Preview and export status without private details")) }
             }
         }
     }

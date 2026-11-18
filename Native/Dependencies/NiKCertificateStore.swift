@@ -1,47 +1,9 @@
 import CryptoKit
 import Foundation
+import Combine
 import Security
+import Darwin
 import OpenSSL
-struct NiKCertificateProfile: Codable, Identifiable, Equatable {
-    var id: UUID
-    var name: String
-    var certSummary: String
-    var teamName: String
-    var teamID: String
-    var appIDName: String
-    var bundleIDPattern: String
-    var creationDate: Date?
-    var expirationDate: Date?
-    var provisionedUDIDs: [String]
-    var certMatchesProvision: Bool
-    var sha1Fingerprint: String
-    var p12Filename: String
-    var provisionFilename: String
-    var createdAt: Date
-
-    var isExpired: Bool {
-        guard let expirationDate else { return false }
-        return expirationDate < Date()
-    }
-
-    var daysRemaining: Int? {
-        guard let expirationDate else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: expirationDate).day
-    }
-}
-
-struct NiKProvisionMetadata {
-    let name: String
-    let teamName: String
-    let teamID: String
-    let appIDName: String
-    let bundleIDPattern: String
-    let creationDate: Date?
-    let expirationDate: Date?
-    let provisionedUDIDs: [String]
-    let developerCertificatesDER: [Data]
-}
-
 enum NiKCertificateKeychain {
     private static let service = "com.niksign.certificate-passwords"
 
@@ -98,17 +60,23 @@ final class NiKCertificateStore: ObservableObject {
     static let shared = NiKCertificateStore()
     @Published private(set) var profiles: [NiKCertificateProfile] = []
     @Published var selectedProfileID: UUID?
+    @Published private(set) var loadFailure: String?
+    var recoveryIndexURL: URL { indexURL }
+
+    @Published private(set) var revocationChecks: Set<UUID> = []
 
     private let rootDirectory: URL
     private let indexURL: URL
 
-    init() {
+    init(rootDirectory: URL? = nil) {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let root = appSupport.appendingPathComponent("NiKSign/Certificates", isDirectory: true)
+        let root = rootDirectory ?? appSupport.appendingPathComponent("NiKSign/Certificates", isDirectory: true)
         self.rootDirectory = root
         self.indexURL = root.appendingPathComponent("index.json")
-        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        loadProfiles()
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try loadProfiles()
+        } catch { loadFailure = error.localizedDescription }
     }
 
     var selectedProfile: NiKCertificateProfile? {
@@ -130,6 +98,7 @@ final class NiKCertificateStore: ObservableObject {
 
     @discardableResult
     func importProfile(p12URL: URL, provisionURL: URL, password: String, customName: String = "") throws -> NiKCertificateProfile {
+        guard loadFailure == nil else { throw NiKError("Kho chứng chỉ chưa đọc được. Không ghi đè index; hãy xuất dữ liệu để kiểm tra/khôi phục.") }
         let p12Data = try Self.readCertificateFile(p12URL)
         let provisionData = try Self.readCertificateFile(provisionURL)
         let certInfo = try Self.inspectP12(data: p12Data, password: password)
@@ -173,7 +142,12 @@ final class NiKCertificateStore: ObservableObject {
             sha1Fingerprint: certInfo.sha1Hex,
             p12Filename: "certificate.p12",
             provisionFilename: "embedded.mobileprovision",
-            createdAt: Date()
+            createdAt: Date(),
+            certificateExpirationDate: certInfo.expirationDate,
+            certificateCreationDate: certInfo.notBeforeDate,
+            provisionsAllDevices: provInfo.provisionsAllDevices,
+            allowsDebugging: provInfo.allowsDebugging,
+            entitlements: provInfo.entitlements
         )
         let updated = [profile] + profiles
         try persist(updated)
@@ -184,6 +158,7 @@ final class NiKCertificateStore: ObservableObject {
     }
 
     func removeProfile(_ profile: NiKCertificateProfile) throws {
+        guard loadFailure == nil else { throw NiKError("Kho chứng chỉ chưa đọc được; giữ nguyên index để khôi phục.") }
         let updated = profiles.filter { $0.id != profile.id }
         try persist(updated)
         profiles = updated
@@ -193,12 +168,30 @@ final class NiKCertificateStore: ObservableObject {
         if FileManager.default.fileExists(atPath: folder.path) { try FileManager.default.removeItem(at: folder) }
     }
 
-    private func loadProfiles() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([NiKCertificateProfile].self, from: data) else {
-            profiles = []
-            return
-        }
+    func checkRevocation(_ profile: NiKCertificateProfile) async throws {
+        guard loadFailure == nil, !revocationChecks.contains(profile.id),
+              profiles.contains(where: { $0.id == profile.id }) else { return }
+        let credentials = try credentials(for: profile)
+        revocationChecks.insert(profile.id)
+        defer { revocationChecks.remove(profile.id) }
+        let result = try await Task.detached {
+            let data = try Self.readCertificateFile(credentials.p12)
+            let info = try Self.inspectP12(data: data, password: credentials.password)
+            guard info.sha1Hex == profile.sha1Fingerprint else { throw NiKError("Chứng chỉ đã thay đổi; hãy nhập lại.") }
+            return NiKCertificateRevocation.check(der: info.derData)
+        }.value
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id && $0.sha1Fingerprint == profile.sha1Fingerprint }) else { return }
+        var updated = profiles
+        updated[index].revocationStatus = result
+        updated[index].revocationCheckedAt = Date()
+        try persist(updated)
+        profiles = updated
+    }
+
+    private func loadProfiles() throws {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else { return }
+        let decoded = try JSONDecoder().decode([NiKCertificateProfile].self, from: Self.readCertificateFile(indexURL))
+        guard Set(decoded.map(\.id)).count == decoded.count else { throw NiKError("Index chứng chỉ có ID trùng.") }
         profiles = decoded
         selectedProfileID = decoded.first?.id
     }
@@ -206,7 +199,9 @@ final class NiKCertificateStore: ObservableObject {
     private func persist(_ profiles: [NiKCertificateProfile]) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(profiles).write(to: indexURL, options: [.atomic, .completeFileProtection])
+        let data = try encoder.encode(profiles)
+        guard data.count <= 16 * 1_048_576 else { throw NiKError("Index chứng chỉ vượt giới hạn 16 MB.") }
+        try data.write(to: indexURL, options: [.atomic, .completeFileProtection])
     }
 
     nonisolated static func readCertificateFile(_ url: URL) throws -> Data {
@@ -218,14 +213,17 @@ final class NiKCertificateStore: ObservableObject {
         return data
     }
 
-    nonisolated static func inspectP12(data: Data, password: String) throws -> (summary: String, derData: Data, sha1Hex: String) {
-    let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
-let candidates: [String] = trimmed == password ? [password] : [password, trimmed]
+    nonisolated static func inspectP12(data: Data, password: String) throws -> (summary: String, derData: Data, sha1Hex: String, expirationDate: Date?, notBeforeDate: Date?) {
+    guard !data.isEmpty, data.count <= 16 * 1_048_576 else { throw NiKError("Tệp chứng chỉ trống hoặc vượt 16 MB.") }
+    let candidates = [password] // Password whitespace is significant; signing must use the same value.
 var lastStatus: OSStatus = errSecSuccess
 
 for candidate in candidates {
 var imported: CFArray?
-let options: [String: Any] = [kSecImportExportPassphrase as String: candidate]
+var options: [String: Any] = [kSecImportExportPassphrase as String: candidate]
+#if os(macOS)
+if #available(macOS 15.0, *) { options[kSecImportToMemoryOnly as String] = true }
+#endif
 let status = SecPKCS12Import(data as CFData, options as CFDictionary, &imported)
 lastStatus = status
 if status == errSecSuccess, let items = imported as? [[String: Any]] {
@@ -240,17 +238,12 @@ throw NiKError("Không trích xuất được chứng chỉ X.509 từ tệp .p1
 let summary = (SecCertificateCopySubjectSummary(cert) as String?) ?? "Apple Certificate"
 let der = SecCertificateCopyData(cert) as Data
 let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined().uppercased()
-return (summary, der, sha1)
+return (summary, der, sha1, certificateDate(der: der, expiration: true), certificateDate(der: der, expiration: false))
 }
 }
 }
 
-let defaultProvider = OSSL_PROVIDER_load(nil, "default")
-let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
-defer {
-if let legacyProvider { OSSL_PROVIDER_unload(legacyProvider) }
-if let defaultProvider { OSSL_PROVIDER_unload(defaultProvider) }
-}
+_ = NiKOpenSSLProviders.loaded
 
 let certFromOpenSSL: SecCertificate? = data.withUnsafeBytes { (rawBuffer: UnsafeRawBufferPointer) -> SecCertificate? in
 guard let baseAddress = rawBuffer.baseAddress, rawBuffer.count > 0 else { return nil }
@@ -292,10 +285,28 @@ if let cert = certFromOpenSSL {
 let summary = (SecCertificateCopySubjectSummary(cert) as String?) ?? "Apple Certificate"
 let der = SecCertificateCopyData(cert) as Data
 let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined().uppercased()
-return (summary, der, sha1)
+return (summary, der, sha1, certificateDate(der: der, expiration: true), certificateDate(der: der, expiration: false))
 }
 
 throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus)). Kiểm tra tệp và mật khẩu.")
+    }
+
+    nonisolated private static func certificateDate(der: Data, expiration: Bool) -> Date? {
+        der.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress, bytes.count <= Int(Int32.max),
+                  let bio = BIO_new_mem_buf(base, Int32(bytes.count)) else { return nil }
+            defer { BIO_free(bio) }
+            guard let certificate = d2i_X509_bio(bio, nil) else { return nil }
+            defer { X509_free(certificate) }
+            let time = expiration ? X509_get0_notAfter(certificate) : X509_get0_notBefore(certificate)
+            var components = tm()
+            guard ASN1_TIME_to_tm(time, &components) == 1 else { return nil }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            return calendar.date(from: DateComponents(year: Int(components.tm_year) + 1900,
+                month: Int(components.tm_mon) + 1, day: Int(components.tm_mday),
+                hour: Int(components.tm_hour), minute: Int(components.tm_min), second: Int(components.tm_sec)))
+        }
     }
 
     nonisolated static func parseMobileProvision(data: Data) throws -> NiKProvisionMetadata {
@@ -311,14 +322,16 @@ throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus))
         }
         let name = (dict["Name"] as? String) ?? "Provisioning Profile"
         let teamName = (dict["TeamName"] as? String) ?? ""
-        let teamIDs = (dict["ApplicationIdentifierPrefix"] as? [String]) ?? (dict["TeamIdentifier"] as? [String]) ?? []
-        let teamID = teamIDs.first ?? ""
+        let prefixes = (dict["ApplicationIdentifierPrefix"] as? [String]) ?? []
+        let teamID = (dict["TeamIdentifier"] as? [String])?.first ?? prefixes.first ?? ""
         let appIDName = (dict["AppIDName"] as? String) ?? ""
         let entitlements = (dict["Entitlements"] as? [String: Any]) ?? [:]
         let rawAppID = (entitlements["application-identifier"] as? String) ?? ""
         let bundleIDPattern: String
-        if !teamID.isEmpty && rawAppID.hasPrefix(teamID + ".") {
-            bundleIDPattern = String(rawAppID.dropFirst(teamID.count + 1))
+        let appPrefix = prefixes.first(where: { rawAppID.hasPrefix($0 + ".") })
+            ?? (!teamID.isEmpty && rawAppID.hasPrefix(teamID + ".") ? teamID : nil)
+        if let appPrefix {
+            bundleIDPattern = String(rawAppID.dropFirst(appPrefix.count + 1))
         } else {
             bundleIDPattern = rawAppID
         }
@@ -335,7 +348,19 @@ throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus))
             creationDate: creationDate,
             expirationDate: expirationDate,
             provisionedUDIDs: udids,
-            developerCertificatesDER: certs
+            developerCertificatesDER: certs,
+            provisionsAllDevices: dict["ProvisionsAllDevices"] as? Bool ?? false,
+            allowsDebugging: entitlements["get-task-allow"] as? Bool ?? false,
+            entitlements: try entitlements.mapValues(NiKPlistValue.init)
         )
     }
+}
+
+// Providers are process-wide and must outlive concurrent signing/TLS operations.
+private enum NiKOpenSSLProviders {
+    static let loaded: Bool = {
+        let defaultProvider = OSSL_PROVIDER_load(nil, "default")
+        let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
+        return defaultProvider != nil && legacyProvider != nil
+    }()
 }

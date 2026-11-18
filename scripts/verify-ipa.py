@@ -59,7 +59,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('ipa')
     args = parser.parse_args()
-    bundle_id = os.environ.get('NIKSIGN_EXPECTED_BUNDLE_ID', 'com.apple.mobile.MobileHouseArrest')
+    bundle_id = os.environ.get('NIKSIGN_EXPECTED_BUNDLE_ID', 'com.niksign.app')
     try:
         verify_ipa(args.ipa, bundle_id)
     except (ValueError, KeyError, OSError, zipfile.BadZipFile, plistlib.InvalidFileException) as error:

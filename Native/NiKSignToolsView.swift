@@ -12,7 +12,6 @@ struct ExportDocument: FileDocument {
 struct NiKSignView: View {
     var initialURL: URL? = nil
     @StateObject private var certStore = NiKCertificateStore.shared
-    @StateObject private var altSourceStore = NiKAltSourceStore()
     @State private var selectedTab = 1
     @State private var showImporter = false
     @State private var importKind = "document"
@@ -305,19 +304,7 @@ struct NiKSignView: View {
     }
 
     private var altSourceTab: some View {
-        NavigationStack {
-            NiKAltSourceView(store: altSourceStore) { downloadedURL, appMetadata in
-                if let ipa { try? FileManager.default.removeItem(at: ipa) }
-                ipa = downloadedURL
-                signedArtifact = nil
-                stopLoopback()
-                if signingOptions.customDisplayName.isEmpty {
-                    signingOptions.customDisplayName = appMetadata.name
-                }
-                selectedTab = 1
-            }
-            .navigationTitle("Kho AltSource")
-        }
+        NavigationStack { NiKSourceLibraryView(library: NiKLibrary.shared) }
     }
 
     private var infoTab: some View {

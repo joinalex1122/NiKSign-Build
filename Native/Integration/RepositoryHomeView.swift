@@ -5,7 +5,6 @@ struct RepositoryHomeView: View {
     @Environment(\.appLanguage) private var language
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: PackageRepositoryStore
-    @State private var showNiKTools = false
     @State private var feed: [RepositoryPackageRecord] = []
 
     let onOpenSettings: () -> Void
@@ -15,14 +14,6 @@ struct RepositoryHomeView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
-                    Button { showNiKTools = true } label: {
-                        Label("NiKSign · Ký IPA & sửa tệp", systemImage: "signature")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(AppTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
-                    }
-                    .buttonStyle(.plain)
                     if feed.isEmpty {
                         emptyContent
                     } else {
@@ -42,9 +33,8 @@ struct RepositoryHomeView: View {
                 await store.refreshAllAndWait()
                 rebuildFeed()
             }
-            .navigationTitle("NiKSign")
+            .navigationTitle("3105")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showNiKTools) { NiKToolsSheet() }
             .toolbar {
                 AppUtilityToolbar(
                     language: language,
@@ -61,7 +51,7 @@ struct RepositoryHomeView: View {
                     rebuildFeed()
                 }
             }
-            .onChange(of: store.packages) { _ in
+            .onChange(of: store.packages) { _, _ in
                 rebuildFeed()
             }
         }
@@ -283,7 +273,7 @@ struct RepositoryNewView: View {
                 rebuildPackages()
                 openSimulatedPackageDetailIfNeeded()
             }
-            .onChange(of: store.packages) { _ in
+            .onChange(of: store.packages) { _, _ in
                 rebuildPackages()
                 openSimulatedPackageDetailIfNeeded()
             }

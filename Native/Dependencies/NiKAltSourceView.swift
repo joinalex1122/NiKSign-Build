@@ -1,48 +1,6 @@
 import Foundation
 import SwiftUI
 
-struct NiKAltSourceApp: Identifiable, Hashable {
-    var id: String { "\(sourceURL.absoluteString)#\(bundleIdentifier)#\(version)" }
-    let name: String
-    let bundleIdentifier: String
-    let developerName: String
-    let version: String
-    let versionDate: String?
-    let sizeBytes: Int64?
-    let downloadURL: URL
-    let iconURL: URL?
-    let localizedDescription: String
-    let sourceName: String
-    let sourceURL: URL
-}
-
-struct NiKAltSourceFeed: Codable {
-    struct AppEntry: Codable {
-        struct VersionEntry: Codable {
-            let version: String?
-            let date: String?
-            let size: Int64?
-            let downloadURL: URL?
-            let localizedDescription: String?
-        }
-        let name: String?
-        let bundleIdentifier: String?
-        let developerName: String?
-        let version: String?
-        let versionDate: String?
-        let size: Int64?
-        let downloadURL: URL?
-        let iconURL: URL?
-        let localizedDescription: String?
-        let subtitle: String?
-        let versions: [VersionEntry]?
-    }
-    let name: String?
-    let subtitle: String?
-    let description: String?
-    let apps: [AppEntry]?
-}
-
 @MainActor
 final class NiKAltSourceStore: ObservableObject {
     @Published private(set) var sourceURLs: [URL] = []
@@ -54,18 +12,22 @@ final class NiKAltSourceStore: ObservableObject {
 
     init() {
         if let saved = UserDefaults.standard.stringArray(forKey: storageKey) {
-            sourceURLs = saved.compactMap(URL.init(string:))
+            var unique = Set<URL>()
+            sourceURLs = saved.prefix(40).compactMap { raw in
+                guard let url = URL(string: raw), (try? NiKHTTPDownload.validate(url)) != nil,
+                      unique.insert(url).inserted else { return nil }
+                return url
+            }
         }
     }
 
     func addSource(urlString: String) async {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http" else {
-            errorMessage = "URL nguồn AltSource không hợp lệ (cần http/https)."
+        guard let url = URL(string: trimmed), (try? NiKHTTPDownload.validate(url)) != nil else {
+            errorMessage = "URL cần HTTP/HTTPS và không chứa tài khoản/mật khẩu."
             return
         }
+        guard sourceURLs.contains(url) || sourceURLs.count < 40 else { errorMessage = "Tối đa 40 nguồn."; return }
         if !sourceURLs.contains(url) {
             sourceURLs.append(url)
             persistURLs()
@@ -80,23 +42,26 @@ final class NiKAltSourceStore: ObservableObject {
     }
 
     func refreshAll() async {
-        guard !sourceURLs.isEmpty else {
-            apps = []
-            return
-        }
+        guard !isLoading else { return }
+        guard !sourceURLs.isEmpty else { apps = []; return }
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
+        let previous = apps, requested = sourceURLs
         var collected: [NiKAltSourceApp] = []
-        for url in sourceURLs {
+        var errors: [String] = []
+        for url in requested {
             do {
-                let parsed = try await Self.fetchSource(from: url)
-                collected.append(contentsOf: parsed)
-            } catch {
-                errorMessage = "Lỗi tải \(url.host ?? url.absoluteString): \(error.localizedDescription)"
+                try Task.checkCancellation()
+                collected.append(contentsOf: try await Self.fetchSource(from: url))
+            } catch is CancellationError { return }
+            catch {
+                errors.append("Lỗi tải \(url.host ?? "nguồn"): \(error.localizedDescription)")
+                collected.append(contentsOf: previous.filter { $0.sourceURL == url })
             }
         }
-        apps = collected
-        isLoading = false
+        apps = collected.filter { sourceURLs.contains($0.sourceURL) }
+        errorMessage = errors.isEmpty ? nil : errors.joined(separator: "\n")
     }
 
     private func persistURLs() {
@@ -104,81 +69,28 @@ final class NiKAltSourceStore: ObservableObject {
     }
 
     nonisolated static func parseFeed(data: Data, sourceURL: URL) throws -> [NiKAltSourceApp] {
-        let feed = try JSONDecoder().decode(NiKAltSourceFeed.self, from: data)
-        let sourceTitle = feed.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? feed.name!
-            : (sourceURL.host ?? "AltSource")
-        var result: [NiKAltSourceApp] = []
-        for entry in feed.apps ?? [] {
-            guard let appName = entry.name, !appName.isEmpty,
-                  let bundleID = entry.bundleIdentifier, !bundleID.isEmpty else {
-                continue
-            }
-            let latestVersion = entry.versions?.first
-            guard let downloadURL = latestVersion?.downloadURL ?? entry.downloadURL else {
-                continue
-            }
-            let version = latestVersion?.version ?? entry.version ?? "1.0"
-            let date = latestVersion?.date ?? entry.versionDate
-            let size = latestVersion?.size ?? entry.size
-            let desc = latestVersion?.localizedDescription ?? entry.localizedDescription ?? entry.subtitle ?? ""
-            result.append(
-                NiKAltSourceApp(
-                    name: appName,
-                    bundleIdentifier: bundleID,
-                    developerName: entry.developerName ?? sourceTitle,
-                    version: version,
-                    versionDate: date,
-                    sizeBytes: size,
-                    downloadURL: downloadURL,
-                    iconURL: entry.iconURL,
-                    localizedDescription: desc,
-                    sourceName: sourceTitle,
-                    sourceURL: sourceURL
-                )
-            )
-        }
-        return result
+        try NiKSourceDownloadService.parseFeed(data: data, sourceURL: sourceURL)
     }
-
     nonisolated static func fetchSource(from url: URL) async throws -> [NiKAltSourceApp] {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 20
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw NiKError("Máy chủ trả về mã HTTP \(http.statusCode).")
-        }
-        guard data.count <= 16_777_216 else {
-            throw NiKError("JSON nguồn vượt giới hạn 16 MB.")
-        }
-        return try parseFeed(data: data, sourceURL: url)
+        try await NiKSourceDownloadService.fetchFeed(url)
     }
 
-    nonisolated static func downloadIPA(from url: URL) async throws -> URL {
-        let (tempURL, response) = try await URLSession.shared.download(from: url)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw NiKError("Tải IPA thất bại (HTTP \(http.statusCode)).")
-        }
-        let size = (try? tempURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard size > 0, size <= 1_073_741_824 else {
-            throw NiKError("IPA tải về rỗng hoặc vượt giới hạn 1 GB.")
-        }
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AltSource-\(UUID().uuidString).ipa")
-        try FileManager.default.moveItem(at: tempURL, to: destination)
-        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: destination.path)
-        return destination
-    }
 }
 
 struct NiKAltSourceView: View {
     @ObservedObject var store: NiKAltSourceStore
-    var onSelectDownloadedIPA: (URL, NiKAltSourceApp) -> Void
+    var onSelectDownloadedIPA: (URL, NiKAltSourceApp) async throws -> Void
 
+    @AppStorage("nik.language") private var language = "vi"
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     @State private var newSourceURL = ""
     @State private var searchText = ""
     @State private var downloadingAppID: String?
     @State private var statusMessage = ""
+    @State private var downloadTask: Task<Void, Never>?
+    @State private var receivedBytes: Int64 = 0
+    @State private var expectedBytes: Int64?
+
 
     private var filteredApps: [NiKAltSourceApp] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -193,13 +105,13 @@ struct NiKAltSourceView: View {
 
     var body: some View {
         List {
-            Section("Thêm nguồn AltSource / Feather JSON") {
+            Section(t("Thêm nguồn AltSource / Feather JSON", "Add AltSource / Feather JSON Source")) {
                 HStack {
                     TextField("https://.../apps.json", text: $newSourceURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
-                    Button("Thêm") {
+                    Button(t("Thêm", "Add")) {
                         let urlToLoad = newSourceURL
                         newSourceURL = ""
                         Task { await store.addSource(urlString: urlToLoad) }
@@ -214,8 +126,16 @@ struct NiKAltSourceView: View {
                 }
             }
 
+            if downloadingAppID != nil {
+                Section(t("Đang tải", "Downloading")) {
+                    if let expectedBytes { ProgressView(value: Double(receivedBytes), total: Double(max(1, expectedBytes))) }
+                    else { ProgressView() }
+                    Text(ByteCountFormatter.string(fromByteCount: receivedBytes, countStyle: .file)).font(.caption)
+                    Button(t("Hủy tải", "Cancel Download"), role: .destructive) { downloadTask?.cancel() }
+                }
+            }
             if !store.sourceURLs.isEmpty {
-                Section("Nguồn đang theo dõi (\(store.sourceURLs.count))") {
+                Section(t("Nguồn đang theo dõi", "Subscribed Sources") + " (\(store.sourceURLs.count))") {
                     ForEach(store.sourceURLs, id: \.self) { url in
                         HStack {
                             Text(url.absoluteString)
@@ -233,14 +153,14 @@ struct NiKAltSourceView: View {
                 }
             }
 
-            Section("Ứng dụng IPA (\(filteredApps.count))") {
+            Section(t("Ứng dụng IPA", "IPA Apps") + " (\(filteredApps.count))") {
                 if store.isLoading {
                     HStack(spacing: 10) {
                         ProgressView()
-                        Text("Đang đồng bộ danh mục AltSource…").font(.caption)
+                        Text(t("Đang đồng bộ danh mục AltSource…", "Refreshing source catalog…")).font(.caption)
                     }
                 } else if filteredApps.isEmpty {
-                    Text("Chưa có ứng dụng nào. Hãy thêm URL nguồn JSON theo chuẩn AltStore/Feather để duyệt và đưa thẳng vào trình ký.")
+                    Text(t("Chưa có ứng dụng. Thêm nguồn AltStore/Feather JSON để tải vào thư viện. Không tự ký hoặc cài đặt.", "No apps yet. Add an AltStore/Feather JSON source to download into the library. Signing and installation require separate actions."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -252,6 +172,13 @@ struct NiKAltSourceView: View {
                                     Text("\(app.developerName) · v\(app.version) · \(app.sourceName)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if let size = app.sizeBytes {
+                                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)).font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    if app.downloadURL.scheme?.lowercased() == "http" {
+                                        Text(t("Liên kết tải HTTP chưa mã hóa", "Download uses unencrypted HTTP")).font(.caption2).foregroundStyle(.orange)
+                                    }
+                                    Text(app.sha256 == nil ? t("Nguồn không cung cấp SHA-256", "No SHA-256 provided by source") : t("Có SHA-256 từ nguồn", "Source provides SHA-256")).font(.caption2).foregroundStyle(.secondary)
                                     Text(app.bundleIdentifier)
                                         .font(.caption2.monospaced())
                                         .foregroundStyle(.secondary)
@@ -263,7 +190,7 @@ struct NiKAltSourceView: View {
                                     if downloadingAppID == app.id {
                                         ProgressView()
                                     } else {
-                                        Label("Tải & Ký", systemImage: "arrow.down.circle.fill")
+                                        Label(t("Tải vào thư viện", "Download to Library"), systemImage: "arrow.down.circle.fill")
                                             .font(.caption.weight(.semibold))
                                     }
                                 }
@@ -282,7 +209,9 @@ struct NiKAltSourceView: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Tìm tên app, Bundle ID, tác giả…")
+        .searchable(text: $searchText, prompt: t("Tìm tên app, Bundle ID, tác giả…", "Search app, bundle ID, developer…"))
+        .onDisappear { downloadTask?.cancel() }
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 100) }
         .refreshable {
             await store.refreshAll()
         }
@@ -294,17 +223,39 @@ struct NiKAltSourceView: View {
     }
 
     private func downloadAndQueue(_ app: NiKAltSourceApp) {
-        downloadingAppID = app.id
-        statusMessage = "Đang tải \(app.name) (v\(app.version))…"
-        Task {
-            defer { downloadingAppID = nil }
+        guard downloadingAppID == nil else { return }
+        downloadingAppID = app.id; receivedBytes = 0; expectedBytes = nil
+        statusMessage = t("Đang tải", "Downloading") + " \(app.name) (v\(app.version))…"
+        downloadTask = Task {
+            defer { downloadingAppID = nil; downloadTask = nil }
             do {
-                let fileURL = try await NiKAltSourceStore.downloadIPA(from: app.downloadURL)
-                statusMessage = "Đã tải xong \(app.name). Đã chuyển sang tab Ký IPA."
-                onSelectDownloadedIPA(fileURL, app)
-            } catch {
-                statusMessage = error.localizedDescription
-            }
+                let downloaded = try await NiKSourceDownloadService.downloadIPA(app.downloadURL, expectedSHA256: app.sha256) { update in
+                    Task { @MainActor in
+                        guard downloadingAppID == app.id else { return }
+                        receivedBytes = update.bytes; expectedBytes = update.expectedBytes
+                    }
+                }
+                defer { try? downloaded.discard() }
+                try Task.checkCancellation()
+                statusMessage = t("Đang kiểm tra và nhập IPA…", "Validating and importing IPA…")
+                try await onSelectDownloadedIPA(downloaded.url, app)
+                statusMessage = t("Đã nhập", "Imported") + " \(app.name). SHA-256: \(downloaded.sha256)"
+            } catch is CancellationError { statusMessage = t("Đã hủy tải.", "Download cancelled.") }
+            catch { statusMessage = error.localizedDescription }
         }
+    }
+}
+
+struct NiKSourceLibraryView: View {
+    @ObservedObject var library: NiKLibrary
+    @StateObject private var sources = NiKAltSourceStore()
+    @AppStorage("nik.language") private var language = "vi"
+    var body: some View {
+        NiKAltSourceView(store: sources) { url, app in
+            guard await library.receive(url, expectedBundleID: app.bundleIdentifier) else {
+                try Task.checkCancellation()
+                throw NiKError(library.error.isEmpty ? "Không nhập được IPA." : library.error)
+            }
+        }.navigationTitle(language == "en" ? "IPA Sources" : "Nguồn IPA")
     }
 }

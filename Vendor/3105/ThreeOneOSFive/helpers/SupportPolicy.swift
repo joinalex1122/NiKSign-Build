@@ -44,7 +44,7 @@ enum ExploitSupportPolicy {
             return minor < 6 || (minor == 6 && patch <= 1)
         }
 
-        guard major == 27, minor >= 0, patch >= 0 else { return false }
-        return true
+        guard major == 27, minor == 0, patch == 0 else { return false }
+        return iOS27BetaNumber(for: build) != nil
     }
 }

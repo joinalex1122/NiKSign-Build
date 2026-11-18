@@ -31,7 +31,8 @@ assert 'SecPKCS12Import' in cert_store and 'parseMobileProvision' in cert_store 
 injector = (r/'Native/Dependencies/NiKDylibInjector.swift').read_text()
 assert 'lcLoadDylib' in injector and 'extractDylibsFromDeb' in injector
 altsource = (r/'Native/Dependencies/NiKAltSourceView.swift').read_text()
-assert 'NiKAltSourceStore' in altsource and 'NiKAltSourceFeed' in altsource
+assert 'NiKAltSourceStore' in altsource and 'NiKSourceDownloadService' in altsource
+assert 'struct NiKAltSourceFeed' in (r/'Native/Models/NiKAltSourceModels.swift').read_text()
 v9_engine = (r/'Native/Dependencies/NiKPatchV9Engine.swift').read_text()
 assert '%3105_Overwrite%' in v9_engine and '%3105_MatchPrefix%' in v9_engine and '%3105_Remove%' in v9_engine and 'AppGroup' in v9_engine
 dialer = (r/'Native/Dependencies/NiKDialerService.swift').read_text()
@@ -41,3 +42,7 @@ assert 'LockScreenFootnote' in sys_feat and 'IsSupervised' in sys_feat and 'isCl
 hub = (r/'Native/Dependencies/NiK3105V2HubView.swift').read_text()
 assert 'NiK3105V2HubView' in hub
 print('PASS: all 11 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')
+
+for original, replacement in json.loads((r/'server-overlays.json').read_text()).items():
+    assert (r/original).is_file() and (r/replacement).is_file()
+    assert original.removeprefix('Vendor/GCDWebServer/') in config

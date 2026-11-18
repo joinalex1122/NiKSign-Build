@@ -35,14 +35,14 @@ catch { return error.localizedDescription }
 }.value
 busy = false
     }
-    private static func inspectFile(at url: URL) throws -> String {
+    nonisolated private static func inspectFile(at url: URL) throws -> String {
         if url.pathExtension.lowercased() == "ipa" {
             return try inspectIPA(at: url)
         }
         return try NiKArchiveInspector.report(at: url)
     }
 
-    private static func inspectIPA(at url: URL) throws -> String {
+    nonisolated private static func inspectIPA(at url: URL) throws -> String {
         let archive = try Archive(url: url, accessMode: .read)
         var infoPlist: [String: Any] = [:]
         var frameworks = Set<String>()
@@ -54,7 +54,12 @@ busy = false
             guard parts.count >= 3, parts[0] == "Payload", parts[1].hasSuffix(".app") else { continue }
             if parts.count == 3, parts[2] == "Info.plist" {
                 var data = Data()
-                _ = try archive.extract(entry) { data.append($0) }
+                guard entry.uncompressedSize <= 1_048_576 else { throw NiKError("Info.plist vượt 1 MB.") }
+                let crc = try archive.extract(entry) { chunk in
+                    guard data.count + chunk.count <= 1_048_576 else { throw NiKError("Info.plist vượt 1 MB.") }
+                    data.append(chunk)
+                }
+                guard crc == entry.checksum else { throw NiKError("Info.plist lỗi CRC.") }
                 if let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
                     infoPlist = plist
                 }

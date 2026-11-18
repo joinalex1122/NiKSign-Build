@@ -14,7 +14,7 @@ struct NiKHubPreview: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Nhóm", selection: $section) {
+                Picker(t("Nhóm", "Group"), selection: $section) {
                     Text(t("Kho 3105", "Store")).tag(0)
                     Text(t("Nguồn", "Sources")).tag(1)
                     Text(t("Dự án", "Projects")).tag(2)
@@ -59,7 +59,7 @@ struct NiK3105ToolsDashboardView: View {
     @StateObject private var systemFeatures = NiKSystemFeaturesStore()
     @State private var dialerPackages: [NiKDialerPackage] = []
     @State private var importingDialer = false
-    @State private var cacheSummaryText = "Chưa quét dung lượng Cache / Temp"
+    @State private var cacheSummaryText = ""
     @State private var isScanningCache = false
     @State private var sharedPrefsItems: [URL] = []
     @State private var selectedInspectorFile: NiKPreviewDocument?
@@ -88,13 +88,13 @@ struct NiK3105ToolsDashboardView: View {
                 guard let url = try result.get().first else { return }
                 let pkg = try NiKDialerService.importPackage(from: url)
                 dialerPackages = NiKDialerService.loadInstalledPackages()
-                statusBanner = "Đã nạp gói Dialer: \(pkg.name) (\(pkg.items.count) phím)"
+                statusBanner = t("Đã nạp gói Dialer: \(pkg.name) (\(pkg.items.count) phím)", "Loaded Dialer: \(pkg.name) (\(pkg.items.count) keys)")
             } catch {
                 statusBanner = error.localizedDescription
             }
         }
         .sheet(item: $selectedInspectorFile) { doc in
-            NiKDeepFileInspectorSheet(url: doc.url)
+            NiKQuickLook(url: doc.url)
         }
     }
 
@@ -188,7 +188,7 @@ struct NiK3105ToolsDashboardView: View {
                 Button {
                     if let pkg = try? NiKDialerService.createSamplePackage() {
                         dialerPackages = NiKDialerService.loadInstalledPackages()
-                        statusBanner = "Đã tạo mẫu: \(pkg.name)"
+                        statusBanner = t("Đã tạo mẫu: \(pkg.name)", "Created sample: \(pkg.name)")
                     }
                 } label: {
                     Label(t("Tạo mẫu", "Sample"), systemImage: "sparkles")
@@ -243,7 +243,7 @@ struct NiK3105ToolsDashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             cardHeader(
                 title: t("Dọn dẹp sâu Cache / Temp / Logs", "Deep Cache / Temp / Logs Cleaner"),
-                subtitle: cacheSummaryText,
+                subtitle: cacheSummaryText.isEmpty ? t("Chưa quét dung lượng Cache / Temp", "Cache / Temp not scanned yet") : cacheSummaryText,
                 icon: "sparkles.rectangle.stack.fill",
                 color: .green
             )
@@ -375,34 +375,37 @@ struct NiK3105ToolsDashboardView: View {
     }
 
     private func scanCaches() {
+        guard !isScanningCache else { return }
         isScanningCache = true
-        Task.detached(priority: .userInitiated) {
-            let apps = ContainerStore.installedAppsFromAPI()
-            var totalBytes: Int64 = 0
-            var appCount = 0
-            let fm = FileManager.default
-            for app in apps where !app.containerPath.isEmpty {
-                var appHasCache = false
-                for sub in ["Library/Caches", "tmp", "Library/Logs"] {
-                    let dir = URL(fileURLWithPath: app.containerPath).appendingPathComponent(sub)
-                    if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
-                        for case let fileURL as URL in enumerator {
-                            if let vals = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                               vals.isRegularFile == true {
-                                totalBytes += Int64(vals.fileSize ?? 0)
-                                appHasCache = true
-                            }
+        Task {
+            let summary = await Task.detached(priority: .userInitiated) { Self.cacheSummary() }.value
+            let formatted = ByteCountFormatter.string(fromByteCount: summary.bytes, countStyle: .file)
+            cacheSummaryText = t("Đã quét \(summary.apps) ứng dụng · Có thể dọn: \(formatted)", "Scanned \(summary.apps) apps · Reclaimable: \(formatted)")
+            isScanningCache = false
+        }
+    }
+
+    nonisolated private static func cacheSummary() -> (bytes: Int64, apps: Int) {
+        let apps = ContainerStore.installedAppsFromAPI()
+        var totalBytes: Int64 = 0
+        var appCount = 0
+        let fm = FileManager.default
+        for app in apps where !app.containerPath.isEmpty {
+            var appHasCache = false
+            for sub in ["Library/Caches", "tmp", "Library/Logs"] {
+                let dir = URL(fileURLWithPath: app.containerPath).appendingPathComponent(sub)
+                if let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
+                    for case let fileURL as URL in enumerator {
+                        if let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]), values.isRegularFile == true {
+                            totalBytes += Int64(values.fileSize ?? 0)
+                            appHasCache = true
                         }
                     }
                 }
-                if appHasCache { appCount += 1 }
             }
-            let formatted = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
-            await MainActor.run {
-                cacheSummaryText = "Đã quét \(appCount) ứng dụng · Có thể dọn: \(formatted)"
-                isScanningCache = false
-            }
+            if appHasCache { appCount += 1 }
         }
+        return (totalBytes, appCount)
     }
 
     private func cleanCachesNow() {
@@ -425,7 +428,7 @@ struct NiK3105ToolsDashboardView: View {
             }
             let formatted = ByteCountFormatter.string(fromByteCount: removedBytes, countStyle: .file)
             await MainActor.run {
-                cacheSummaryText = "Đã giải phóng \(formatted) bộ nhớ đệm & tệp tạm."
+                cacheSummaryText = t("Đã giải phóng \(formatted) bộ nhớ đệm & tệp tạm.", "Freed \(formatted) of cache and temporary files.")
                 isScanningCache = false
             }
         }
@@ -457,8 +460,8 @@ struct NiK3105ToolsDashboardView: View {
             await MainActor.run {
                 sharedPrefsItems = sorted
                 statusBanner = sorted.isEmpty
-                    ? "Chưa tìm thấy tệp Preferences nào (kiểm tra quyền truy cập container)."
-                    : "Tìm thấy \(sorted.count) tệp Preferences. Chạm vào tệp để sửa trực tiếp."
+                    ? t("Chưa tìm thấy tệp Preferences nào (kiểm tra quyền truy cập container).", "No Preferences files found (check container access).")
+                    : t("Tìm thấy \(sorted.count) tệp Preferences. Chạm vào tệp để xem trước.", "Found \(sorted.count) Preferences files. Tap a file to preview.")
             }
         }
     }
@@ -520,7 +523,7 @@ struct NiKFileItem: Identifiable {
     let modifiedAt: Date
     var id: String { url.path }
 }
-enum NiKFilesSort { case name, date, size }
+typealias NiKFilesSort = NiKFileBrowserSort
 struct NiKShareItem: Identifiable { let id = UUID(); let url: URL }
 struct NiKFolderTarget: Identifiable { let id = UUID(); let item: NiKFileItem; let isCopy: Bool }
 struct NiKShareSheet: UIViewControllerRepresentable {
@@ -561,6 +564,9 @@ private struct NiKFolderDestination: View {
                 Task {
                     do {
                         let source = item.url, destination = directory, copy = isCopy
+                        let target = try NiKFileOperations.child(named: source.lastPathComponent, in: destination)
+                        let lease = try NiKManagedFileAccess.reserve(copy ? [target] : [source, target])
+                        defer { NiKFileMutationReservations.shared.release(lease) }
                         try await Task.detached { try NiKFileOperations.transfer(source, into: destination, copy: copy) }.value
                         onComplete()
                     } catch { errorMessage = error.localizedDescription }

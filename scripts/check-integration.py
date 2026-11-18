@@ -12,8 +12,7 @@ for relative, expected in lock['sha256'].items():
     assert hashlib.sha256(p.read_bytes()).hexdigest() == expected, f'Upstream changed: {relative}'
 source = v / 'ThreeOneOSFive'
 # Exact substitutions: every upstream translation unit must still be compiled.
-overlays = {'App.swift': r/'Native/Integration/App.swift',
-            'views/RepositoryHomeView.swift': r/'Native/Integration/RepositoryHomeView.swift'}
+overlays = {key: r/value for key, value in json.loads((r/'upstream-overlays.json').read_text()).items()}
 config = (r / 'project.yml').read_text()
 assert 'path: Vendor/3105/ThreeOneOSFive' in config
 excludes = config.split('path: Vendor/3105/ThreeOneOSFive', 1)[1].split('- path:', 1)[0].split('dependencies:', 1)[0]
@@ -35,7 +34,7 @@ assert '../Vendor/3105/ThreeOneOSFive/ThreeOneOSFive-Bridging-Header.h' in (r/'N
 for language in ['en', 'vi', 'zh-Hans']:
     assert (source/f'{language}.lproj/Localizable.strings').is_file()
 info = plistlib.loads((r/'Native/Info.plist').read_bytes())
-assert info['CFBundleIdentifier'] == 'com.apple.mobile.MobileHouseArrest'
+assert info['CFBundleIdentifier'] == 'com.niksign.app'
 assert info['CFBundleDisplayName'] == 'NiKSign'
 assert set(info['CFBundleURLTypes'][0]['CFBundleURLSchemes']) == {'threeoneosfive','niksign'}
 assert info['UTExportedTypeDeclarations'][0]['UTTypeTagSpecification']['public.filename-extension'] == ['3105']
@@ -43,8 +42,9 @@ entry = overlays['App.swift'].read_text()
 for state in ['appState','patchDraftCoordinator','fileOperationCoordinator','patchStore','repositoryStore']:
     assert f'.environmentObject({state})' in entry
 assert 'patchDraftCoordinator.presentImport' in entry and 'NiKToolsSheet(initialURL: request.url)' in entry
-assert 'NiKToolsSheet()' in overlays['views/RepositoryHomeView.swift'].read_text()
+assert 'showNiKTools' not in overlays['views/RepositoryHomeView.swift'].read_text()
+assert '.navigationTitle("3105")' in overlays['views/RepositoryHomeView.swift'].read_text()
 assert 'private func checkForUpdate() {}' in entry
 assert not (r/'Native/Vendor/3105').exists()
 print(f'PASS: {len(lock["sha256"])} upstream files intact; {len(units)} upstream translation units covered; single app entry, routes, localization, bridge and zlib configured.')
-print('Native build, signing and device execution remain unverified until macOS/device testing.')
+print('Xcode, signing and device results are recorded separately for each source commit.')

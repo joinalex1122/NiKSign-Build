@@ -9,36 +9,6 @@ struct NiKError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-struct NiKSigningOptions: Sendable, Codable {
-    var customBundleID: String = ""
-    var customDisplayName: String = ""
-    var customVersion: String = ""
-    var minimumOSVersion: String = ""
-    var enableFileSharing: Bool = false
-    var removeSupportedDevicesRestriction: Bool = false
-    var removeExtensions: Bool = false
-    var weakDylibInjection: Bool = false
-    var allowCertificateMismatch: Bool = false
-    var injectedFiles: [URL] = []
-}
-
-struct NiKSigningProgress: Sendable {
-    let step: Int
-    let totalSteps: Int
-    let fraction: Double
-    let description: String
-}
-
-struct NiKSignedArtifact: Sendable {
-    let ipaURL: URL
-    let bundleID: String
-    let displayName: String
-    let version: String
-    let injectedDylibs: [String]
-    let certificateSummary: String
-    let teamName: String
-}
-
 // Zsign uses process-global state. Serialize all signing work on one actor.
 actor SigningService {
     static let shared = SigningService()
@@ -62,7 +32,8 @@ actor SigningService {
         options: NiKSigningOptions = NiKSigningOptions(),
         onProgress: (@Sendable (NiKSigningProgress) -> Void)? = nil
     ) throws -> NiKSignedArtifact {
-        func report(_ step: Int, _ fraction: Double, _ text: String) {
+        func report(_ step: Int, _ fraction: Double, _ text: String) throws {
+            try Task.checkCancellation()
             onProgress?(NiKSigningProgress(step: step, totalSteps: 6, fraction: fraction, description: text))
         }
 
@@ -72,10 +43,13 @@ actor SigningService {
         defer { try? fm.removeItem(at: work) }
 
         // Step 1: Check password/private key and provisioning profile before attempting a signing operation.
-        report(1, 0.12, "Đang kiểm tra khóa .p12 và hồ sơ .mobileprovision…")
-        let p12Data = try Data(contentsOf: p12)
+        try report(1, 0.12, "Đang kiểm tra khóa .p12 và hồ sơ .mobileprovision…")
+        let p12Data = try NiKCertificateStore.readCertificateFile(p12)
         let certInfo = try NiKCertificateStore.inspectP12(data: p12Data, password: password)
-        let provData = try Data(contentsOf: profile)
+        guard certInfo.expirationDate != nil, certInfo.notBeforeDate != nil else {
+            throw NiKError("Không đọc được thời gian hiệu lực của chứng chỉ ký.")
+        }
+        let provData = try NiKCertificateStore.readCertificateFile(profile)
         let provInfo = try NiKCertificateStore.parseMobileProvision(data: provData)
 
         if let expiry = provInfo.expirationDate, expiry < Date() {
@@ -88,7 +62,7 @@ actor SigningService {
         }
 
         // Step 2: minizip preflight and CRC-checked extraction.
-        report(2, 0.30, "Đang kiểm tra cấu trúc ZIP và giải nén IPA…")
+        try report(2, 0.30, "Đang kiểm tra cấu trúc ZIP và giải nén IPA…")
         var entries: UInt64 = 0, expandedBytes: UInt64 = 0
         let zipStatus = ipa.path.withCString { NiKZipCheck($0, &entries, &expandedBytes) }
         guard zipStatus == 0 else { throw NiKError("minizip từ chối ZIP hỏng hoặc vượt giới hạn (\(zipStatus)).") }
@@ -109,6 +83,7 @@ actor SigningService {
             }
         }
         for entry in archive {
+            try Task.checkCancellation()
             let destination = work.appendingPathComponent(entry.path)
             try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             let checksum = try archive.extract(entry, to: destination)
@@ -116,7 +91,7 @@ actor SigningService {
         }
 
         // Step 3: Inspect Payload/*.app and Mach-O binary.
-        report(3, 0.50, "Đang phân tích Info.plist và kiểm tra mã hóa Mach-O…")
+        try report(3, 0.50, "Đang phân tích Info.plist và kiểm tra mã hóa Mach-O…")
         let payload = work.appendingPathComponent("Payload")
         let apps = try fm.contentsOfDirectory(at: payload, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "app" }
@@ -147,6 +122,22 @@ actor SigningService {
             _ = try PatchPathValidator.canonicalBundleIdentifier(trimmedCustomBundleID)
         }
 
+        _ = try PatchPathValidator.canonicalBundleIdentifier(effectiveBundleID)
+        let descriptor = NiKCertificateProfile(id: UUID(), name: provInfo.name, certSummary: certInfo.summary,
+            teamName: provInfo.teamName, teamID: provInfo.teamID, appIDName: provInfo.appIDName,
+            bundleIDPattern: provInfo.bundleIDPattern, creationDate: provInfo.creationDate,
+            expirationDate: provInfo.expirationDate, provisionedUDIDs: provInfo.provisionedUDIDs,
+            certMatchesProvision: provInfo.developerCertificatesDER.contains(certInfo.derData),
+            sha1Fingerprint: certInfo.sha1Hex, p12Filename: p12.lastPathComponent, provisionFilename: profile.lastPathComponent,
+            createdAt: Date(), certificateExpirationDate: certInfo.expirationDate,
+            certificateCreationDate: certInfo.notBeforeDate, provisionsAllDevices: provInfo.provisionsAllDevices,
+            allowsDebugging: provInfo.allowsDebugging, entitlements: provInfo.entitlements)
+        let assessment = NiKCertificateCompatibility.assess(descriptor, bundleID: effectiveBundleID,
+            deviceUDID: options.targetDeviceUDID, allowMismatch: options.allowCertificateMismatch)
+        guard assessment.canSign else {
+            throw NiKError(assessment.issues.filter { $0.severity == .blocking }.map(\.vi).joined(separator: "\n"))
+        }
+
         let executableURL = app.appendingPathComponent(executable)
         let binary = try Data(contentsOf: executableURL, options: .mappedIfSafe)
         let headers: [[UInt8]] = [[0xcf,0xfa,0xed,0xfe], [0xfe,0xed,0xfa,0xcf],
@@ -156,12 +147,12 @@ actor SigningService {
         try NiKBinaryInspector.requireUnencrypted(at: executableURL)
 
         // Step 4: Apply Info.plist modifications, extension cleanup, and dylib/deb injection.
-        report(4, 0.68, "Đang áp dụng tùy biến gói và chèn Tweak…")
+        try report(4, 0.68, "Đang áp dụng tùy biến gói và chèn Tweak…")
         if options.removeExtensions {
             for folderName in ["PlugIns", "Extensions", "Watch"] {
                 let targetFolder = app.appendingPathComponent(folderName)
                 if fm.fileExists(atPath: targetFolder.path) {
-                    try? fm.removeItem(at: targetFolder)
+                    try fm.removeItem(at: targetFolder)
                 }
             }
         }
@@ -222,30 +213,40 @@ actor SigningService {
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
         // Step 5: Execute Zsign.
-        report(5, 0.84, "Đang ký chữ ký số bằng Zsign…")
+        try report(5, 0.84, "Đang ký chữ ký số bằng Zsign…")
         var completed = false
         let accepted = Zsign.sign(
             appPath: app.path,
             provisionPath: profile.path,
             p12Path: p12.path,
             p12Password: password,
-            removeProvision: false,
+            // Pinned Zsign c4ba9da: bRemoveProvision=true WRITES the profile in bundle.cpp.
+            // The Swift argument name is inverted relative to the native implementation.
+            removeProvision: true,
             completion: { completed = $0 }
         )
-        guard accepted && completed else {
+        guard accepted && completed && Zsign.checkSigned(appExecutable: executableURL.path) else {
             throw NiKError("Zsign báo lỗi. Kiểm tra chứng chỉ, profile, Bundle ID và entitlement.")
         }
 
-        // Step 6: Repackage signed IPA.
-        report(6, 0.96, "Đang đóng gói tệp IPA đã ký…")
-        let output = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("NiKSign-Signed-\(UUID().uuidString).ipa")
-        do {
-            try fm.zipItem(at: payload, to: output, compressionMethod: .deflate)
-        } catch {
-            try? fm.removeItem(at: output)
-            throw error
+        let embeddedProfile = app.appendingPathComponent("embedded.mobileprovision")
+        guard fm.fileExists(atPath: embeddedProfile.path),
+              try Data(contentsOf: embeddedProfile) == Data(contentsOf: profile) else {
+            throw NiKError("Zsign chưa giữ đúng embedded.mobileprovision trong app đã ký. Không xuất IPA thiếu profile.")
         }
+
+        // Step 6: Repackage signed IPA.
+        try report(6, 0.96, "Đang đóng gói tệp IPA đã ký…")
+        let outputDirectory = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Signed", isDirectory: true)
+        try fm.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let output = outputDirectory.appendingPathComponent("NiKSign-Signed-\(UUID().uuidString).ipa")
+        let staging = work.appendingPathComponent("signed-output.ipa")
+        try fm.zipItem(at: payload, to: staging, compressionMethod: .deflate)
+        try Task.checkCancellation()
+        try NiKSignedOutputValidator.validate(staging, expectedBundleID: effectiveBundleID)
+        try Task.checkCancellation()
+        try fm.moveItem(at: staging, to: output)
 
         let finalName = (plist["CFBundleDisplayName"] as? String)
             ?? (plist["CFBundleName"] as? String)
@@ -254,7 +255,7 @@ actor SigningService {
             ?? (plist["CFBundleVersion"] as? String)
             ?? "1.0"
 
-        report(6, 1.0, "Hoàn tất ký và xuất IPA.")
+        onProgress?(NiKSigningProgress(step: 6, totalSteps: 6, fraction: 1, description: "Hoàn tất ký và xuất IPA."))
         return NiKSignedArtifact(
             ipaURL: output,
             bundleID: effectiveBundleID,

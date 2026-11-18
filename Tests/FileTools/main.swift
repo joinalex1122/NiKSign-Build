@@ -82,3 +82,40 @@ try corruptBytes.write(to: corrupt)
 try expectFailure { try NiKArchive.extract(corrupt, to: root.appendingPathComponent("crc-out")) }
 precondition(!fm.fileExists(atPath: root.appendingPathComponent("crc-out").path))
 print("PASS: symlink rejection and corrupted CRC cleanup")
+
+func signedFixture(_ name: String, bundleID: String, signature: Bool, executable: Data) throws -> URL {
+    let url = root.appendingPathComponent(name + ".ipa")
+    let archive = try Archive(url: url, accessMode: .create)
+    let info = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": bundleID, "CFBundleExecutable": "Demo"], format: .xml, options: 0)
+    var files = ["Payload/Demo.app/Info.plist": info, "Payload/Demo.app/Demo": executable, "Payload/Demo.app/embedded.mobileprovision": Data("fixture".utf8)]
+    if signature { files["Payload/Demo.app/_CodeSignature/CodeResources"] = Data("fixture".utf8) }
+    for path in files.keys.sorted() {
+        let data = files[path]!
+        try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(data.count)) { offset, size in
+            data.subdata(in: Int(offset)..<min(Int(offset) + size, data.count))
+        }
+    }
+    return url
+}
+let structuralFixture = try signedFixture("structural", bundleID: "com.example.demo", signature: true, executable: Data([0xcf, 0xfa, 0xed, 0xfe] + [UInt8](repeating: 0, count: 28)))
+try NiKSignedOutputValidator.validate(structuralFixture, expectedBundleID: "com.example.demo")
+try expectFailure { try NiKSignedOutputValidator.validate(structuralFixture, expectedBundleID: "com.other.app") }
+let missingSignature = try signedFixture("missing-signature", bundleID: "com.example.demo", signature: false, executable: Data([0xcf, 0xfa, 0xed, 0xfe] + [UInt8](repeating: 0, count: 28)))
+try expectFailure { try NiKSignedOutputValidator.validate(missingSignature, expectedBundleID: "com.example.demo") }
+let invalidBinary = try signedFixture("bad-executable", bundleID: "com.example.demo", signature: true, executable: Data("not a binary".utf8))
+try expectFailure { try NiKSignedOutputValidator.validate(invalidBinary, expectedBundleID: "com.example.demo") }
+print("PASS: output structure/CRC, exact bundle ID, signing resource presence and Mach-O marker; fixture does not assert cryptographic signature validity")
+
+let missingProvision = root.appendingPathComponent("missing-profile.ipa")
+try fm.copyItem(at: structuralFixture, to: missingProvision)
+do {
+    let archive = try Archive(url: missingProvision, accessMode: .update)
+    try archive.remove(archive["Payload/Demo.app/embedded.mobileprovision"]!)
+}
+do {
+    try NiKSignedOutputValidator.validate(missingProvision, expectedBundleID: "com.example.demo")
+    fatalError("Missing profile must fail")
+} catch let failure as NiKSignedOutputValidator.Failure {
+    precondition(failure.message == "IPA đầu ra thiếu embedded.mobileprovision.")
+}
+print("PASS: missing embedded profile reports the actual failing condition")
