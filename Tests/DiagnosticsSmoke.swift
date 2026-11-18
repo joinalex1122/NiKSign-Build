@@ -27,6 +27,10 @@ import Foundation
         precondition(report.jobs[0].hasError && !report.jobs[0].hasOutput)
         precondition(report.jobs[0].progressPercent == 0 && report.jobs[0].elapsedSeconds == 0)
         precondition(report.systemVersion == "unknown")
+        precondition(!report.signingStorageAvailable && !report.recoveryStorageAvailable && !report.certificateStorageAvailable)
+        let available = NiKDiagnosticReport.make(jobs: [], recovery: [], appVersion: "3.3", appBuild: "330", systemVersion: "27.2",
+            signingStorageAvailable: true, recoveryStorageAvailable: true, certificateStorageAvailable: true)
+        precondition(available.signingStorageAvailable && available.recoveryStorageAvailable && available.certificateStorageAvailable)
         precondition(report.jobCounts["failed"] == 1 && report.recoveryCounts["restoreFailed"] == 1)
         job.fraction = 4
         job.updatedAt = job.createdAt.addingTimeInterval(100_000_000)

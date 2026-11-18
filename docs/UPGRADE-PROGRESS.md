@@ -124,3 +124,11 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Khi app bị hệ thống kết thúc giữa tải, staging tạm chưa được index vào thư viện; chưa có resume tải sau relaunch. Cleanup sau crash dựa trên temp OS, còn cần bổ sung dọn staging cũ có ownership.
 - CI 5229db4 / 44210893692 đã có runner và đang audit. Giữ kết quả này để sửa lỗi, không gọi mốc mới đạt build từ kết quả commit cũ.
 - Còn lại chính: tab/favorites/trash + typed plist/workspace/entitlements/components/diff/undo, patch conflicts/lifecycle/history, OTA/device, diagnostics storage availability và gate 2 lần sạch.
+
+## Mốc 9 — trạng thái storage trong report và dọn staging sau gián đoạn
+
+- Mốc 8 được giữ ở commit db62f5a55c78e5aaabb6f49c35c4dada8a4f3e5c, nhánh handoff/niksign-upgrade-checkpoints. Chưa advance codex/niksign-upgrades khi CI 5229db4 đang chạy để không hủy runner giữa audit. Đọc nhánh checkpoint này nếu phiên ngắt; tiếp tục fast-forward nhánh build khi audit hiện tại có kết luận.
+- Diagnostic thêm các cờ trạng thái mở kho job/recovery/certificate. Empty counts không còn được hiểu ngầm là kho trống trong khi mở index thất bại; không xuất lỗi thô hoặc paths. Đây là trạng thái mở/đọc snapshot, không phải cam kết tất cả ghi tương lai sẽ thành công.
+- Recovery controller theo dõi kết quả mở/refresh; queue cho biết journal có nạp được. UI report truyền các cờ thật thay vì mặc định available. DiagnosticsSmoke bổ sung unknown/available flags và vẫn PASS Linux.
+- Downloader giới hạn timeout tối đa 1 giờ, dọn folder NiKSign-Network-UUID cũ hơn 24 giờ trước lần tải kế tiếp. Không dọn folder mới, tên khác, regular file hay symlink; không theo link ra ngoài. Không resume tải dở sau app bị kết thúc.
+- DownloadCleanupSmoke kiểm namespace/tuổi/UUID và bảo toàn dữ liệu không thuộc ownership; chạy cùng audit. Core và network smoke tests chạy lại sau thay đổi; cần kết quả Apple ở commit mới.

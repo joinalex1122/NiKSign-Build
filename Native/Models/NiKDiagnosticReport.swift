@@ -20,10 +20,14 @@ struct NiKDiagnosticReport: Codable, Sendable {
     let jobs: [Job]
     let omittedJobs: Int
     let recoveryCounts: [String: Int]
+    let signingStorageAvailable: Bool
+    let recoveryStorageAvailable: Bool
+    let certificateStorageAvailable: Bool
     let limitations: [String]
 
     static func make(jobs allJobs: [NiKSigningJob], recovery: [NiKFileRecoveryRecord],
                      appVersion: String, appBuild: String, systemVersion: String,
+                     signingStorageAvailable: Bool = false, recoveryStorageAvailable: Bool = false, certificateStorageAvailable: Bool = false,
                      now: Date = Date()) -> Self {
         let selected = allJobs.suffix(1_000)
         var jobCounts: [String: Int] = [:]
@@ -41,9 +45,12 @@ struct NiKDiagnosticReport: Codable, Sendable {
                      appVersion: safeVersion(appVersion), appBuild: safeVersion(appBuild),
                      systemVersion: safeVersion(systemVersion), jobCounts: jobCounts, jobs: details,
                      omittedJobs: max(0, allJobs.count - selected.count), recoveryCounts: recoveryCounts,
+                     signingStorageAvailable: signingStorageAvailable, recoveryStorageAvailable: recoveryStorageAvailable,
+                     certificateStorageAvailable: certificateStorageAvailable,
                      limitations: [
                         "Contains status summaries only; raw errors, names, paths, IDs, URLs, UDIDs and credentials are excluded.",
                         "Reports local application state; does not prove Apple signature trust, installation or system access.",
+                        "Counts are loaded snapshots; check storage availability flags before interpreting empty history.",
                         "Build audit results must be obtained from the matching GitHub Actions commit."
                      ])
     }

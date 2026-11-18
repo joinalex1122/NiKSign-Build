@@ -41,13 +41,16 @@ struct NiKDiagnosticsView: View {
             defer { busy = false }
             await recovery.refresh()
             let jobs = queue.jobs, records = recovery.records
+            let signingAvailable = queue.storageAvailable, recoveryAvailable = recovery.storageAvailable
+            let certificateAvailable = NiKCertificateStore.shared.loadFailure == nil
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
             let system = UIDevice.current.systemVersion
             do {
                 let result = try await Task.detached {
                     let data = try NiKDiagnosticReport.make(jobs: jobs, recovery: records,
-                        appVersion: version, appBuild: build, systemVersion: system).encoded()
+                        appVersion: version, appBuild: build, systemVersion: system,
+                        signingStorageAvailable: signingAvailable, recoveryStorageAvailable: recoveryAvailable, certificateStorageAvailable: certificateAvailable).encoded()
                     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NiKSign-Diagnostics", isDirectory: true)
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                     let url = directory.appendingPathComponent(UUID().uuidString + ".json")

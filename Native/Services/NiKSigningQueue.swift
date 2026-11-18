@@ -7,6 +7,7 @@ import Combine
     @Published private(set) var isRunning = false
     @Published private(set) var cancellationRequests: Set<UUID> = []
     @Published var message: String?
+    var storageAvailable: Bool { journal != nil }
     private var journal: NiKSigningJobJournal?
     private var worker: Task<Void, Never>?
     private var activeTask: Task<NiKSignedArtifact, Error>?

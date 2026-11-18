@@ -5,6 +5,7 @@ import Combine
     static let shared = NiKRecoveryController()
     @Published private(set) var records: [NiKFileRecoveryRecord] = []
     @Published private(set) var busy = false
+    @Published private(set) var storageAvailable = false
     @Published var message: String?
     private let opening: Task<NiKFileRecoveryStore, Error>
 
@@ -24,7 +25,8 @@ import Combine
         do {
             let store = try await opening.value
             records = await Task.detached { store.history() }.value
-        } catch { message = error.localizedDescription }
+            storageAvailable = true
+        } catch { storageAvailable = false; message = error.localizedDescription }
     }
     func snapshot(_ url: URL) async throws -> NiKEditableFileSnapshot {
         let store = try await opening.value

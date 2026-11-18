@@ -31,6 +31,8 @@ xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Models/NiKEditable
 /tmp/nik-text-document-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKLibraryItem.swift Native/Services/NiKLibraryIndex.swift Tests/LibraryIndexSmoke.swift -o /tmp/nik-library-index-test
 /tmp/nik-library-index-test
+xcrun swiftc Native/Services/NiKHTTPDownload.swift Tests/DownloadCleanupSmoke.swift -o /tmp/nik-download-cleanup-test
+/tmp/nik-download-cleanup-test
 xcrun swiftc Native/Services/NiKHTTPDownload.swift Tests/HTTPDownloadSmoke.swift -o /tmp/nik-http-download-test
 python3 Tests/http_download_test.py /tmp/nik-http-download-test
 xcrun swiftc Native/Models/NiKAltSourceModels.swift Native/Services/NiKFileDigest.swift Native/Services/NiKHTTPDownload.swift Native/Services/NiKSourceDownloadService.swift Tests/SourceDownloadSmoke.swift -o /tmp/nik-source-download-test

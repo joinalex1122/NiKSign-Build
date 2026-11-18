@@ -47,7 +47,7 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
     static func download(_ url: URL, limit: Int64, timeout: TimeInterval = 60,
                          progress: @escaping @Sendable (Progress) -> Void = { _ in }) async throws -> Receipt {
         try validate(url)
-        guard limit > 0, limit <= 1_073_741_824, timeout.isFinite, timeout > 0 else {
+        guard limit > 0, limit <= 1_073_741_824, timeout.isFinite, timeout > 0, timeout <= 3_600 else {
             throw Failure(message: "Giới hạn tải không hợp lệ.")
         }
         let transfer = NiKHTTPDownload(limit: limit, timeout: timeout, progress: progress)
@@ -56,6 +56,25 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
             return try await withCheckedThrowingContinuation { transfer.start(url, continuation: $0) }
         }, onCancel: { transfer.cancel() })
     }
+    /// Never delete a fresh, unrelated, regular-file or symlink entry. The oldest
+    /// valid active transfer is at most one hour; cleanup only considers 24 hours.
+    static func discardAbandoned(in root: URL = FileManager.default.temporaryDirectory,
+                                 before cutoff: Date = Date().addingTimeInterval(-86_400)) throws -> Int {
+        let fm = FileManager.default
+        var removed = 0
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey]
+        for url in try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) {
+            let name = url.lastPathComponent
+            guard name.hasPrefix("NiKSign-Network-"), UUID(uuidString: String(name.dropFirst("NiKSign-Network-".count))) != nil else { continue }
+            let values = try url.resourceValues(forKeys: keys)
+            guard values.isDirectory == true, values.isSymbolicLink != true,
+                  let date = values.contentModificationDate, date < cutoff else { continue }
+            try fm.removeItem(at: url)
+            removed += 1
+        }
+        return removed
+    }
+
     private func start(_ url: URL, continuation: CheckedContinuation<Receipt, Error>) {
         lock.lock()
         self.continuation = continuation
@@ -63,6 +82,7 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
             lock.unlock(); finish(CancellationError()); return
         }
         do {
+            _ = try? Self.discardAbandoned()
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NiKSign-Network-" + UUID().uuidString, isDirectory: true)
             self.directory = directory
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
