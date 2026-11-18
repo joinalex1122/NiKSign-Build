@@ -111,6 +111,10 @@ import Foundation
             let store = try NiKTrashStore(directory: directory, root: docs)
             fails { _ = try store.trash(file) }
             let record = try store.trash(file, libraryItem: item)
+            precondition(record.state == .trashedNeedsIndex)
+            let pending = try store.pendingLibraryRemoval(record.id)
+            precondition(pending.libraryItem?.id == item.id)
+            try store.finishLibraryRemoval(record.id)
             let restored = try store.restore(record.id)
             precondition(restored.state == .restoredNeedsIndex && restored.libraryItem?.id == item.id)
             try store.finishLibraryRestore(record.id)
@@ -133,6 +137,40 @@ import Foundation
             fails { _ = try NiKTrashStore(directory: directory, root: docs) }
             fails { try store.purge(store.history()[0].id, confirmingPermanentDeletion: true) }
             try check(try Data(contentsOf: index) == data)
+        }
+        do {
+            let (docs, directory, small) = try fixture("quota")
+            let store = try NiKTrashStore(directory: directory, root: docs)
+            func sparse(_ name: String, bytes: UInt64) throws -> URL {
+                let file = docs.appendingPathComponent(name)
+                guard fm.createFile(atPath: file.path, contents: Data()) else { throw Injected() }
+                let handle = try FileHandle(forWritingTo: file)
+                defer { try? handle.close() }
+                try handle.truncate(atOffset: bytes)
+                return file
+            }
+            let oversized = try sparse("oversized.bin", bytes: 4_294_967_297)
+            fails { _ = try store.trash(oversized) }
+            precondition(fm.fileExists(atPath: oversized.path) && store.history().isEmpty)
+            let first = try store.trash(sparse("first.bin", bytes: 2_147_483_648))
+            _ = try store.trash(sparse("second.bin", bytes: 2_147_483_648))
+            fails { _ = try store.trash(small) }
+            precondition(fm.fileExists(atPath: small.path))
+            try store.purge(first.id, confirmingPermanentDeletion: true)
+            _ = try store.trash(small)
+        }
+        do {
+            let (docs, directory, file) = try fixture("review-retry")
+            let store = try NiKTrashStore(directory: directory, root: docs, failureInjector: { if $0 == .afterMove { throw Injected() } })
+            fails { _ = try store.trash(file) }
+            try Data("conflicting file".utf8).write(to: file)
+            let reopened = try NiKTrashStore(directory: directory, root: docs)
+            precondition(reopened.history()[0].state == .needsReview && reopened.history()[0].pendingAction == .trash)
+            try fm.removeItem(at: file)
+            try reopened.recover()
+            precondition(reopened.history()[0].state == .trashed)
+            _ = try reopened.restore(reopened.history()[0].id)
+            try check(try Data(contentsOf: file) == Data("original".utf8))
         }
         print("PASS: trash/restore/purge, no overwrite, journal-before-move, recovery at trash/restore/purge failure boundaries, nested folders/parents, symlink/root guards, pending library metadata and corrupt/stale index preservation")
     }

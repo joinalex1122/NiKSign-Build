@@ -48,9 +48,10 @@ final class NiKTrashStore: @unchecked Sendable {
         for record in values {
             try record.original.validate()
             guard !record.original.components.isEmpty, record.bytes <= 4_294_967_296 else { throw failure("Đích/dung lượng thùng rác không hợp lệ.") }
+            guard record.original.components.first?.lowercased() != "ipalibrary" || record.libraryItem != nil else { throw failure("Mục thư viện cần metadata để khôi phục an toàn.") }
             if let item = record.libraryItem {
                 _ = try NiKLibraryIndex.encode([item])
-                guard record.original.components.first == "IPALibrary", record.original.components.last == item.filename else { throw failure("Metadata thư viện không khớp mục thùng rác.") }
+                guard record.original.components.first?.lowercased() == "ipalibrary", record.original.components.last == item.filename else { throw failure("Metadata thư viện không khớp mục thùng rác.") }
             }
         }
     }
@@ -97,30 +98,38 @@ final class NiKTrashStore: @unchecked Sendable {
         var updated = records, changed = false
         for i in updated.indices {
             var record = updated[i]
-            guard [.trashPrepared, .restorePrepared, .purgePrepared].contains(record.state) else { continue }
+            let phase: NiKTrashRecord.Action?
+            switch record.state {
+            case .trashPrepared: phase = .trash
+            case .restorePrepared: phase = .restore
+            case .purgePrepared: phase = .purge
+            case .needsReview, .missing: phase = record.pendingAction
+            default: phase = nil
+            }
+            guard let phase else { continue }
+            record.pendingAction = phase
             let backup = payload(record.id)
             do {
                 try checkEntry(record.id)
-                if record.state == .purgePrepared {
-                    if !exists(backup) { record.state = .purged }
+                if phase == .purge {
+                    record.state = exists(backup) ? .purgePrepared : .purged
                 } else {
-                let original = try target(record, createParents: false)
-                switch record.state {
-                case .trashPrepared:
-                    if matches(backup, record), !exists(original) { record.state = .trashed }
-                    else if !exists(backup), matches(original, record) { record.state = .aborted }
-                    else { record.state = exists(backup) || exists(original) ? .needsReview : .missing }
-                case .restorePrepared:
-                    if matches(original, record), !exists(backup) { record.state = record.libraryItem == nil ? .restored : .restoredNeedsIndex }
-                    else if matches(backup, record), !exists(original) { record.state = .trashed }
-                    else { record.state = exists(backup) || exists(original) ? .needsReview : .missing }
-                case .purgePrepared:
-                    if !exists(backup) { record.state = .purged }
-                default: break
-                }
+                    let original = try target(record, createParents: false)
+                    if phase == .trash {
+                        if matches(backup, record), !exists(original) { record.state = record.libraryItem == nil ? .trashed : .trashedNeedsIndex }
+                        else if !exists(backup), matches(original, record) { record.state = .aborted }
+                        else { record.state = exists(backup) || exists(original) ? .needsReview : .missing }
+                    } else {
+                        if matches(original, record), !exists(backup) { record.state = record.libraryItem == nil ? .restored : .restoredNeedsIndex }
+                        else if matches(backup, record), !exists(original) { record.state = record.libraryItem == nil ? .trashed : .trashedNeedsIndex }
+                        else { record.state = exists(backup) || exists(original) ? .needsReview : .missing }
+                    }
                 }
             } catch { record.state = .needsReview }
-            if record.state != updated[i].state { record.updatedAt = Date(); updated[i] = record; changed = true }
+            if ![.needsReview, .missing, .purgePrepared].contains(record.state) { record.pendingAction = nil }
+            if record.state != updated[i].state || record.pendingAction != updated[i].pendingAction {
+                record.updatedAt = Date(); updated[i] = record; changed = true
+            }
         }
         if changed { try commit(updated) }
     }
@@ -166,25 +175,26 @@ final class NiKTrashStore: @unchecked Sendable {
         if let listingError { throw listingError }
         return bytes
     }
-    func trash(_ url: URL, libraryItem: NiKLibraryItem? = nil) throws -> NiKTrashRecord {
+    func trash(_ url: URL, libraryItem: NiKLibraryItem? = nil, operationID: UUID = UUID()) throws -> NiKTrashRecord {
         lock.lock(); defer { lock.unlock() }
         let parent = try NiKFileLocation.from(url.deletingLastPathComponent(), root: root)
         let location = NiKFileLocation(components: parent.components + [url.lastPathComponent])
         try location.validate()
-        guard location.components.first != "IPALibrary" || libraryItem != nil else { throw failure("Dùng màn Thư viện IPA để xóa/khôi phục IPA có metadata.") }
+        guard location.components.first?.lowercased() != "ipalibrary" || libraryItem != nil else { throw failure("Dùng màn Thư viện IPA để xóa/khôi phục IPA có metadata.") }
         let identity = try NiKTrashIdentity.read(url), bytes = try size(url)
         guard bytes <= 4_294_967_296 else { throw failure("Mục vượt 4 GB.") }
         let retained = records.filter { ![.purged, .restored, .aborted, .restoredNeedsIndex].contains($0.state) }.reduce(UInt64(0)) { $0 + $1.bytes }
         guard retained <= 4_294_967_296 - bytes else { throw failure("Thùng rác đạt giới hạn 4 GB. Hãy khôi phục hoặc xóa vĩnh viễn một số mục.") }
-        let record = NiKTrashRecord(id: UUID(), original: location, identity: identity, bytes: bytes,
-            createdAt: Date(), updatedAt: Date(), state: .trashPrepared, libraryItem: libraryItem)
+        guard !records.contains(where: { $0.id == operationID }), !exists(entry(operationID)) else { throw failure("Operation ID đã được sử dụng.") }
+        let record = NiKTrashRecord(id: operationID, original: location, identity: identity, bytes: bytes,
+            createdAt: Date(), updatedAt: Date(), state: .trashPrepared, pendingAction: .trash, libraryItem: libraryItem)
         try FileManager.default.createDirectory(at: entry(record.id), withIntermediateDirectories: false)
         try commit(records + [record])
         try fail?(.afterPrepare)
         try move(url, to: payload(record.id), identity: identity)
         try fail?(.afterMove)
         guard matches(payload(record.id), record) else { throw failure("Mục đã đổi trong khi di chuyển; giữ journal để kiểm tra.") }
-        var completed = record; completed.state = .trashed; completed.updatedAt = Date()
+        var completed = record; completed.state = libraryItem == nil ? .trashed : .trashedNeedsIndex; completed.pendingAction = nil; completed.updatedAt = Date()
         try fail?(.beforeFinalCommit)
         try replace(completed)
         return completed
@@ -193,28 +203,69 @@ final class NiKTrashStore: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         try recover()
         guard var record = records.first(where: { $0.id == id }) else { throw failure("Không tìm thấy mục.") }
-        guard [.trashed, .restoredNeedsIndex].contains(record.state) else { throw failure("Mục chưa ở trạng thái có thể khôi phục.") }
+        guard [.trashed, .trashedNeedsIndex, .restoredNeedsIndex].contains(record.state) else { throw failure("Mục chưa ở trạng thái có thể khôi phục.") }
         let original = try target(record, createParents: true)
         if record.state == .restoredNeedsIndex, matches(original, record), !exists(payload(id)) { return record }
-        guard record.state == .trashed else { throw failure("Mục chưa ở trạng thái có thể khôi phục; giữ dữ liệu để kiểm tra.") }
+        guard [.trashed, .trashedNeedsIndex].contains(record.state) else { throw failure("Mục chưa ở trạng thái có thể khôi phục; giữ dữ liệu để kiểm tra.") }
         try checkEntry(id)
         guard matches(payload(id), record) else { throw failure("Backup thay đổi hoặc thiếu; không khôi phục tự động.") }
         guard !exists(original) else { throw failure("Đích đã có tệp. Hãy di chuyển/đổi tên tệp mới trước, không ghi đè.") }
-        record.state = .restorePrepared; record.updatedAt = Date(); try replace(record)
+        record.state = .restorePrepared; record.pendingAction = .restore; record.updatedAt = Date(); try replace(record)
         try fail?(.afterPrepare)
         try move(payload(id), to: original, identity: record.identity)
         try fail?(.afterMove)
         record.state = record.libraryItem == nil ? .restored : .restoredNeedsIndex
+        record.pendingAction = nil
         record.updatedAt = Date()
         try fail?(.beforeFinalCommit)
         try replace(record)
         return record
     }
+    func restoredRecord(_ id: UUID) throws -> NiKTrashRecord {
+        lock.lock(); defer { lock.unlock() }
+        guard let record = records.first(where: { $0.id == id }), [.restored, .restoredNeedsIndex].contains(record.state),
+              matches(try target(record, createParents: false), record), !exists(payload(id)) else { throw failure("Chưa xác nhận được dữ liệu đã khôi phục.") }
+        return record
+    }
+    func entryDirectory(_ id: UUID) throws -> URL {
+        lock.lock(); defer { lock.unlock() }
+        guard records.contains(where: { $0.id == id }) else { throw failure("Không tìm thấy mục.") }
+        try checkEntry(id)
+        return entry(id)
+    }
+    func originalURL(_ id: UUID) throws -> URL {
+        lock.lock(); defer { lock.unlock() }
+        guard let record = records.first(where: { $0.id == id }) else { throw failure("Không tìm thấy mục.") }
+        return try target(record, createParents: false)
+    }
+    func pendingLibraryRemoval(_ id: UUID) throws -> NiKTrashRecord {
+        lock.lock(); defer { lock.unlock() }
+        guard let record = records.first(where: { $0.id == id }), record.state == .trashedNeedsIndex, record.libraryItem != nil else { throw failure("Không có yêu cầu cập nhật thư viện đang chờ.") }
+        try checkEntry(id)
+        guard matches(payload(id), record), !exists(try target(record, createParents: false)) else { throw failure("Backup/đích không còn đúng trạng thái xóa đang chờ.") }
+        return record
+    }
+    func finishLibraryRemoval(_ id: UUID) throws {
+        lock.lock(); defer { lock.unlock() }
+        var record = try pendingLibraryRemoval(id)
+        record.state = .trashed; record.updatedAt = Date()
+        try fail?(.beforeFinalCommit); try replace(record)
+    }
+
     func finishLibraryRestore(_ id: UUID) throws {
         lock.lock(); defer { lock.unlock() }
         guard var record = records.first(where: { $0.id == id }), record.state == .restoredNeedsIndex,
               matches(try target(record, createParents: false), record) else { throw failure("Chưa xác nhận được dữ liệu khôi phục.") }
-        record.state = .restored; record.updatedAt = Date(); try replace(record)
+        record.state = .restored; record.updatedAt = Date()
+        try fail?(.beforeFinalCommit); try replace(record)
+    }
+    /// Manual review export only; unlike restore this makes no identity guarantee.
+    func backupForReview(_ id: UUID) throws -> URL {
+        lock.lock(); defer { lock.unlock() }
+        guard records.contains(where: { $0.id == id }) else { throw failure("Không tìm thấy mục.") }
+        try checkEntry(id)
+        _ = try NiKTrashIdentity.read(payload(id))
+        return payload(id)
     }
     func backupURL(_ id: UUID) throws -> URL {
         lock.lock(); defer { lock.unlock() }
@@ -242,10 +293,10 @@ final class NiKTrashStore: @unchecked Sendable {
         guard confirmingPermanentDeletion else { throw failure("Cần xác nhận xóa vĩnh viễn backup.") }
         guard var record = records.first(where: { $0.id == id }), [.trashed, .needsReview, .missing, .purgePrepared].contains(record.state) else { throw failure("Mục không thể xóa vĩnh viễn ở trạng thái này.") }
         try checkEntry(id)
-        record.state = .purgePrepared; record.updatedAt = Date(); try replace(record)
+        record.state = .purgePrepared; record.pendingAction = .purge; record.updatedAt = Date(); try replace(record)
         try fail?(.afterPrepare)
         if exists(payload(id)) { try FileManager.default.removeItem(at: payload(id)) }
         try fail?(.beforeFinalCommit)
-        record.state = .purged; record.updatedAt = Date(); try replace(record)
+        record.state = .purged; record.pendingAction = nil; record.updatedAt = Date(); try replace(record)
     }
 }

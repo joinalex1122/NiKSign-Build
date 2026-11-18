@@ -78,6 +78,25 @@ final class NiKLibraryIndexStore {
         baseline = data
         items = updated
     }
+    func removeForTrash(_ snapshot: NiKLibraryItem) throws {
+        try verifyCurrent()
+        if let current = items.first(where: { $0.id == snapshot.id }), current != snapshot {
+            throw NiKLibraryIndex.Failure(message: "IPA đã đổi tùy chọn/metadata sau yêu cầu xóa; giữ backup để kiểm tra.")
+        }
+        try commit(items.filter { $0.id != snapshot.id })
+    }
+    func restoreFromTrash(_ snapshot: NiKLibraryItem) throws {
+        try verifyCurrent()
+        if let current = items.first(where: { $0.id == snapshot.id }) {
+            guard current.filename == snapshot.filename, current.bundleID == snapshot.bundleID else { throw NiKLibraryIndex.Failure(message: "ID thư viện đang trỏ tới IPA khác; không ghi đè metadata.") }
+            return // Preserve newer options/results after a physical rollback.
+        }
+        try commit([snapshot] + items)
+    }
+    func verifyCurrent() throws {
+        let current = Self.exists(url) ? try NiKLibraryIndex.read(url) : nil
+        guard current == baseline else { throw NiKLibraryIndex.Failure(message: "Index thư viện đã đổi bên ngoài; hãy mở lại app để nạp dữ liệu mới.") }
+    }
     private func checkedWrite(_ data: Data, to target: URL) throws {
         let current = Self.exists(target) ? try NiKLibraryIndex.read(target) : nil
         guard current == baseline else {

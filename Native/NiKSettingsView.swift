@@ -20,6 +20,11 @@ struct NiKSettingsView: View {
                         }
                     }
                     card {
+                        NavigationLink { NiKTrashView() } label: {
+                            row("trash", .orange, t("Thùng rác", "Trash"), t("Khôi phục tệp và IPA đã xóa", "Restore Deleted Files and IPAs"))
+                        }
+                    }
+                    card {
                     NavigationLink { NiKRecoveryHistoryView() } label: {
                         row("arrow.uturn.backward", .indigo, t("Khôi phục tệp", "File Recovery"), t("Backup và lịch sử chỉnh sửa", "Backups and Edit History"))
                     }

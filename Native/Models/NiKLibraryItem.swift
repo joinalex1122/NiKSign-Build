@@ -1,6 +1,6 @@
 import Foundation
 
-struct NiKLibraryItem: Codable, Identifiable, Sendable {
+struct NiKLibraryItem: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()
     var title: String
     var version: String

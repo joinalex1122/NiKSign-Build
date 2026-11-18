@@ -37,18 +37,20 @@ import ImageIO
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
-    func remove(_ item: NiKLibraryItem) throws {
+    func remove(_ item: NiKLibraryItem) async throws {
+        guard indexStore != nil else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
+        guard let stored = items.first(where: { $0.id == item.id }) else { throw NiKError("Không còn IPA này trong thư viện.") }
+        guard !NiKSigningQueue.shared.jobs.contains(where: { $0.libraryID == stored.id && !$0.state.isTerminal }) else { throw NiKError("Hãy hủy hoặc hoàn tất công việc ký trước khi xóa IPA này.") }
+        do { try await NiKTrashController.shared.removeLibraryItem(stored) }
+        catch { self.error = error.localizedDescription; throw error }
+    }
+    func commitTrashRemoval(_ snapshot: NiKLibraryItem) throws {
         guard let indexStore else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
-        guard !NiKSigningQueue.shared.jobs.contains(where: { $0.libraryID == item.id && !$0.state.isTerminal }) else {
-            throw NiKError("Hãy hủy hoặc hoàn tất công việc ký của IPA trước khi xóa bản gốc.")
-        }
-        let updated = items.filter { $0.id != item.id }
-        // Commit the index before publishing the changed list.
-        try indexStore.commit(updated)
-        items = updated
-        if FileManager.default.fileExists(atPath: item.ipaURL.path) {
-            try FileManager.default.removeItem(at: item.ipaURL)
-        }
+        try indexStore.removeForTrash(snapshot); items = indexStore.items
+    }
+    func commitTrashRestoration(_ snapshot: NiKLibraryItem) throws {
+        guard let indexStore else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
+        try indexStore.restoreFromTrash(snapshot); items = indexStore.items
     }
     @discardableResult func receive(_ url: URL, expectedBundleID: String? = nil) async -> Bool {
         guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return false }
@@ -623,6 +625,7 @@ struct NiKIPADetail: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var tweakPicker = false
+    @State private var deleting = false
     @State private var signedURL: URL?
     @State private var errorMessage: String?
 @StateObject private var otaServer = NiKHTTPSOTAServer()
@@ -680,10 +683,15 @@ struct NiKIPADetail: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
-                        do { try library.remove(item); dismiss() }
-                        catch { errorMessage = error.localizedDescription }
+                        guard !deleting else { return }
+                        deleting = true
+                        Task {
+                            defer { deleting = false }
+                            do { try await library.remove(item); dismiss() }
+                            catch { errorMessage = error.localizedDescription }
+                        }
                     } label: {
-                        Label(t("Xóa IPA khỏi thư viện", "Remove IPA"), systemImage: "trash")
+                        Label(t("Chuyển IPA vào Thùng rác", "Move IPA to Trash"), systemImage: "trash")
                     }
                 } label: {
                     NiKGlassCircleIcon(systemName: "ellipsis")
@@ -1660,7 +1668,7 @@ struct NiKLocalFiles: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(t("Xóa", "Delete"), role: .destructive) {
+            Button(t("Thùng rác", "Trash"), role: .destructive) {
                 deleteSelected()
             }
             .font(.caption.weight(.semibold))
@@ -1774,6 +1782,7 @@ struct NiKLocalFiles: View {
     @ViewBuilder
     private var trailingToolbarMenu: some View {
         Menu {
+            NavigationLink(t("Thùng rác", "Trash")) { NiKTrashView() }
             Button(t("Tab mới tại đây", "New Tab Here")) { browser.newTab() }.disabled(browser.state.tabs.count >= 12)
             Button(t("Đóng tab hiện tại", "Close Current Tab"), role: .destructive) { browser.closeTab(browser.state.selectedID) }.disabled(browser.state.tabs.count == 1)
             Button(browser.state.favorites.contains(browser.selected.location) ? t("Bỏ yêu thích vị trí", "Unfavorite Location") : t("Yêu thích vị trí", "Favorite Location")) { browser.toggleFavorite() }
@@ -1865,14 +1874,9 @@ struct NiKLocalFiles: View {
             Label(t("Chia sẻ", "Share"), systemImage: "square.and.arrow.up")
         }
         Button(role: .destructive) {
-            do {
-                let lease = try NiKManagedFileAccess.reserve([item.url])
-                defer { NiKFileMutationReservations.shared.release(lease) }
-                try FileManager.default.removeItem(at: item.url); reload()
-            }
-            catch { alertMessage = error.localizedDescription }
+            trashItems([item])
         } label: {
-            Label(t("Xóa", "Delete"), systemImage: "trash")
+            Label(t("Chuyển vào Thùng rác", "Move to Trash"), systemImage: "trash")
         }
     }
 
@@ -2003,19 +2007,24 @@ struct NiKLocalFiles: View {
         } catch { alertMessage = error.localizedDescription }
     }
 
-    private func deleteSelected() {
-        var failures: [String] = []
-        for item in items where selectedIDs.contains(item.id) {
-            do {
-                let lease = try NiKManagedFileAccess.reserve([item.url])
-                defer { NiKFileMutationReservations.shared.release(lease) }
-                try FileManager.default.removeItem(at: item.url); selectedIDs.remove(item.id)
+    private func deleteSelected() { trashItems(items.filter { selectedIDs.contains($0.id) }) }
+    private func trashItems(_ targets: [NiKFileItem]) {
+        guard !fileBusy, !targets.isEmpty else { return }
+        fileBusy = true
+        Task {
+            defer { fileBusy = false }
+            var failures: [String] = []
+            for item in targets {
+                do { try await NiKTrashController.shared.trash(item.url); selectedIDs.remove(item.id) }
+                catch { failures.append(item.name + ": " + error.localizedDescription) }
             }
-            catch { failures.append(item.name + ": " + error.localizedDescription) }
+            isSelecting = !selectedIDs.isEmpty
+            reload()
+            if !failures.isEmpty {
+                alertMessage = failures.prefix(20).joined(separator: "\n")
+                if failures.count > 20 { alertMessage = (alertMessage ?? "") + "\n+ \(failures.count - 20) " + t("lỗi khác", "more errors") }
+            }
         }
-        isSelecting = !selectedIDs.isEmpty
-        reload()
-        if !failures.isEmpty { alertMessage = failures.joined(separator: "\n") }
     }
 
     private func unzipHere(_ url: URL) {

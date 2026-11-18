@@ -17,9 +17,10 @@ struct NiKTrashIdentity: Codable, Equatable, Sendable {
 }
 struct NiKTrashRecord: Codable, Identifiable, Sendable {
     enum State: String, Codable, Sendable {
-        case trashPrepared, trashed, restorePrepared, restoredNeedsIndex, restored
+        case trashPrepared, trashedNeedsIndex, trashed, restorePrepared, restoredNeedsIndex, restored
         case purgePrepared, purged, aborted, missing, needsReview
     }
+    enum Action: String, Codable, Sendable { case trash, restore, purge }
     let id: UUID
     let original: NiKFileLocation
     let identity: NiKTrashIdentity
@@ -27,5 +28,6 @@ struct NiKTrashRecord: Codable, Identifiable, Sendable {
     let createdAt: Date
     var updatedAt: Date
     var state: State
+    var pendingAction: Action? = nil
     let libraryItem: NiKLibraryItem?
 }

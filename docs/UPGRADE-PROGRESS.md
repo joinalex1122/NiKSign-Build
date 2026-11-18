@@ -10,7 +10,7 @@ Trạng thái 2026-11-18: 4460603 đã vượt hai lượt clean audit/Xcode và
 | P0 / 10C: 2-pass sạch | 4460603: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 11 trở đi; device |
 | P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
-| P3: 4B tệp + workspace | Backup/editor qua Xcode 5229; tab/favorites/hidden đã viết, core PASS | Xcode tab UI, trash/properties/clipboard, device |
+| P3: 4B tệp + workspace | Tabs/favorites/source qua 446; properties/reservations/trash đã viết; core PASS | Xcode mới + trash UI/device; clipboard/nền I/O |
 | P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
@@ -170,3 +170,14 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - TrashStoreSmoke Linux PASS: round-trip, conflict/retry, purge confirmation giữ file mới, journal-before-move, lỗi ở 3 biên trash + 3 biên restore + purge-final, folder/missing parents, symlink/root guards, pending library metadata, corrupt/stale index, clear finished history. Apple test được nối audit, chưa chạy.
 - Chưa có controller/Trash UI, Library.remove và file delete vẫn cần thay; không nói thùng rác đã dùng được. Bước tiếp theo: reserve paths trên MainActor → backend worker, refresh/recover; lưu snapshot LibraryItem trước move, commit removal index sau move, rollback physical nếu index fail; restore library giữ restoredNeedsIndex tới khi save metadata thành công. Không dùng store.write(Data()) để giả delete.
 - Build 446060385fe4192560c739b14d6a2ad07aba650d / run 44213739009 đã PASS 2 clean audits, gồm fixtures HTTP/source/tab trên macOS, có artifact IPA/source 14388591883. Phạm vi mốc 1–10; mốc 11–13 chưa thuộc bản đã sạch này.
+
+## Mốc 14 — nối Trash UI, xóa/khôi phục IPA và giao dịch metadata
+
+- Đã thay xóa trực tiếp của LocalFiles thành TrashController worker, giữ lease input/component. Library.remove chuyển async, đưa bản gốc vào trash kèm LibraryItem snapshot; chỉ xóa index sau khi backup durable. Raw IPALibrary vẫn không được mutate ngoài luồng quản lý thư viện.
+- Có Trash UI trong menu ... và Settings: trạng thái thật, restore/hoàn tất metadata, recheck, export backup để kiểm tra, dọn lịch sử kết thúc. Purge cần confirmation riêng; không xóa tệp mới tại vị trí gốc. Nếu journal hỏng, giữ nguyên và cho xuất index.
+- Thêm trashedNeedsIndex và pendingAction để recover không nhầm thao tác purge dở thành backup có thể restore. Prepared/needsReview có thể đối chiếu lại sau khi xử lý xung đột. Case cũ không đủ bằng chứng vẫn giữ để review, không overwrite.
+- Tách NiKTrashLibraryTransaction dùng chung mã production/test: lỗi index removal rollback file, lỗi rollback metadata giữ restoredNeedsIndex; retry idempotent, không ghi đè metadata ID trỏ IPA khác, giữ các tùy chọn mới hơn khi rollback. IndexStore có helper removeForTrash/restoreFromTrash và verify stale data.
+- TrashLibraryTransactionSmoke Linux PASS: normal remove/restore, lỗi trước/sau commit index, pending/retry, newer options, foreign metadata conflicts và chuẩn hóa completion chỉ sau recover durable. Core smoke chạy lại PASS, thêm sparse-file quota 4 GB, per-item >4 GB và review/retry. Sparse fixture không đọc/ghi GB vào RAM.
+- Export review sao chép sang temp theo tên gốc, giữ backup riêng; không khẳng định tính toàn vẹn nếu record cần review. Nhận diện restore dựa device/inode, không phải full-app backup/migration. Các icon thư viện/IPA đã ký tách riêng chưa có GC khi purge bản gốc; không xóa rộng để dọn rác.
+- Native syntax/source/dependency/bash/whitespace qua. UI/controller/mới pending Apple audit; mốc 13 (1ee6be17) đang chạy build, chưa gán kết quả đó cho mốc 14.
+- Tiếp theo: gate Apple; bổ sung diagnostic cho trash pending states và clipboard/nền I/O, typed IPA workspace (2C), patch lifecycle/conflicts (5C), OTA/device. Chưa tuyên bố toàn lộ trình hoàn tất.
