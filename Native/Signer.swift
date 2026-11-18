@@ -52,6 +52,13 @@ actor SigningService {
         let provData = try NiKCertificateStore.readCertificateFile(profile)
         let provInfo = try NiKCertificateStore.parseMobileProvision(data: provData)
 
+        // The native signer must read the same bytes that preflight inspected, even if
+        // the certificate store changes while a queued job is running.
+        let signingP12 = work.appendingPathComponent("signing-certificate.p12")
+        let signingProfile = work.appendingPathComponent("selected.mobileprovision")
+        try p12Data.write(to: signingP12, options: [.atomic, .completeFileProtection])
+        try provData.write(to: signingProfile, options: [.atomic, .completeFileProtection])
+
         if let expiry = provInfo.expirationDate, expiry < Date() {
             throw NiKError("Hồ sơ .mobileprovision (\(provInfo.name)) đã hết hạn vào \(expiry.formatted(date: .numeric, time: .omitted)).")
         }
@@ -217,12 +224,11 @@ actor SigningService {
         var completed = false
         let accepted = Zsign.sign(
             appPath: app.path,
-            provisionPath: profile.path,
-            p12Path: p12.path,
+            provisionPath: signingProfile.path,
+            p12Path: signingP12.path,
             p12Password: password,
-            // Pinned Zsign c4ba9da: bRemoveProvision=true WRITES the profile in bundle.cpp.
-            // The Swift argument name is inverted relative to the native implementation.
-            removeProvision: true,
+            // Local native fix embeds and seals the selected profile when removal is false.
+            removeProvision: false,
             completion: { completed = $0 }
         )
         guard accepted && completed && Zsign.checkSigned(appExecutable: executableURL.path) else {
@@ -231,7 +237,7 @@ actor SigningService {
 
         let embeddedProfile = app.appendingPathComponent("embedded.mobileprovision")
         guard fm.fileExists(atPath: embeddedProfile.path),
-              try Data(contentsOf: embeddedProfile) == Data(contentsOf: profile) else {
+              try Data(contentsOf: embeddedProfile) == provData else {
             throw NiKError("Zsign chưa giữ đúng embedded.mobileprovision trong app đã ký. Không xuất IPA thiếu profile.")
         }
 

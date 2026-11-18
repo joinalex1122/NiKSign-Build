@@ -11,7 +11,16 @@ for e in items:
     assert (r/'Native/Licenses'/e['licenseFile']).stat().st_size > 200
     if e['status'] == 'linked':
         assert 'package: '+e['name'] in config
-        assert e['revision'] in config or 'exactVersion: '+e['ref'] in config
+        if e['name'] == 'Zsign':
+            provenance = json.loads((r/'Vendor/Zsign/UPSTREAM.json').read_text())
+            assert 'path: Vendor/Zsign' in config and provenance['revision'] == e['revision']
+            for name, digest in provenance['originalSHA256'].items():
+                value = (r/'Vendor/Zsign'/name).read_bytes()
+                if name == 'src/bundle.cpp':
+                    value = value.replace(b'if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', b'if (bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', 1)
+                assert hashlib.sha256(value).hexdigest() == digest, name
+        else:
+            assert e['revision'] in config or 'exactVersion: '+e['ref'] in config
 for p, digest in json.loads((r/'dependencies-vendor-lock.json').read_text()).items():
     assert hashlib.sha256((r/p).read_bytes()).hexdigest() == digest, p
 for name in ['MachOKit','ArArchiveKit','SWCompression']:

@@ -11,6 +11,7 @@ python3 Tests/minizip_test.py
 python3 Tests/patch_v9_test.py
 python3 Tests/verify_ipa_test.py
 node Tests/web.test.js
+python3 Tests/zsign_provisioning_test.py
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/CodecSmoke.swift -o /tmp/nik-codec-test
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/PatchSchema9Smoke.swift -o /tmp/nik-schema9-test
 /tmp/nik-schema9-test

@@ -291,3 +291,17 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Phát hiện showSigningProgressSheet được set nhưng chưa có sheet presentation. Nối modal vào detail, theo dõi đúng jobID, chỉ mở sau enqueue thành công và hiện job.error; sửa các mốc tiến độ theo report() thực của Signer.
 - Kiểm tra đường dẫn IPA đã ký tồn tại trong Documents/Signed, là file IPA thường, không symlink/ngoài root trước hiển thị badge/install và trước OTA. Giữ signedPath để restore có thể dùng lại; không xóa metadata chỉ vì tệp tạm không có.
 - SignedFileAccessSmoke Linux PASS (có file/missing/delete/symlink/outside root); Native parse/source checks PASS. Apple UI/typecheck cần gate mới. Còn cần cải thiện giữ navigation khi đổi tab (switch ZStack mới có thể dựng lại view), xử lý auto-install khi rời detail và xác minh ký/patch/OTA trên thiết bị. Không gọi iOS27.2 system access đã sửa.
+
+### Workflow mốc24 bị thiếu hosted runner, đã yêu cầu retry
+
+- Run44304188705/98d2b9f: source-checks success; iOS job134801440684 cancelled trước bước setup, runner_name rỗng, steps rỗng. Check annotation: “The job was not acquired by Runner of type hosted even after multiple attempts”. Chờ từ12:28:15 tới12:43:17 UTC, chưa chạy Xcode.
+- Đã gọi rerun riêng job iOS; không đổi app/runner/warning gate và không push build branch để tránh hủy lượt retry. Chưa kết luận compile pass/fail của mốc24.
+
+## Mốc 25 — sửa tận gốc Zsign mất embedded.mobileprovision
+
+- Ảnh máy thật xác nhận fix23 đổi removeProvision=true vẫn fail. Điều tra toàn bộ native c4ba9da: SignFolder ghi profile khi true, nhưng GenerateCodeResources lại xóa profile khi true. False xóa profile cũ mà không ghi lại. Nhận định mốc23 chỉ “đổi cờ true” chưa đủ và được thay thế bởi fix này.
+- Vendor/Zsign là local SwiftPM package từ cùng revision/MIT, đúng source set upstream; sửa DUY NHẤT điều kiện ghi profile thành !bRemoveProvision. Call Swift trở về false. Profile tồn tại trước sealing và hash được ký trong CodeResources, không chèn lại sau ký hoặc bỏ validator. UPSTREAM.json giữ original hashes + patch hash; dependencies-vendor-lock khóa toàn bộ source package, check-dependencies xác minh nguồn gốc và patch.
+- Signer dùng bản snapshot p12/profile trong thư mục làm việc riêng, cùng bytes đã preflight; guard embedded bytes với provData snapshot. Không ghi đè profile gốc. Work được xóa qua defer; snapshot nằm ngoài Payload nên không xuất khóa trong IPA.
+- Tests/zsign_provisioning_test.py biên dịch NGUYÊN native sources app sẽ dùng, dựng lại bundle.cpp gốc theo hash để tái hiện trước/sau; 12 ca (gốc/sửa × giữ/xóa × exact/wildcard/mismatched ID). Linux PASS: SignFolder chạy trên Mach-O arm64 sở hữu bởi NiKSign, profile binary có NUL, stale old profile được thay, resources hash2 khớp SHA256, original source bytes/Bundle ID không đổi. Đây là ad-hoc signature fixture, KHÔNG chứng minh Apple CMS/trust/install của chứng chỉ người dùng. Trên macOS fixture được compile arm64 bằng xcrun; nối test vào cả hai clean audits. Host C++ được compile với -Werror, không suppress compiler warnings.
+- Queue catch lấy lại bản job đã nhận progress trước khi ghi failed/cancelled, tránh fraction quay về0 như ảnh.
+- Native syntax/source/dependency/IPA fixtures/local package manifest PASS. Code mới cần Xcode gate và thử ký lại Garena trên thiết bị. Không tuyên bố mọi IPA cài được hoặc quyền sandbox được sửa bởi thay đổi này.

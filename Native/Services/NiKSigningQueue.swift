@@ -124,6 +124,8 @@ import Combine
             }
             return true
         } catch {
+            // Progress callbacks update the published/journaled copy, not this local snapshot.
+            if let latest = jobs.first(where: { $0.id == job.id }) { job = latest }
             job.state = error is CancellationError ? .cancelled : .failed
             job.error = error is CancellationError ? nil : error.localizedDescription
             job.step = error is CancellationError ? "Đã hủy tại điểm an toàn" : "Công việc thất bại"

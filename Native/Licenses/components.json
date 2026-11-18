@@ -106,7 +106,7 @@
     "revision": "c4ba9da4283031c07efa03bce42c4b8602d22e73",
     "license": "MIT",
     "status": "linked",
-    "note": "Engine ký IPA hiện có; nhánh package vẫn ở cùng revision.",
+    "note": "Mã nguồn local tại Vendor/Zsign, dựa trên revision đã ghim; sửa điều kiện giữ provisioning profile. Hash gốc và bản sửa trong UPSTREAM.json.",
     "licenseFile": "Zsign-LICENSE.txt"
   }
 ]

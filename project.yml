@@ -5,8 +5,7 @@ options:
   developmentLanguage: en
 packages:
   Zsign:
-    url: https://github.com/claration/zsign.git
-    revision: c4ba9da4283031c07efa03bce42c4b8602d22e73
+    path: Vendor/Zsign
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation.git
     exactVersion: 0.9.20

@@ -12,7 +12,13 @@ Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` tro
 
 Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
 
-## Hai lỗi mới nhất — phải kiểm chứng tiếp
+## Cập nhật mốc25 — ưu tiên nội dung này hơn mô tả mốc23 bên dưới
+
+Đổi removeProvision=true ở mốc23 CHƯA sửa được lỗi trên máy. Native Zsign có hai nhánh mâu thuẫn: true ghi profile ở SignFolder rồi xóa ở GenerateCodeResources; false xóa cũ và không ghi lại. Mốc25 dùng local SwiftPM Vendor/Zsign, sửa điều kiện ghi thành !bRemoveProvision, Swift gọi false. Không sửa profile sau ký. UPSTREAM.json và dependencies-vendor-lock.json kiểm provenance. Native before/after regression 12 ca PASS; resource hash2/profile bytes đều kiểm. Không thay thế kiểm thử chứng chỉ và cài máy thật bằng ad-hoc fixture. Signer snapshot credentials riêng tránh đọc file thay đổi giữa preflight và ký; queue giữ progress khi thất bại. Đọc mốc25 trong UPGRADE-PROGRESS để lấy trạng thái mới nhất.
+
+Main đã merge PR5 tới28b0ba0 (main4fef0b5), sau đó mốc24 nằm ở nhánh upgrades98d2b9f. Thông tin “chưa merge main” phía trên chỉ đúng cho thay đổi sau mốc23.
+
+## Hai lỗi được bàn giao từ mốc23 — xem cập nhật25 trước
 
 ### Ký IPA Garena thất bại
 
