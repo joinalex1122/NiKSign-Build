@@ -1509,6 +1509,107 @@ Image(systemName: showPassword ? "eye.slash" : "eye")
     }
 }
 
+private struct NiKSwipeToDeleteRow<Content: View>: View {
+    let itemID: String
+    @Binding var swipedItemID: String?
+    let isDisabled: Bool
+    let deleteTitle: String
+    let onDelete: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var dragOffset: CGFloat = 0
+    private let openOffset: CGFloat = -96
+
+    private var isOpen: Bool {
+        !isDisabled && swipedItemID == itemID
+    }
+
+    private var currentOffset: CGFloat {
+        if isDisabled { return 0 }
+        let base = isOpen ? openOffset : 0
+        return min(0, max(openOffset - 24, base + dragOffset))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if currentOffset < -4 {
+                Button(role: .destructive) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                        swipedItemID = nil
+                        dragOffset = 0
+                    }
+                    onDelete()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "trash")
+                            .font(.subheadline.weight(.semibold))
+                        Text(deleteTitle)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(width: 84, height: 38)
+                    .background(
+                        Capsule()
+                            .fill(Color.white)
+                            .shadow(color: .black.opacity(0.08), radius: 4, y: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 6)
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+
+            content()
+                .offset(x: currentOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 16, coordinateSpace: .local)
+                        .onChanged { value in
+                            guard !isDisabled else { return }
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            guard abs(dx) > abs(dy) * 1.25 else { return }
+                            if dx < 0 && swipedItemID != itemID {
+                                swipedItemID = nil
+                            }
+                            dragOffset = dx
+                        }
+                        .onEnded { value in
+                            guard !isDisabled else {
+                                dragOffset = 0
+                                return
+                            }
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            let predicted = value.predictedEndTranslation.width
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                if abs(dx) > abs(dy) * 1.25 {
+                                    if isOpen {
+                                        if dx > 24 || predicted > 40 {
+                                            swipedItemID = nil
+                                        }
+                                    } else {
+                                        if dx < -44 || predicted < -72 {
+                                            swipedItemID = itemID
+                                        }
+                                    }
+                                }
+                                dragOffset = 0
+                            }
+                        }
+                )
+        }
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled {
+                dragOffset = 0
+                if swipedItemID == itemID {
+                    swipedItemID = nil
+                }
+            }
+        }
+    }
+}
+
 struct NiKLocalFiles: View {
     private let rootTitle: String
     @StateObject private var browser: NiKFileBrowserController
@@ -1529,6 +1630,7 @@ struct NiKLocalFiles: View {
     @State private var sort: NiKFilesSort = .name
     @State private var isSelecting = false
     @State private var selectedIDs: Set<String> = []
+    @State private var swipedItemID: String?
 
     @State private var importing = false
     @State private var creatingFolder = false
@@ -1624,11 +1726,12 @@ struct NiKLocalFiles: View {
         }
         .onChange(of: sort) { _, _ in browser.setOptions(query: query, sort: sort) }
         .onChange(of: visibleAnchor) { _, anchor in browser.scrollAnchor = anchor }
+        .onChange(of: isSelecting) { _, selecting in if selecting { swipedItemID = nil } }
     }
 
     private func loadBrowserTab() {
         query = browser.selected.query; sort = browser.selected.sort
-        selectedIDs.removeAll(); isSelecting = false
+        selectedIDs.removeAll(); isSelecting = false; swipedItemID = nil
         let anchor = browser.scrollAnchor
         reload()
         visibleAnchor = anchor
@@ -1733,7 +1836,19 @@ struct NiKLocalFiles: View {
         } else {
             LazyVStack(spacing: 4) {
                 ForEach(filtered) { item in
-                    rowEntry(item).id(item.name)
+                    NiKSwipeToDeleteRow(
+                        itemID: item.id,
+                        swipedItemID: $swipedItemID,
+                        isDisabled: isSelecting,
+                        deleteTitle: t("Xóa", "Delete"),
+                        onDelete: {
+                            swipedItemID = nil
+                            trashItems([item])
+                        }
+                    ) {
+                       rowEntry(item)
+                    }
+                    .id(item.name)
                 }
             }.scrollTargetLayout()
         }
