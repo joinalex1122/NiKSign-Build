@@ -49,15 +49,24 @@ enum NiKSignedOutputValidator {
                 appRoot = "Payload/" + String(parts[1]) + "/"
             }
         }
-        guard let plist, let appRoot,
-              plist["CFBundleIdentifier"] as? String == expectedBundleID,
-              let executable = plist["CFBundleExecutable"] as? String,
-              !executable.isEmpty, !executable.contains("/"), !executable.contains("\\"), executable != ".", executable != "..",
-              archive[appRoot + executable]?.type == .file,
-              (archive[appRoot + executable]?.uncompressedSize ?? 0) >= 28,
-              archive[appRoot + "embedded.mobileprovision"]?.type == .file,
-              archive[appRoot + "_CodeSignature/CodeResources"]?.type == .file else {
-            throw Failure(message: "IPA đầu ra thiếu executable, profile, tài nguyên chữ ký hoặc sai Bundle ID.")
+        guard let plist, let appRoot else { throw Failure(message: "IPA đầu ra thiếu Payload/*.app/Info.plist.") }
+        // This checks preservation of the requested app ID, never membership in a profile.
+        guard plist["CFBundleIdentifier"] as? String == expectedBundleID else {
+            throw Failure(message: "Bundle ID đầu ra khác ID đã yêu cầu. Đây không phải bước đối chiếu ID với profile.")
+        }
+        guard let executable = plist["CFBundleExecutable"] as? String,
+              !executable.isEmpty, !executable.contains("/"), !executable.contains("\\"), executable != ".", executable != ".." else {
+            throw Failure(message: "CFBundleExecutable đầu ra không hợp lệ.")
+        }
+        guard archive[appRoot + executable]?.type == .file,
+              (archive[appRoot + executable]?.uncompressedSize ?? 0) >= 28 else {
+            throw Failure(message: "IPA đầu ra thiếu executable hoặc executable quá ngắn.")
+        }
+        guard archive[appRoot + "embedded.mobileprovision"]?.type == .file else {
+            throw Failure(message: "IPA đầu ra thiếu embedded.mobileprovision.")
+        }
+        guard archive[appRoot + "_CodeSignature/CodeResources"]?.type == .file else {
+            throw Failure(message: "IPA đầu ra thiếu _CodeSignature/CodeResources.")
         }
         guard let binaryEntry = archive[appRoot + executable] else { throw Failure(message: "Thiếu executable đầu ra.") }
         var magic = Data()

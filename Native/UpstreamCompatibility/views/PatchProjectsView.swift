@@ -998,6 +998,13 @@ private struct PatchProjectDetailView: View {
                     isWorking = false
                     actionAlert = PatchStoreAlert(titleKey: "common.done", messageKey: "patch.applied_message")
                 }
+            } catch let error as NiKPatchAccessFailure {
+                await MainActor.run {
+                    isWorking = false
+                    let hidden = item.project?.isPrivate == true && !item.isAuthorCopy
+                    actionAlert = PatchStoreAlert(titleKey: "common.failed",
+                        messageKey: hidden ? "patch.error.private_operation" : error.message(english: language == .english))
+                }
             } catch let error as PatchPackageError {
                 await MainActor.run {
                     isWorking = false

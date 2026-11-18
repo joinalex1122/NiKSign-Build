@@ -1,0 +1,88 @@
+# Bàn giao NiKSign cho Gemini — 18/11/2026
+
+## Đọc trước, không bắt đầu lại
+
+Người dùng chỉ có iPhone, báo iOS 27.2 chính thức; đã cài và kiểm thử NiKSign. Muốn sửa thực tế, nâng cấp liên tục và cập nhật bàn giao sau mỗi mốc. Không nói đã hoàn tất tính năng chỉ vì build qua. Không đòi xác nhận lại các sửa lỗi/nâng cấp đã được giao. Người dùng yêu cầu riêng: tạo bàn giao này cho Gemini.
+
+Repo: https://github.com/joinalex1122/NiKSign-Build
+Nhánh làm việc: `codex/niksign-upgrades`.
+Checkpoint: `handoff/niksign-upgrade-checkpoints`.
+Main/PR cũ không phản ánh tiến độ mới; chưa merge main. Checkout nhánh nâng cấp, không reset về main.
+Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` trong gói bàn giao. Tài liệu này đi kèm mã mốc23.
+
+Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
+
+## Hai lỗi mới nhất — phải kiểm chứng tiếp
+
+### Ký IPA Garena thất bại
+
+Ảnh queue báo “IPA đầu ra thiếu executable, profile, tài nguyên chữ ký hoặc sai Bundle ID.” Đây là lỗi structural validator sau Zsign, không phải chứng cứ bị chặn Bundle ID/profile.
+
+Root cause đã tìm trong Zsign được pin `c4ba9da4283031c07efa03bce42c4b8602d22e73`:
+https://github.com/claration/zsign/blob/c4ba9da4283031c07efa03bce42c4b8602d22e73/src/bundle.cpp
+`SignFolder` xóa profile cũ, rồi `if (bRemoveProvision)` mới ghi `embedded.mobileprovision`. Tên tham số Swift `removeProvision` ngược với logic native.
+
+Mốc23 sửa `Native/Signer.swift` truyền true, kiểm bytes profile được giữ sau ký trước zip. `Native/Services/NiKSignedOutputValidator.swift` giữ kiểm CRC/Mach-O/profile/CodeResources/ID output, tách thông báo lỗi cụ thể. KHÔNG bỏ validator để giả ký thành công. Nếu đổi revision Zsign phải xem lại semantics này.
+
+Bundle/profile mismatch đã chuyển warning ở mốc18 (`Native/Models/NiKCertificateCompatibility.swift`), dùng chung UI và Signer backend. Không tự đổi ID IPA và không chặn chỉ vì ID không khớp profile. Check ID output chỉ để bảo đảm giữ ID người dùng yêu cầu, không đối chiếu profile. Các lỗi mật khẩu, chứng chỉ/profile hết hạn, thiếu Mach-O hoặc binary mã hóa vẫn có thể chặn. Tạo chữ ký không đồng nghĩa iOS cho cài/chạy.
+
+Chưa có IPA Garena, p12/password/profile của người dùng trong workspace để thử ký thật. Không đưa thông tin bí mật lên GitHub. Cần gate Xcode code23, sau đó người dùng thử lại từ bản gốc và đọc thông báo mới nếu còn lỗi.
+
+### CapCut patch nhập được nhưng không áp dụng
+
+Tệp người dùng là public schema9, 1 rule replace/application, 2 directories/application, không settings/AppGroups. Mốc21 đã tích hợp converter trong codec, không còn yêu cầu chuyển tay. Crypto/schema9 fixtures đã qua macOS ở build5e43918 và5f56845.
+
+Ảnh mới báo không tìm/mở được container `com.lemon.lvoverseas`. Không phải lỗi nhập schema. Mốc23 thêm overlay `Native/UpstreamCompatibility/helpers/DevicePatchService.swift`, exact-ID LS/API fallback sau MCM/scan; `NiKPatchContainerAccess.swift` canonical validation + read preflight trước transaction. UI phân biệt unresolved và unreadable. Không dùng container của ID gần giống; không khẳng định chưa cài chỉ vì API lookup fail. Private package không lộ chi tiết target.
+
+Chưa có bằng chứng quyền ngoài sandbox hoạt động trên iOS27.2 với Bundle ID mới. Không thể sửa triệt để quyền OS bằng việc bỏ check lỗi. Cần xác minh CapCut đã cài/đã mở, đúng Bundle ID của bản thực cài, log MCM/LS và trạng thái sandbox. Custom ID mới có thể không có quyền MHA cũ. Giữ backup/transaction, không ghi khi chưa xác định đúng target. Không hứa đổi ID hay ký app tự cấp quyền.
+
+## Trạng thái build thật
+
+- `5f568455dc61fc7682cde5306c65b13a9cfc7da1`, run https://github.com/joinalex1122/NiKSign-Build/actions/runs/44240972874 : API xác nhận completed/success. Chứa mốc1–22, chưa có fix23. Người dùng đã tải artifact; `pass1`/`pass2` là hai build cùng mã nguồn, dùng IPA pass2. Không gọi hai thư mục là hai phiên bản.
+- `5e43918a24b56d1a0a8228c6f33a3e3a81e4f07a`, run44235522878: hai clean audits/codecs/IPA verify PASS, workflow fail chỉ vì upload ETIMEDOUT/ENOTFOUND. Xem BUILD-5e43918-UPLOAD-FAILURE.md. Mốc22 thêm3 upload attempts, vẫn fail nếu attempt cuối lỗi; không tắt warning gate.
+- Các IPA cũ4d9b7e2/d30b78d không chứa fix mới. Không phát lại chúng dưới tên mới. Toàn bộ IPA là unsigned, không có chứng chỉ của người dùng trong bàn giao.
+- Gate bắt buộc: hai clean audits liên tiếp, zero warnings/errors trên mỗi full audit log; build xong chưa đủ, phải upload và tải/verify checksum. Sau đó mới báo có IPA mới.
+
+## Phạm vi schema9 thực sự
+
+`NiKPatchSchema9Compatibility.swift` chỉ nhận gói public schema9 có replacement/application và directory/application, settings/AppGroups trống. AES-GCM AADv9/fingerprint/digests/path/model validation trước reseal nội bộv3. Original source không bị ghi đè. Inspect/decode password/contentKey/update đều gọi normalize. Không nhận schema9 private/password, merge/delete/container khác/dynamic settings; từ chối unknown fields để không bỏ mất nghĩa. Không tăng latestSchemaVersion=9 và không mặc định WorkspaceV9 engine = encrypted codec9 đầy đủ.
+
+Giới hạn64MB input/output, depth64/100k nodes/128MB expanded, 5000 rules/dirs. Giữ nguyên upstream; dùng `upstream-overlays.json`/project excludes. Có fixtures synthetic, không commit nội dung patch CapCut của người dùng.
+
+## Quyết định người dùng đã chốt
+
+- Chọn chỉ ký / chỉ3105 / cả hai lần đầu, đổi trong Settings.
+- Giao diện iOS sáng/tối/theo hệ thống, logo NiK navy/cyan/purple. Basic/advanced độc lập, mặc định basic, có chuyển đổi.
+- Chứng chỉ hỏi lần đầu, có “Để sau”; nhiều cert/default/chọn riêng IPA; không giới hạn ký vào ID profile. OCSP online có nút kiểm tra, good/revoked/unknown, TTL24h; countdown hạn sớm hơn cert/profile. Offline/timeout không được báo good. OCSP đạt không chứng minh install/launch.
+- Bundle ID mặc định CHÍNH NiKSign là `com.niksign.app` từ mốc20, thay yêu cầu MHA khóa cũ. Giữ nguyên ID IPA nhập trừ người dùng sửa. Đổi ID app có thể tạo container/app mới; giữ bản cũ để xuất dữ liệu.
+- Bỏ banner ký NiKSign trong kho3105; title3105. Không thêm thanh nổi trùng chức năng.
+
+## Lộ trình còn thiếu — không báo toàn bộ hoàn tất
+
+Phạm vi: 1B 2C 3B 4B 5C 6B 7B 8B 9B 10C.
+
+Đã có: durable sequential signing queue/retry, certificate compatibility, typed plist tree/diff/undo/recovery, streamed source download+hash, tabs/history/favorites, properties/SHA256, leases bảo vệ input job, transactional trash/library rollback, redacted diagnostics, basic/advanced UI, local HTTPS OTA nền tảng.
+
+Còn lớn:
+1. 2C: workspace IPA từ immutable original/hash, safe extract/bundle scan, components/entitlements, diff/undo, export change set/compression thật, validated signing integration. Typed editor hiện cho plist riêng, không phải workspace hoàn chỉnh.
+2. 4B: clipboard giữa tabs, I/O nền còn lại, staging orphan cleanup sau crash, UI/device verification.
+3. 5C: conflict/lifecycle/history/recovery bản vá trên nền transaction; chưa có nâng cấp hoàn chỉnh.
+4. 6B/9B: OTA/TLS/install và recovery kill/relaunch trên iPhone; chưa có bằng chứng27.2 truy cập hệ thống. Không chỉ sửa SupportPolicy để gọi là hỗ trợ.
+5. 10C: gate cho commit cuối, tải/verify IPA, provenance/checksum, kết quả thật từ thiết bị.
+
+## Kiểm thử và môi trường
+
+Workspace: `/workspace/NiKSign-upgrades`; Linux Swift6.1.2: `/workspace/.niksign-toolchain/swift-6.1.2-RELEASE-ubuntu24.04/usr/bin/swiftc`.
+Linux không typecheck SwiftUI/UIKit/Security và không build IPA. Native parse chỉ syntax. Xcode16.4/macOS15 Intel/SDK18.5 ở Actions, iOS deployment17.
+
+Chạy `python3 scripts/check-integration.py`, `python3 scripts/check-dependencies.py`, tests phù hợp; `bash scripts/audit-ios.sh 1` trên macOS. Harness Certificates phải copy OCSP service; lỗi thiếu symbol này đã sửa. Audit có PatchSchema9Smoke và PatchContainerAccessSmoke.
+Mốc23 local PASS: FileToolsSmoke (ZIP/CRC/missing profile), PatchContainerAccessSmoke, Native parse và source checks. Linux SwiftPM ZIPFoundation có warning PrivacyInfo.xcprivacy, không gọi Linux zero-warning. Chưa có Apple gate cho code23 tại lúc viết bàn giao.
+
+## Cách tiếp tục
+
+1. Kiểm SHA nhánh mới và workflow gắn SHA đó, xử lý lỗi thật. Không lặp lại gate trên code cũ để chứng minh code mới.
+2. Tải IPA pass2 khi upload success, kiểm verify-ipa.py với Bundle ID com.niksign.app, ghi checksum và phát đúng build cho người dùng.
+3. Người dùng thử Garena từ bản gốc, CapCut patch; thu thông báo chi tiết và log truy cập đã che dữ liệu nhạy cảm. Sửa đúng tầng signature/profile vs OS container access.
+4. Hoàn thành từng mục nâng cấp còn thiếu, cập nhật UPGRADE-PROGRESS sau mỗi mốc.
+
+Không reset các worktree cũ `/workspace/NiKSign-handoff-final`, `/workspace/NiKSign-latest-review` hoặc áp lại stash toàn bộ. Không đưa p12/password/UDID/patch riêng vào repo. Không tuyên bố hoạt động máy thật từ fixture hay BUILD SUCCEEDED.

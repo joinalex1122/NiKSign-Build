@@ -105,3 +105,17 @@ try expectFailure { try NiKSignedOutputValidator.validate(missingSignature, expe
 let invalidBinary = try signedFixture("bad-executable", bundleID: "com.example.demo", signature: true, executable: Data("not a binary".utf8))
 try expectFailure { try NiKSignedOutputValidator.validate(invalidBinary, expectedBundleID: "com.example.demo") }
 print("PASS: output structure/CRC, exact bundle ID, signing resource presence and Mach-O marker; fixture does not assert cryptographic signature validity")
+
+let missingProvision = root.appendingPathComponent("missing-profile.ipa")
+try fm.copyItem(at: structuralFixture, to: missingProvision)
+do {
+    let archive = try Archive(url: missingProvision, accessMode: .update)
+    try archive.remove(archive["Payload/Demo.app/embedded.mobileprovision"]!)
+}
+do {
+    try NiKSignedOutputValidator.validate(missingProvision, expectedBundleID: "com.example.demo")
+    fatalError("Missing profile must fail")
+} catch let failure as NiKSignedOutputValidator.Failure {
+    precondition(failure.message == "IPA đầu ra thiếu embedded.mobileprovision.")
+}
+print("PASS: missing embedded profile reports the actual failing condition")
