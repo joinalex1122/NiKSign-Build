@@ -1155,7 +1155,9 @@ private struct NiKLCSignProgressSheet: View {
     let itemTitle: String
     let onInstall: (URL) -> Void
     let onClose: () -> Void
-
+    @AppStorage("nik.language") private var language = "vi"
+        private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
+    
     private var steps: [(Double, String)] {
         [
             (0.00, t("1. Chuẩn bị & giải nén IPA", "1. Preparing & Extracting IPA")),
