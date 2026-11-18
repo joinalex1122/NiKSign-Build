@@ -78,6 +78,7 @@ private struct NiKPlistTreeLevel: View {
     @State private var page: NiKPlistNodePage?
     @State private var limit = 250
     @State private var loading = false
+    @State private var loadToken: UUID?
     @State private var error: String?
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     var body: some View {
@@ -118,13 +119,16 @@ private struct NiKPlistTreeLevel: View {
         .disabled(editor.busy)
         .navigationTitle(name).navigationBarTitleDisplayMode(.inline)
         .task(id: "\(editor.revision)-\(limit)") {
+            let token = UUID(); loadToken = token
             loading = true
-            defer { loading = false }
+            defer { if loadToken == token { loading = false } }
             do {
                 let result = try await editor.page(path, limit: limit)
                 try Task.checkCancellation()
-                page = result; error = nil
-            } catch is CancellationError {} catch { page = nil; self.error = error.localizedDescription }
+                if loadToken == token { page = result; error = nil }
+            } catch is CancellationError {} catch {
+                if loadToken == token && !Task.isCancelled { page = nil; self.error = error.localizedDescription }
+            }
         }
     }
     @ViewBuilder private func row(_ entry: NiKPlistNodeEntry, page: NiKPlistNodePage) -> some View {

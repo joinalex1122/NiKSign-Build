@@ -208,3 +208,11 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - PlistValueDraftSmoke Linux PASS: Date rất nhỏ, negative zero, literal Unicode, numeric/Base64 validation, giữ container khi không đổi. TypedPlistSmoke đã PASS mốc 15; thêm cả hai vào Apple audit. Native syntax/integration/dependency/bash/whitespace PASS. SwiftUI/controller chưa typecheck Apple ở commit này.
 - Không gọi đây là workspace IPA đầy đủ: chưa có cây bundle từ IPA/extract immutable source, quản lý component/entitlements, packaged change set/compression backend của 2C. Đây là typed editor dùng được cho tệp riêng, làm nền cho workspace.
 - Build 4d9b7e25f6642deef9596f7667466afa00bb67c7 / workflow 44222092235 đã qua 2 clean audits; có Trash UI và toàn bộ mốc 1–14. Typed engine/editor mốc 15–16 chưa thuộc build đó.
+
+### Chốt bàn giao sau mốc 16
+
+- Sửa cancellation của worker phân trang plist và dùng token để task cũ không ghi đè loading/error của lần nạp mới. Export draft khóa busy trong khi tạo bản xuất.
+- Native syntax và controller Foundation typecheck harness Swift 6.1.2 / Swift language 5 PASS; harness thay Combine/Recovery bằng stub, không thay thế Apple UI integration.
+- Build d30b78d / workflow 44226714053 đang in_progress tại lần kiểm tra bàn giao; source-checks success, chưa gán gate Apple cho typed editor.
+- Bản IPA đã xác minh gần nhất: 4d9b7e2, hai clean audits, chưa ký. Không khẳng định cài được trên iPhone 27.2 khi chưa có chứng chỉ/profile và kiểm thử thiết bị.
+- Toàn bộ 2C/5C và các mục còn thiếu vẫn chưa hoàn tất; xem BAN-GIAO-HIEN-TAI.md.

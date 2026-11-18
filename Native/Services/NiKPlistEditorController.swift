@@ -86,24 +86,30 @@ struct NiKPlistNodePage: Sendable {
     func move(_ parent: [NiKPlistPathPart], from: Int, to: Int, expected: Int) { _ = mutate(expected: expected) { try $0.moveArrayElement(at: parent, from: from, to: to) } }
     func page(_ path: [NiKPlistPathPart], limit: Int) async throws -> NiKPlistNodePage {
         guard let document else { throw NiKError("Chưa nạp plist.") }
-        let currentRevision = revision
-        let cap = max(0, min(100_000, limit))
-        return try await Task.detached {
+        let currentRevision = revision, cap = max(0, min(100_000, limit))
+        let worker = Task.detached {
+            try Task.checkCancellation()
             let value = try document.node(at: path)
             let entries: [NiKPlistNodeEntry], total: Int
             switch value {
             case .dictionary(let values):
                 total = values.count
-                entries = values.keys.sorted().prefix(cap).map { key in
-                    .init(path: path + [.key(key)], name: String(decoding: key.utf8.prefix(256), as: UTF8.self), value: values[key]!)
+                let keys = try values.keys.sorted { first, second in try Task.checkCancellation(); return first < second }
+                entries = try keys.prefix(cap).map { key in
+                    try Task.checkCancellation()
+                    return .init(path: path + [.key(key)], name: String(decoding: key.utf8.prefix(256), as: UTF8.self), value: values[key]!)
                 }
             case .array(let values):
                 total = values.count
-                entries = values.prefix(cap).enumerated().map { index, value in .init(path: path + [.index(index)], name: "[\(index)]", value: value) }
+                entries = try values.prefix(cap).enumerated().map { index, value in
+                    try Task.checkCancellation()
+                    return .init(path: path + [.index(index)], name: "[\(index)]", value: value)
+                }
             default: total = 0; entries = []
             }
-            return .init(revision: currentRevision, value: value, entries: entries, total: total)
-        }.value
+            return NiKPlistNodePage(revision: currentRevision, value: value, entries: entries, total: total)
+        }
+        return try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
     }
     func prepareReview() async throws -> NiKPlistReview? {
         guard !busy, let document, document.isDirty else { return nil }
