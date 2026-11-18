@@ -3,14 +3,14 @@
 Phạm vi: 1B 2C 3B 4B 5C 6B 7B 8B 9B 10C. Đặc tả/tiêu chí: APPROVED-UPGRADE-SCOPE.md.
 
 Base: 099f0b087ed537b38ee25e6e6f8041052a78354d. Nhánh: codex/niksign-upgrades.
-Trạng thái hiện tại 2026-11-18: c7ee74c đã build arm64 sạch một lượt; full audit bị dừng bởi cảnh báo tests đã sửa. Run a2618d3 / 44160108851 source-checks PASS, job iOS cancelled; chưa có hai lượt sạch ở mã mới. Không báo hoàn tất phát hành khi hai lượt chưa qua.
+Trạng thái 2026-11-18: 5229db4 đã vượt hai lượt clean audit/Xcode và tạo IPA arm64 unsigned; đã tải và kiểm lại cả hai IPA. Chi tiết hash/link: VERIFIED-BUILD-5229db4.md. Các mốc viết sau commit này vẫn cần gate riêng.
 
 | Mốc | Trạng thái | Bằng chứng còn cần |
 |---|---|---|
-| P0 / 10C: 2-pass sạch | c7ee74c: build arm64 sạch, audit dừng vì 2 warning trong tests; đã sửa | Chạy đủ 2 pass ở commit mới |
+| P0 / 10C: 2-pass sạch | 5229db4: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 8 trở đi; device |
 | P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
-| P3: 4B tệp + workspace | Backup + editor đã viết; core PASS | Tab/favorites/trash, Xcode mới và device |
+| P3: 4B tệp + workspace | Backup/editor qua Xcode 5229; tab/favorites/hidden đã viết, core PASS | Xcode tab UI, trash/properties/clipboard, device |
 | P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
@@ -132,3 +132,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Recovery controller theo dõi kết quả mở/refresh; queue cho biết journal có nạp được. UI report truyền các cờ thật thay vì mặc định available. DiagnosticsSmoke bổ sung unknown/available flags và vẫn PASS Linux.
 - Downloader giới hạn timeout tối đa 1 giờ, dọn folder NiKSign-Network-UUID cũ hơn 24 giờ trước lần tải kế tiếp. Không dọn folder mới, tên khác, regular file hay symlink; không theo link ra ngoài. Không resume tải dở sau app bị kết thúc.
 - DownloadCleanupSmoke kiểm namespace/tuổi/UUID và bảo toàn dữ liệu không thuộc ownership; chạy cùng audit. Core và network smoke tests chạy lại sau thay đổi; cần kết quả Apple ở commit mới.
+
+## Mốc 10 — 4B nhiều tab, lịch sử, yêu thích và tệp ẩn
+
+- Thêm state/versioned store/controller riêng. Mỗi root Documents/IPA Library có tối đa 12 tab, mỗi tab giữ vị trí tương đối, history 100 mục, query/sort/hidden; favorites tối đa 1.000. Không lưu UUID đường dẫn container tuyệt đối.
+- Navigation thư mục đi trong tab, lùi/tiến/gốc, thêm/đóng/chọn tab và yêu thích nằm trong nội dung/menu ... hiện có; 4 root FilesHome được giữ. Chuyển tab có cache scroll anchor theo tab+vị trí trong phiên; độ chính xác cuộn cần kiểm UI thiết bị. Anchor không persist sau đóng app.
+- Root/path traversal và symlink guard; folder bị mất/không đọc được hiển thị lỗi và nút retry/root, không hiển thị giả empty. Danh sách cũ không được giữ ở thư mục lỗi. Lỗi index phiên giữ nguyên file và chặn overwrite; chống stale settings từ instance khác.
+- FileBrowserStateSmoke Linux PASS: tab/query/sort/hidden/history độc lập, favorites/relative persistence, giới hạn tab/history, invalid state/path/symlink, stale/corrupt settings. Nối audit. Parser Native và source checks PASS; SwiftUI/controller Apple typecheck chưa chạy ở mốc này.
+- Mốc 7 / 5229db4 đã PASS 2 clean audits, có artifact 14386558398. Hash và phạm vi chính xác trong VERIFIED-BUILD-5229db4.md; hai IPA local đã qua verifier. Giữ bản này để đối chiếu, không gọi là bản chứa mốc 8–10.
+- Nhánh handoff/niksign-upgrade-checkpoints giữ mốc 8–9 trong khi CI 5229 chạy. Khi checkpoint mốc 10 xong sẽ fast-forward codex/niksign-upgrades tới code mới để audit; không merge main.
+- Tiếp theo: properties/hash và trash/recovery thao tác tệp, clipboard/chuyển nền; typed IPA workspace (2C), patch conflicts/lifecycle (5C), QA/device. Chưa tuyên bố 4B hay toàn lộ trình hoàn tất.

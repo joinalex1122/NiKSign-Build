@@ -27,6 +27,8 @@ struct NiKFilePicker: UIViewControllerRepresentable {
 
 struct NiKFilesHome: View {
     @AppStorage("nik.mode") private var mode = ""
+    @AppStorage("nik.language") private var language = "vi"
+    private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     @State private var session = FilesTabSession()
     private var supported: Bool {
         let v = AppInfo.versionTuple
@@ -38,11 +40,11 @@ struct NiKFilesHome: View {
             ScrollView {
                 VStack(spacing: 12) {
                     NavigationLink {
-                        NiKLocalFiles(directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+                        NiKLocalFiles(directory: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0], title: t("Tệp đã nhập", "Imported Files"))
                     } label: {
                         homeCard(
-                            title: "Tệp đã nhập",
-                            subtitle: "Tài liệu và tệp đã nhập vào ứng dụng",
+                            title: t("Tệp đã nhập", "Imported Files"),
+                            subtitle: t("Tài liệu và tệp đã nhập vào ứng dụng", "Documents imported into NiKSign"),
                             icon: "tray.and.arrow.down.fill",
                             color: .blue
                         )
@@ -50,11 +52,11 @@ struct NiKFilesHome: View {
                     .buttonStyle(.plain)
 
                     NavigationLink {
-                        NiKLocalFiles(directory: NiKLibrary.root)
+                        NiKLocalFiles(directory: NiKLibrary.root, title: t("Thư viện IPA", "IPA Library"))
                     } label: {
                         homeCard(
-                            title: "Thư viện IPA",
-                            subtitle: "Kho lưu trữ gói IPA cục bộ",
+                            title: t("Thư viện IPA", "IPA Library"),
+                            subtitle: t("Kho lưu trữ gói IPA cục bộ", "Local IPA storage"),
                             icon: "shippingbox.fill",
                             color: .orange
                         )
@@ -65,8 +67,8 @@ struct NiKFilesHome: View {
                         NiKSystemFiles(directory: URL(fileURLWithPath: "/", isDirectory: true))
                     } label: {
                         homeCard(
-                            title: "Tệp hệ thống · Chỉ đọc",
-                            subtitle: "Duyệt hệ thống tệp ở chế độ chỉ đọc",
+                            title: t("Tệp hệ thống · Chỉ đọc", "System Files · Read Only"),
+                            subtitle: t("Duyệt hệ thống tệp ở chế độ chỉ đọc", "Read-only system file browser"),
                             icon: "internaldrive.fill",
                             color: .purple
                         )
@@ -77,8 +79,8 @@ struct NiKFilesHome: View {
                         AppDataBrowserView(tabSession: $session)
                     } label: {
                         homeCard(
-                            title: "Dữ liệu ứng dụng đã cài",
-                            subtitle: "Quản lý và xem dữ liệu ứng dụng",
+                            title: t("Dữ liệu ứng dụng đã cài", "Installed App Data"),
+                            subtitle: t("Quản lý và xem dữ liệu ứng dụng", "Browse application data"),
                             icon: "app.badge.fill",
                             color: .green
                         )
@@ -88,14 +90,14 @@ struct NiKFilesHome: View {
                     .opacity((mode == "sign" || !supported) ? 0.45 : 1)
 
                     if mode == "sign" {
-                        Text("Bật chế độ 3105 hoặc Cả hai trong Cài đặt để dùng trình duyệt dữ liệu ứng dụng.")
+                        Text(t("Bật chế độ 3105 hoặc Cả hai trong Cài đặt để dùng trình duyệt dữ liệu ứng dụng.", "Enable 3105 or Both in Settings to browse application data."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 4)
                     }
                     if !supported {
-                        Text("Không hỗ trợ trên iOS \(AppInfo.osVersion) (\(AppInfo.osBuild)).")
+                        Text(t("Không hỗ trợ trên iOS", "Unsupported on iOS") + " \(AppInfo.osVersion) (\(AppInfo.osBuild)).")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,7 +109,7 @@ struct NiKFilesHome: View {
                 .padding(.bottom, 100)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Tệp")
+            .navigationTitle(t("Tệp", "Files"))
         }
     }
 

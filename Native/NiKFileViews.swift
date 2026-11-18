@@ -523,7 +523,7 @@ struct NiKFileItem: Identifiable {
     let modifiedAt: Date
     var id: String { url.path }
 }
-enum NiKFilesSort { case name, date, size }
+typealias NiKFilesSort = NiKFileBrowserSort
 struct NiKShareItem: Identifiable { let id = UUID(); let url: URL }
 struct NiKFolderTarget: Identifiable { let id = UUID(); let item: NiKFileItem; let isCopy: Bool }
 struct NiKShareSheet: UIViewControllerRepresentable {

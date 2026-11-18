@@ -1483,17 +1483,21 @@ Image(systemName: showPassword ? "eye.slash" : "eye")
 }
 
 struct NiKLocalFiles: View {
-    let directory: URL
-    let title: String
+    private let rootTitle: String
+    @StateObject private var browser: NiKFileBrowserController
+    private var directory: URL { browser.directory }
+    private var title: String { browser.selected.location.components.last ?? rootTitle }
     init(directory: URL, title: String = "Tệp") {
-        self.directory = directory
-        self.title = title
+        rootTitle = title
+        _browser = StateObject(wrappedValue: NiKFileBrowserController(root: directory))
     }
 
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.defaultCertificate") private var defaultCertificate = ""
 
     @State private var items: [NiKFileItem] = []
+    @State private var listingError: String?
+    @State private var visibleAnchor: String?
     @State private var query = ""
     @State private var sort: NiKFilesSort = .name
     @State private var isSelecting = false
@@ -1555,6 +1559,7 @@ struct NiKLocalFiles: View {
     private var mainView: some View {
         ScrollView {
             VStack(spacing: 12) {
+                browserControls
                 searchBar
                 if isSelecting {
                     selectionBar
@@ -1565,6 +1570,7 @@ struct NiKLocalFiles: View {
             .padding(.top, 8)
             .padding(.bottom, 96)
         }
+        .scrollPosition(id: $visibleAnchor)
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -1573,7 +1579,56 @@ struct NiKLocalFiles: View {
                 trailingToolbarMenu
             }
         }
-        .onAppear { reload() }
+        .onAppear { loadBrowserTab(); if let message = browser.message { alertMessage = message; browser.message = nil } }
+        .onChange(of: browser.state.selectedID) { oldID, _ in browser.rememberAnchor(visibleAnchor, tabID: oldID); loadBrowserTab() }
+        .onChange(of: browser.selected.location) { _, _ in loadBrowserTab() }
+        .onChange(of: browser.selected.showsHidden) { _, _ in reload() }
+        .onChange(of: browser.message) { _, message in
+            if let message { alertMessage = message; browser.message = nil }
+        }
+        .onChange(of: query) { _, value in
+            let bounded = String(value.prefix(512))
+            if bounded != value { query = bounded }
+            browser.setOptions(query: bounded, sort: sort)
+        }
+        .onChange(of: sort) { _, _ in browser.setOptions(query: query, sort: sort) }
+        .onChange(of: visibleAnchor) { _, anchor in browser.scrollAnchor = anchor }
+    }
+
+    private func loadBrowserTab() {
+        query = browser.selected.query; sort = browser.selected.sort
+        selectedIDs.removeAll(); isSelecting = false
+        let anchor = browser.scrollAnchor
+        reload()
+        visibleAnchor = anchor
+    }
+
+    private var browserControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(browser.state.tabs) { tab in
+                        Button { browser.select(tab.id) } label: {
+                            Text(tab.location.components.last ?? rootTitle).font(.caption.weight(.semibold)).lineLimit(1)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(tab.id == browser.state.selectedID ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.08), in: Capsule())
+                        }.contextMenu {
+                            Button(t("Đóng tab", "Close Tab"), role: .destructive) { browser.closeTab(tab.id) }.disabled(browser.state.tabs.count == 1)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 16) {
+                Button { browser.travel(-1) } label: { Image(systemName: "chevron.left") }
+                    .disabled(browser.selected.historyIndex == 0).accessibilityLabel(t("Lùi", "Back"))
+                Button { browser.travel(1) } label: { Image(systemName: "chevron.right") }
+                    .disabled(browser.selected.historyIndex + 1 == browser.selected.history.count).accessibilityLabel(t("Tiến", "Forward"))
+                Button { browser.open(browser.root) } label: { Image(systemName: "house") }.accessibilityLabel(t("Thư mục gốc", "Root Folder"))
+                Text(browser.selected.location.components.isEmpty ? rootTitle : browser.selected.location.components.joined(separator: " / "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            }.buttonStyle(.plain)
+        }
     }
 
     @ViewBuilder
@@ -1621,7 +1676,14 @@ struct NiKLocalFiles: View {
 
     @ViewBuilder
     private var filesListContent: some View {
-        if filtered.isEmpty {
+        if let listingError {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(t("Không đọc được thư mục", "Unable to Read Folder"), systemImage: "exclamationmark.triangle")
+                Text(listingError).font(.caption).foregroundStyle(.secondary)
+                Button(t("Thử lại", "Retry")) { reload() }
+                Button(t("Về thư mục gốc", "Open Root Folder")) { browser.open(browser.root) }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
+        } else if filtered.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "folder")
                     .font(.system(size: 34))
@@ -1640,17 +1702,17 @@ struct NiKLocalFiles: View {
         } else {
             LazyVStack(spacing: 4) {
                 ForEach(filtered) { item in
-                    rowEntry(item)
+                    rowEntry(item).id(item.name)
                 }
-            }
+            }.scrollTargetLayout()
         }
     }
 
     @ViewBuilder
     private func rowEntry(_ item: NiKFileItem) -> some View {
         if item.isDirectory && !isSelecting {
-            NavigationLink {
-                NiKLocalFiles(directory: item.url, title: item.name)
+            Button {
+                browser.open(item.url)
             } label: {
                 rowContent(item)
             }
@@ -1710,6 +1772,16 @@ struct NiKLocalFiles: View {
     @ViewBuilder
     private var trailingToolbarMenu: some View {
         Menu {
+            Button(t("Tab mới tại đây", "New Tab Here")) { browser.newTab() }.disabled(browser.state.tabs.count >= 12)
+            Button(t("Đóng tab hiện tại", "Close Current Tab"), role: .destructive) { browser.closeTab(browser.state.selectedID) }.disabled(browser.state.tabs.count == 1)
+            Button(browser.state.favorites.contains(browser.selected.location) ? t("Bỏ yêu thích vị trí", "Unfavorite Location") : t("Yêu thích vị trí", "Favorite Location")) { browser.toggleFavorite() }
+            Menu(t("Vị trí yêu thích", "Favorite Locations")) {
+                ForEach(Array(browser.state.favorites.enumerated()), id: \.offset) { _, location in
+                    Button(location.components.isEmpty ? rootTitle : location.components.joined(separator: " / ")) { browser.openFavorite(location) }
+                }
+            }.disabled(browser.state.favorites.isEmpty)
+            Button(browser.selected.showsHidden ? t("Ẩn tệp ẩn", "Hide Hidden Files") : t("Hiện tệp ẩn", "Show Hidden Files")) { browser.toggleHidden() }
+            Divider()
             Button {
                 importing = true
             } label: {
@@ -1888,15 +1960,17 @@ struct NiKLocalFiles: View {
 
     private func reload() {
         do {
+            _ = try browser.selected.location.resolve(in: browser.root)
             let urls = try FileManager.default.contentsOfDirectory(at: directory,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey], options: [.skipsHiddenFiles])
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey], options: browser.selected.showsHidden ? [] : [.skipsHiddenFiles])
             items = try urls.compactMap { url in
                 let vals = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey])
                 guard vals.isSymbolicLink != true else { return nil }
                 return NiKFileItem(url: url, name: url.lastPathComponent, isDirectory: vals.isDirectory ?? false,
                     size: Int64(vals.fileSize ?? 0), modifiedAt: vals.contentModificationDate ?? Date())
             }
-        } catch { alertMessage = error.localizedDescription }
+            listingError = nil
+        } catch { items = []; listingError = error.localizedDescription }
     }
 
     private func createFolder() {
