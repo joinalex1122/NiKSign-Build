@@ -3,14 +3,14 @@
 Phạm vi: 1B 2C 3B 4B 5C 6B 7B 8B 9B 10C. Đặc tả/tiêu chí: APPROVED-UPGRADE-SCOPE.md.
 
 Base: 099f0b087ed537b38ee25e6e6f8041052a78354d. Nhánh: codex/niksign-upgrades.
-P0 của nhánh codex/niksign-handoff-final còn chờ workflow 44148347210; chưa có build iOS được xác nhận tại base. Không báo hoàn tất phát hành khi hai lượt chưa qua.
+Trạng thái hiện tại 2026-11-18: c7ee74c đã build arm64 sạch một lượt; full audit bị dừng bởi cảnh báo tests đã sửa. Run a2618d3 / 44160108851 source-checks PASS, job iOS cancelled; chưa có hai lượt sạch ở mã mới. Không báo hoàn tất phát hành khi hai lượt chưa qua.
 
 | Mốc | Trạng thái | Bằng chứng còn cần |
 |---|---|---|
 | P0 / 10C: 2-pass sạch | c7ee74c: build arm64 sạch, audit dừng vì 2 warning trong tests; đã sửa | Chạy đủ 2 pass ở commit mới |
-| P1: job/journal/đầu ra an toàn | Đã viết, chờ kiểm định | SigningJobsSmoke + output ZIP fixtures + build |
+| P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
-| P3: 4B tệp + workspace | Chưa triển khai bổ sung | Editors/tab/trash/backup |
+| P3: 4B tệp + workspace | Backup + editor đã viết; core PASS | Tab/favorites/trash, Xcode mới và device |
 | P4: 2C IPA chuyên sâu | Chưa triển khai bổ sung | Từng bộ sửa/diff/restore |
 | P5: 5C patch lifecycle | Chưa triển khai bổ sung | Xung đột/history/restore/device |
 | P6: 6B OTA | Có mã cần xác minh | Hai lượt compile + iPhone |
@@ -101,3 +101,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Khi workspace trở lại, giữ một bản diff local để đối chiếu; các file editor local về cơ bản đã có remote. Native/Signer.swift local thêm Zsign.checkSigned vẫn CHƯA đưa vào commit remote này, cần kiểm tra/giữ thay đổi đó riêng.
 - Các file có WIP local không được reset --hard. Fetch remote rồi so sánh/merge; không push đè nhánh remote bằng HEAD local c7ee74c.
 - Mốc 4 chưa hoàn tất 4B: còn tab/favorites/trash/hash UI và typed plist (2C). Gate hai lượt sạch vẫn chưa qua ở commit mới.
+
+## Mốc 7 — tiếp tục 2026-11-18: đồng bộ, kiểm thử và bảo toàn thư viện
+
+- Workspace hoạt động trở lại. Đã giữ WIP trong git stash (Preserve editor WIP before recovering remote checkpoints 2026-11-18), fetch/fast-forward từ c7ee74c lên a2618d3. Không áp toàn bộ stash vì remote đã chứa editor/8B/report.
+- DiagnosticsSmoke và TextDocumentSmoke bản hiện tại đều chạy PASS bằng Swift Linux 6.1.2; parser toàn bộ Native PASS. Chưa thay cho typecheck iOS.
+- Giữ bổ sung local Zsign.checkSigned sau ký từ stash; cần CI xác nhận API. Không coi đó là chứng minh Apple trust.
+- Phát hiện library.json hỏng có thể bị save/import ghi đè bằng danh mục mới. Tách library models + index store: load lỗi thì chặn mutation, xuất index để khôi phục, giới hạn 16 MB/5.000 mục, reject ID/tên trùng, tên traversal/control chars, symlink/dangling symlink. Commit chống stale external index và phối hợp NSFileCoordinator trên Apple.
+- LibraryIndexSmoke Linux PASS: round-trip Unicode, duplicate/case collision/path rejection, failed/stale writes giữ items, corrupt index giữ byte, xóa index bên ngoài và symlink/dangling symlink.
+- Thêm test vào audit. CI concurrency theo nhánh để các push tiếp theo tự hủy lượt build cũ; connector hiện không cung cấp lệnh cancel nên không hứa đã hủy thủ công các run cũ.
+- Cần tiếp: typecheck/build mới, hoàn tất tab/favorites/trash và typed IPA workspace, patch lifecycle, download feed; bổ sung flag storage unavailable vào diagnostic thay vì chỉ snapshot counts.

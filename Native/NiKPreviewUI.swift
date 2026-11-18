@@ -4,20 +4,6 @@ import UniformTypeIdentifiers
 import ZIPFoundation
 import ImageIO
 
-struct NiKLibraryItem: Codable, Identifiable {
-    var id = UUID()
-    var title: String
-    var version: String
-    var bundleID: String
-    var filename: String
-    var certificateID: UUID?
-    var options = NiKSigningOptions()
-    var signedPath: String?
-    var signedBundleID: String?
-    var signedVersion: String?
-    var signedDisplayName: String?
-}
-
 @MainActor final class NiKLibrary: ObservableObject {
     @Published var items: [NiKLibraryItem] = []
     @Published var error = ""
@@ -25,38 +11,47 @@ struct NiKLibraryItem: Codable, Identifiable {
     nonisolated static var root: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("IPALibrary") }
     @Published var receiving = false
     @Published var notice = ""
+    @Published private(set) var loadFailure: String?
+    private var indexStore: NiKLibraryIndexStore?
+    var recoveryIndexURL: URL { index }
     private var index: URL { Self.root.appendingPathComponent("library.json") }
     init() {
         do {
             try FileManager.default.createDirectory(at: Self.root, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: index.path) { items = try JSONDecoder().decode([NiKLibraryItem].self, from: Data(contentsOf: index)) }
-        } catch { self.error = error.localizedDescription }
+            guard try Self.root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                throw NiKError("Thư mục thư viện không được là symlink.")
+            }
+            let store = try NiKLibraryIndexStore(url: index)
+            indexStore = store; items = store.items
+        } catch { self.error = error.localizedDescription; loadFailure = error.localizedDescription }
     }
     @discardableResult func save(_ item: NiKLibraryItem) -> Bool {
+        guard let indexStore else { error = loadFailure ?? "Không mở được index thư viện; giữ nguyên để khôi phục."; return false }
         var updated = items
         if let i = updated.firstIndex(where: { $0.id == item.id }) { updated[i] = item }
         else { updated.insert(item, at: 0) }
         do {
-            try JSONEncoder().encode(updated).write(to: index, options: .atomic)
+            try indexStore.commit(updated)
             items = updated
             error = ""
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
     func remove(_ item: NiKLibraryItem) throws {
+        guard let indexStore else { throw NiKError(loadFailure ?? "Index thư viện chưa sẵn sàng.") }
         guard !NiKSigningQueue.shared.jobs.contains(where: { $0.libraryID == item.id && !$0.state.isTerminal }) else {
             throw NiKError("Hãy hủy hoặc hoàn tất công việc ký của IPA trước khi xóa bản gốc.")
         }
         let updated = items.filter { $0.id != item.id }
-        let data = try JSONEncoder().encode(updated)
         // Commit the index before publishing the changed list.
-        try data.write(to: index, options: .atomic)
+        try indexStore.commit(updated)
         items = updated
         if FileManager.default.fileExists(atPath: item.ipaURL.path) {
             try FileManager.default.removeItem(at: item.ipaURL)
         }
     }
     func receive(_ url: URL) async {
+        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return }
         guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return }
         error = ""
         receiving = true
@@ -350,6 +345,10 @@ struct NiKLibraryView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    if let failure = library.loadFailure {
+                        Text(failure).font(.footnote).foregroundStyle(.red)
+                        ShareLink(t("Xuất index để khôi phục", "Export Index for Recovery"), item: library.recoveryIndexURL)
+                    }
                     searchBarCard
                     certificateBannerCard
                     libraryListCard

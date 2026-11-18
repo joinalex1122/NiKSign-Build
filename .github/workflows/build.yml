@@ -11,6 +11,9 @@ on:
     branches:
       - main
       - 'codex/niksign-*'
+concurrency:
+  group: niksign-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

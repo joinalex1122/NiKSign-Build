@@ -223,7 +223,7 @@ actor SigningService {
             removeProvision: false,
             completion: { completed = $0 }
         )
-        guard accepted && completed else {
+        guard accepted && completed && Zsign.checkSigned(appExecutable: executableURL.path) else {
             throw NiKError("Zsign báo lỗi. Kiểm tra chứng chỉ, profile, Bundle ID và entitlement.")
         }
 
