@@ -5,7 +5,7 @@ on:
       bundle_id:
         description: 'Bundle ID khi đóng gói'
         required: false
-        default: 'com.apple.mobile.MobileHouseArrest'
+        default: 'com.niksign.app'
         type: string
   push:
     branches:
@@ -35,7 +35,7 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 60
     env:
-      NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.apple.mobile.MobileHouseArrest' }}
+      NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.niksign.app' }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install build tools

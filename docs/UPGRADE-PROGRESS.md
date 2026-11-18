@@ -244,3 +244,9 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Nút kiểm tra thu hồi dùng Security trust + OCSP require positive response, network fetch, không upload p12/password tới API bên thứ ba; kết quả good chỉ khi trust evaluation thành công, revoked chỉ khi OSStatus certificate revoked, mọi lỗi khác unknown. Check chạy worker; chống trùng mỗi ID, persist state/time và kiểm fingerprint trước cập nhật. Không tự kiểm tra khi mở app. OCSP dùng chứng chỉ công khai và có thể truy vấn responder/issuer.
 - Trạng thái còn mới trong 24h; sau đó hoặc clock rollback chuyển unverified. Không bảo đảm trust/OTA/app entitlement chỉ vì OCSP đạt. Bản lưu cũ decode optional fields không lỗi.
 - Fixture countdown/min-expiry/zero, cache TTL/clock rollback/revoked cùng compatibility PASS trên Linux; Native parse/source/dependency PASS. Security API và SwiftUI cần audit Xcode; chưa có live Apple OCSP/device result.
+
+## Mốc 20 — Bundle ID riêng và điều tra lỗi nhập 3105
+
+- Theo yêu cầu mới, mặc định NiKSign chuyển từ com.apple.mobile.MobileHouseArrest sang com.niksign.app. Nối Info.plist/project/build/workflow/verifier/fixtures đồng nhất; custom workflow ID vẫn được stamp vào IPA. Không đổi ID của IPA nhập vào thư viện.
+- Đổi Bundle ID có thể cài thành app mới và tách container/chứng chỉ cũ, không xóa app cũ trước khi xuất dữ liệu. Có thể ảnh hưởng khả năng truy cập phụ thuộc MHA, chưa xác minh máy thật. Quyết định này thay thế yêu cầu khóa MHA cũ.
+- Ảnh 3105 báo unsupported_version: PatchPackageCodec hiện latestSchemaVersion=3, upstream YangJiiii/3105 main đối chiếu cũng =3. Chưa có tệp patch gây lỗi để xác định envelope/schema/keyAADVersion; chưa sửa codec, không tăng version giả hoặc bỏ validation. Cần tệp .3105 hoặc link tải chính xác để tái hiện. WorkspaceV9 engine riêng không đồng nghĩa codec encrypted .3105 hỗ trợ schema9.

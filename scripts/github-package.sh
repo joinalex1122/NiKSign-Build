@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-BUNDLE_ID="${NIKSIGN_BUNDLE_ID:-com.apple.mobile.MobileHouseArrest}"
+BUNDLE_ID="${NIKSIGN_BUNDLE_ID:-com.niksign.app}"
 COMMIT_MSG="${1:-Build & package NiKSign 3.3}"
 WORKFLOW_NAME="build.yml"
 

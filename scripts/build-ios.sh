@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-BUNDLE_ID="${NIKSIGN_BUNDLE_ID:-com.apple.mobile.MobileHouseArrest}"
+BUNDLE_ID="${NIKSIGN_BUNDLE_ID:-com.niksign.app}"
 command -v xcodebuild >/dev/null || { echo 'Cần macOS + Xcode hoặc GitHub Actions macOS.' >&2; exit 1; }
 python3 scripts/check-integration.py
 python3 scripts/check-dependencies.py
@@ -12,9 +12,7 @@ xcodebuild -project NiKSign.xcodeproj -scheme NiKSign -configuration Release \
   NIKSIGN_BUNDLE_ID="$BUNDLE_ID" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO ARCHS=arm64 build 2>&1 | tee build/build.log
 app=build/Build/Products/Release-iphoneos/NiKSign.app
-if [ "$BUNDLE_ID" != "com.apple.mobile.MobileHouseArrest" ]; then
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$app/Info.plist"
-fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$app/Info.plist"
 file "$app/NiKSign" | tee build/binary-info.txt
 lipo "$app/NiKSign" -verify_arch arm64
 rm -rf dist/Payload
