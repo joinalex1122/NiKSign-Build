@@ -15,7 +15,14 @@ import Foundation
         precondition(assess(profile, nil).issues.contains { $0.code == "device.unknown" })
         precondition(!assess(profile, "other-device").canSign)
         precondition(assess(profile, nil).distribution == .adHoc)
-        precondition(!NiKCertificateCompatibility.assess(profile, bundleID: "com.examples.demo", now: now).canSign)
+        let differentID = NiKCertificateCompatibility.assess(profile, bundleID: "com.examples.demo", now: now)
+        precondition(differentID.canSign)
+        precondition(differentID.issues.contains { $0.code == "bundle.mismatch" && $0.severity == .warning })
+        var fixedID = profile
+        fixedID.bundleIDPattern = "com.example.fixed"
+        precondition(NiKCertificateCompatibility.assess(fixedID, bundleID: "com.other.app", now: now).canSign)
+        fixedID.certificateExpirationDate = now.addingTimeInterval(-1)
+        precondition(!NiKCertificateCompatibility.assess(fixedID, bundleID: "com.other.app", now: now).canSign)
         precondition(!NiKCertificateCompatibility.bundleMatches(pattern: "com.example.*", bundleID: "com.example"))
         precondition(!NiKCertificateCompatibility.bundleMatches(pattern: "*", bundleID: "*"))
         precondition(NiKCertificateCompatibility.bundleMatches(pattern: "*", bundleID: "com.any.app"))

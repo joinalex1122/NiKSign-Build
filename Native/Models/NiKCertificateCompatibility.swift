@@ -52,7 +52,7 @@ enum NiKCertificateCompatibility {
         }
         if let bundleID {
             if !bundleMatches(pattern: profile.bundleIDPattern, bundleID: bundleID) {
-                add("bundle.mismatch", true, "Bundle ID không được profile cho phép.", "The profile does not permit this Bundle ID.")
+                add("bundle.mismatch", false, "Bundle ID không khớp profile. Vẫn có thể ký và giữ ID; iOS có thể từ chối cài hoặc chạy.", "Bundle ID differs from the profile. Signing can proceed with this ID; iOS may reject installation or launch.")
             }
         } else {
             add("bundle.unknown", false, "Chưa chọn IPA; chưa kiểm tra Bundle ID của ứng dụng.", "No IPA selected; its Bundle ID has not been checked.")

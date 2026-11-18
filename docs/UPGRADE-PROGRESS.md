@@ -231,3 +231,9 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Lỗi ảnh ký là bundle.mismatch; không bỏ guard provisioning. Hiện mọi issue, ưu tiên blocking, hiển thị pattern profile và hướng xử lý. Profile ID cố định có nút áp dụng vào customBundleID mỗi IPA, không đổi IPA gốc hoặc profile; lưu tùy chọn và assess lại. Pattern wildcard vẫn cần ID phù hợp. Chưa xác minh ký/cài trên máy thật, có thể còn lỗi khác sau sửa ID.
 - Tệp hệ thống có bật tệp ẩn và thông báo đường dẫn/domain/code khi đọc thất bại. Không coi thư mục trống là chứng cứ sandbox. FileManager không tự có quyền vượt sandbox; đây là cải thiện chẩn đoán, KHÔNG phải đã sửa quyền 3105 trên 27.2.
 - Native parse, source/dependency integrity và CertificateCompatibilitySmoke Linux PASS. Cần Xcode cho UI mới và thử thiết bị.
+
+## Mốc 18 — ký giữ nguyên Bundle ID theo yêu cầu
+
+- Bundle/profile mismatch chuyển thành warning trong assessment dùng chung UI và Signer backend; không chặn nút ký hoặc preflight chỉ vì ID khác profile. Không tự đổi Bundle ID. Đổi theo profile vẫn là tùy chọn.
+- Phân biệt tạo chữ ký với cài/chạy: provisioning/trust/entitlements vẫn do iOS kiểm tra. Không cam kết ký mọi IPA mã hóa/hỏng hay bỏ qua quyền hệ thống. Các guard certificate expiry/credentials/profile validity hiện hữu giữ nguyên.
+- Fixture xác minh fixed/wildcard mismatch cho phép ký, warning vẫn hiện, certificate expired vẫn chặn. Cần Xcode và thử thiết bị cho commit mới.
