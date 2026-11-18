@@ -931,7 +931,7 @@ struct NiKIPADetail: View {
     @ViewBuilder
     private var signActionCard: some View {
         let signDisabled = activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false
-        return VStack(spacing: 10) {
+        VStack(spacing: 10) {
             Button {
                 Task { await sign(autoInstall: false) }
             } label: {
