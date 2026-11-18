@@ -1520,6 +1520,7 @@ struct NiKLocalFiles: View {
     @State private var renameTarget: NiKFileItem?
     @State private var renameText = ""
     @State private var editorDoc: NiKPreviewDocument?
+    @State private var typedPlistDoc: NiKPreviewDocument?
     @State private var propertiesDoc: NiKPreviewDocument?
     @State private var folderTarget: NiKFolderTarget?
     @State private var previewDoc: NiKPreviewDocument?
@@ -1564,6 +1565,7 @@ struct NiKLocalFiles: View {
             .modifier(applySheets)
             .modifier(applyDialogsAndAlerts)
             .sheet(item: $editorDoc) { NiKTextEditorView(url: $0.url) }
+            .sheet(item: $typedPlistDoc) { NiKTypedPlistEditorView(url: $0.url) }
             .sheet(item: $propertiesDoc) { NiKFilePropertiesView(url: $0.url, root: browser.root) }
     }
 
@@ -1964,7 +1966,9 @@ struct NiKLocalFiles: View {
             ipaTarget = item
         } else if ext == "p12" || ext == "mobileprovision" {
             startCertImportFromPair(item.url)
-        } else if ["txt", "text", "json", "plist", "mobileconfig", "xml", "yaml", "yml", "md", "log", "csv", "strings", "conf", "cfg", "ini", "js", "css", "html", "swift", "sh"].contains(ext) || ext.isEmpty {
+        } else if ext == "plist" {
+            typedPlistDoc = NiKPreviewDocument(url: item.url)
+        } else if ["txt", "text", "json", "mobileconfig", "xml", "yaml", "yml", "md", "log", "csv", "strings", "conf", "cfg", "ini", "js", "css", "html", "swift", "sh"].contains(ext) || ext.isEmpty {
             editorDoc = NiKPreviewDocument(url: item.url)
         } else {
             previewDoc = NiKPreviewDocument(url: item.url)

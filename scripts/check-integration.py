@@ -46,4 +46,4 @@ assert 'NiKToolsSheet()' in overlays['views/RepositoryHomeView.swift'].read_text
 assert 'private func checkForUpdate() {}' in entry
 assert not (r/'Native/Vendor/3105').exists()
 print(f'PASS: {len(lock["sha256"])} upstream files intact; {len(units)} upstream translation units covered; single app entry, routes, localization, bridge and zlib configured.')
-print('Native build, signing and device execution remain unverified until macOS/device testing.')
+print('Xcode, signing and device results are recorded separately for each source commit.')

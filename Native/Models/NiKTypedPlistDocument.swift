@@ -16,6 +16,7 @@ struct NiKTypedPlistDocument: Sendable {
     private let baselineFormat: Format
     private(set) var value: NiKPlistValue
     var format: Format
+    var originalFormat: Format { baselineFormat }
     var isDirty: Bool { format != baselineFormat || !Self.same(value, baseline) }
     static let maximumBytes = 4 * 1_048_576
 

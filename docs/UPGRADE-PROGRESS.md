@@ -3,11 +3,11 @@
 Phạm vi: 1B 2C 3B 4B 5C 6B 7B 8B 9B 10C. Đặc tả/tiêu chí: APPROVED-UPGRADE-SCOPE.md.
 
 Base: 099f0b087ed537b38ee25e6e6f8041052a78354d. Nhánh: codex/niksign-upgrades.
-Trạng thái 2026-11-18: 4460603 đã vượt hai lượt clean audit/Xcode và tạo IPA arm64 unsigned; đã tải và kiểm lại cả hai IPA. Chi tiết hash/link: VERIFIED-BUILD-4460603.md. Các mốc 11 trở đi vẫn cần gate riêng.
+Trạng thái 2026-11-18: 4d9b7e2 đã vượt hai lượt clean audit/Xcode và tạo IPA arm64 unsigned; đã tải và kiểm lại cả hai IPA. Chi tiết hash/link: VERIFIED-BUILD-4d9b7e2.md. Các mốc 15 trở đi vẫn cần gate riêng.
 
 | Mốc | Trạng thái | Bằng chứng còn cần |
 |---|---|---|
-| P0 / 10C: 2-pass sạch | 4460603: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 11 trở đi; device |
+| P0 / 10C: 2-pass sạch | 4d9b7e2: cả 2 pass sạch + IPA verifier PASS | Gate cho các mốc 15 trở đi; device |
 | P1: job/journal/đầu ra an toàn | Core/macOS fixtures và build c7ee74c PASS | Ký/cài thực tế và gate mã mới |
 | P2: 3B chứng chỉ + 1B queue | Đã viết và qua core tests Linux; chờ Apple tests/Xcode/device | Fixture Security/X509, UI, ký thiết bị |
 | P3: 4B tệp + workspace | Tabs/favorites/source qua 446; properties/reservations/trash đã viết; core PASS | Xcode mới + trash UI/device; clipboard/nền I/O |
@@ -198,3 +198,13 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - TypedPlistSmoke Swift Linux PASS: typed CRUD/arrays, giữ Bool/Int64/UInt64/Data/fractional Date, no-op bytes, Unicode và negative zero, failed mutation giữ draft, bounds/expansion guard. Binary serialization sau chỉnh có thể đổi thứ tự dictionary nên test state theo semantic value; không giả bytes deterministic ngoài no-op.
 - Nối audit Apple; chưa có UI mới hoặc workspace IPA hoàn chỉnh. Bước tiếp: tree/scalar editor, review/save qua recovery snapshot, undo draft, export draft; sau đó immutable-source workspace và package/validation.
 - Mốc 14 toàn bộ Trash UI + fix hardlink/deletion được checkpoint ở 4d9b7e25f6642deef9596f7667466afa00bb67c7, nhánh build đang chạy run 44222092235. Mốc 15 chưa thuộc commit đó. Không gán gate cũ cho code mới.
+
+## Mốc 16 — trình sửa plist có kiểu đã nối UI
+
+- .plist trong LocalFiles mở cây dictionary/array; thêm/xóa/thay giá trị, đổi kiểu, dời phần tử mảng, xem diff theo trường và chọn XML/binary. Sửa bản nháp với tối đa 20 bước undo, review rồi mới tạo backup/ghi bằng RecoveryController và SHA-256 stale guard.
+- Đóng/lưu/menu ở thanh đáy trong modal để dùng được khi đang ở cấp sâu. Có xác nhận bỏ draft, export draft ra temp để cứu dữ liệu khi save bị conflict, review dùng chính bytes đã kiểm tra (không serialize lại tùy ý sau review).
+- Child pages nạp ở worker, mặc định 250 row và load thêm; action giữ revision để không sửa/xóa nhầm index khi cây đã đổi. Root/array/dictionary mutation không ghi đĩa trước Save.
+- Scalar draft giữ original khi chưa đổi, bool tách số, số có range check, UInt64 nhỏ canonical về integer, Base64 chỉ bỏ whitespace, từ chối NaN/Inf. Date nhập theo giây từ 2001 UTC để giữ độ chính xác của binary plist, không chuyển qua ISO/XML làm tròn.
+- PlistValueDraftSmoke Linux PASS: Date rất nhỏ, negative zero, literal Unicode, numeric/Base64 validation, giữ container khi không đổi. TypedPlistSmoke đã PASS mốc 15; thêm cả hai vào Apple audit. Native syntax/integration/dependency/bash/whitespace PASS. SwiftUI/controller chưa typecheck Apple ở commit này.
+- Không gọi đây là workspace IPA đầy đủ: chưa có cây bundle từ IPA/extract immutable source, quản lý component/entitlements, packaged change set/compression backend của 2C. Đây là typed editor dùng được cho tệp riêng, làm nền cho workspace.
+- Build 4d9b7e25f6642deef9596f7667466afa00bb67c7 / workflow 44222092235 đã qua 2 clean audits; có Trash UI và toàn bộ mốc 1–14. Typed engine/editor mốc 15–16 chưa thuộc build đó.
