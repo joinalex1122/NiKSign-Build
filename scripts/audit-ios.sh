@@ -11,11 +11,13 @@ python3 Tests/minizip_test.py
 python3 Tests/patch_v9_test.py
 python3 Tests/verify_ipa_test.py
 node Tests/web.test.js
-xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Tests/CodecSmoke.swift -o /tmp/nik-codec-test
+xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/CodecSmoke.swift -o /tmp/nik-codec-test
+xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/PatchSchema9Smoke.swift -o /tmp/nik-schema9-test
+/tmp/nik-schema9-test
 /tmp/nik-codec-test
-xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9Smoke.swift -o /tmp/nik-patch-v9-test
+xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9Smoke.swift -o /tmp/nik-patch-v9-test
 /tmp/nik-patch-v9-test
-xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Vendor/3105/ThreeOneOSFive/helpers/PatchPackageCodec.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9TransactionSmoke.swift -o /tmp/nik-patch-v9-transaction-test
+xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Vendor/3105/ThreeOneOSFive/helpers/PatchWorkspaceService.swift Native/Dependencies/NiKPatchV9Engine.swift Tests/PatchV9TransactionSmoke.swift -o /tmp/nik-patch-v9-transaction-test
 /tmp/nik-patch-v9-transaction-test
 xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/nik-file-import-test
 /tmp/nik-file-import-test

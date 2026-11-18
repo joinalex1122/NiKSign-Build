@@ -13,6 +13,7 @@ func expectFailure(_ operation: () throws -> Void) {
 }
 do {
 let directory = URL(fileURLWithPath: CommandLine.arguments[1])
+precondition(NiKCertificateRevocation.check(der: Data([0, 1, 2])) == .unknown)
 let modern = try Data(contentsOf: directory.appendingPathComponent("modern.p12"))
 let legacy = try Data(contentsOf: directory.appendingPathComponent("legacy.p12"))
 let modernInfo = try NiKCertificateStore.inspectP12(data: modern, password: " test password ")

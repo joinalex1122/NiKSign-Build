@@ -19,7 +19,14 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 
     func text(_ key: String) -> String {
-        localizedBundle.localizedString(forKey: key, value: key, table: nil)
+        if key == "patch.error.unsupported_version" {
+            switch self {
+            case .vietnamese: return "NiKSign chưa hỗ trợ phiên bản hoặc tính năng trong gói này. Bộ nhập nhận schema 1–3 và nhóm schema 9 công khai chỉ thay thế tệp/thư mục trong ứng dụng; chưa nhận schema 9 có mật khẩu, App Group hoặc cấu hình động."
+            case .english: return "NiKSign does not support this package version or feature. Imports support schema 1–3 and public schema 9 application file replacements/directories. Password-protected schema 9, App Groups and dynamic settings are not supported yet."
+            case .simplifiedChinese: return "NiKSign 暂不支持此软件包版本或功能。支持 schema 1–3 和仅包含应用文件替换及目录的公开 schema 9；暂不支持加密 schema 9、App Group 或动态设置。"
+            }
+        }
+        return localizedBundle.localizedString(forKey: key, value: key, table: nil)
     }
 
     func text(_ key: String, _ arguments: CVarArg...) -> String {

@@ -38,6 +38,7 @@ targets:
       - App.swift
       - Info.plist
       - views/RepositoryHomeView.swift
+      - helpers/PatchPackageCodec.swift
       - helpers/SupportPolicy.swift
       - helpers/Localization.swift
       - ContentView.swift
