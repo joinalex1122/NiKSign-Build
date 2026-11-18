@@ -225,16 +225,17 @@ struct NiKPreviewRoot: View {
         NiKSettingsView(certificates: certificates, library: library)
     }
     private var activeTabView: some View {
-        TabView(selection: $tab) {
-            if hasSigner {
+        ZStack {
+            switch tab {
+            case 0:
                 NiKLibraryView(library: library, certificates: certificates)
-                    .tag(0).toolbar(.hidden, for: .tabBar)
+            case 1:
+                NiKHubPreview()
+            case 2:
+                NiKFilesHome()
+            default:
+                settings
             }
-            if mode != "sign" {
-                NiKHubPreview().tag(1).toolbar(.hidden, for: .tabBar)
-            }
-            NiKFilesHome().tag(2).toolbar(.hidden, for: .tabBar)
-            settings.tag(3).toolbar(.hidden, for: .tabBar)
         }
     }
 
@@ -352,6 +353,7 @@ struct NiKCardPressButtonStyle: ButtonStyle {
 
 
 struct NiKLibraryView: View {
+    @StateObject private var otaServer = NiKHTTPSOTAServer()
     @AppStorage("nik.libraryGrid") private var grid = false
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
@@ -582,10 +584,51 @@ Text(t("Đã ký", "Signed"))
 }
 }
 Spacer(minLength: 0)
+if item.signedPath != nil {
+    Button {
+        installSigned(item)
+    } label: {
+        Text(t("Cài đặt", "Install"))
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.accentColor.opacity(0.16), in: Capsule())
+            .foregroundStyle(Color.accentColor)
+    }
+    .buttonStyle(.borderless)
+}
 Image(systemName: "chevron.right")
 .font(.caption.weight(.semibold))
 .foregroundStyle(.tertiary)
 }
+}
+
+private func installSigned(_ item: NiKLibraryItem) {
+    guard let signedPath = item.signedPath else { return }
+    let url = URL(fileURLWithPath: signedPath)
+    do {
+        guard let bid = item.signedBundleID, !bid.isEmpty,
+              let ver = item.signedVersion, !ver.isEmpty,
+              let title = item.signedDisplayName else {
+            errorMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
+            return
+        }
+        otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
+        try otaServer.start()
+        Task {
+            do {
+                try await otaServer.waitUntilReady()
+                let opened = await otaServer.openInstallURL()
+                if !opened {
+                    errorMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    } catch {
+        errorMessage = error.localizedDescription
+    }
 }
 
     @ViewBuilder
@@ -630,6 +673,9 @@ struct NiKIPADetail: View {
     @State private var errorMessage: String?
 @StateObject private var otaServer = NiKHTTPSOTAServer()
 @State private var otaStatusMessage = ""
+    @State private var showSigningProgressSheet = false
+    @State private var trackedJobID: UUID?
+    @State private var autoInstallAfterSigning = false
 @State private var saveStatusMessage = ""
 @State private var mobileConfigShare: NiKOTAShareURL?
 
@@ -884,25 +930,61 @@ struct NiKIPADetail: View {
 
     @ViewBuilder
     private var signActionCard: some View {
-        Button {
-            Task { await sign() }
-        } label: {
-            HStack(spacing: 10) {
-                if activeJob != nil {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: "signature")
+        let signDisabled = activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false
+        return VStack(spacing: 10) {
+            Button {
+                Task { await sign(autoInstall: false) }
+            } label: {
+                HStack(spacing: 10) {
+                    if activeJob != nil {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "signature")
+                    }
+                    Text(activeJob != nil ? t("Đang chờ / đang xử lý", "Queued / Processing") : t("Ký IPA ngay", "Sign IPA Now"))
+                        .font(.headline)
                 }
-                Text(activeJob != nil ? t("Đang chờ / đang xử lý", "Queued / Processing") : t("Ký IPA ngay", "Sign IPA Now"))
-                    .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(signDisabled ? Color.gray.opacity(0.45) : Color.accentColor)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false ? Color.gray.opacity(0.45) : Color.accentColor)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .disabled(signDisabled)
+
+            Button {
+                Task { await sign(autoInstall: true) }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "bolt.badge.checkmark.fill")
+                    Text(t("Ký & Cài đặt luôn", "Sign & Install Now"))
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(signDisabled ? Color.gray.opacity(0.45) : Color.green)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .disabled(signDisabled)
+
+            if let readyURL = signedURL ?? item.signedPath.map({ URL(fileURLWithPath: $0) }) {
+                Button {
+                    startHTTPSInstall(for: readyURL)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.down.app.fill")
+                        Text(t("Cài đặt ngay", "Install Now"))
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .background(Color.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
         }
-        .disabled(activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false)
     }
 
     @ViewBuilder
@@ -1030,7 +1112,11 @@ saveStatusMessage = error.localizedDescription
 }
 }
 
-    private func sign() async {
+    private var trackedJob: NiKSigningJob? {
+        trackedJobID.flatMap { id in signingQueue.jobs.first { $0.id == id } } ?? activeJob ?? completedJob
+    }
+
+    private func sign(autoInstall: Bool = false) async {
         guard let cert = activeCertificate else {
             errorMessage = t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate.")
             return
@@ -1040,8 +1126,14 @@ saveStatusMessage = error.localizedDescription
             var snapshot = item.options
             snapshot.targetDeviceUDID = targetDeviceUDID
             let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: cert.id, options: snapshot)
+            trackedJobID = job.id
+            autoInstallAfterSigning = autoInstall
+            showSigningProgressSheet = true
             try signingQueue.enqueue([job])
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            autoInstallAfterSigning = false
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func syncCompletedJob() {
@@ -1051,6 +1143,95 @@ saveStatusMessage = error.localizedDescription
         item.signedBundleID = artifact.bundleID
         item.signedVersion = artifact.version
         item.signedDisplayName = artifact.displayName
+        if autoInstallAfterSigning, let job = completedJob, trackedJobID == nil || job.id == trackedJobID {
+            autoInstallAfterSigning = false
+            startHTTPSInstall(for: artifact.ipaURL)
+        }
+    }
+}
+
+private struct NiKLCSignProgressSheet: View {
+    let job: NiKSigningJob?
+    let itemTitle: String
+    let onInstall: (URL) -> Void
+    let onClose: () -> Void
+
+    private var steps: [(Double, String)] {
+        [
+            (0.00, t("1. Chuẩn bị & giải nén IPA", "1. Preparing & Extracting IPA")),
+            (0.18, t("2. Đọc chứng chỉ & hồ sơ", "2. Loading Certificate & Profile")),
+            (0.36, t("3. Cập nhật Info.plist & quyền", "3. Patching Info.plist & Entitlements")),
+            (0.55, t("4. Ký mã thực thi & Frameworks", "4. Signing Binaries & Frameworks")),
+            (0.78, t("5. Đóng gói lại IPA", "5. Repackaging Signed IPA")),
+            (0.95, t("6. Hoàn tất & sẵn sàng cài đặt", "6. Finalizing & Ready to Install"))
+        ]
+    }
+
+    private var progress: Double {
+        if job?.state == .succeeded { return 1.0 }
+        return min(max(job?.fraction ?? 0.0, 0.0), 1.0)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                VStack(spacing: 6) {
+                    Text(itemTitle).font(.headline).lineLimit(1)
+                    Text(job?.state == .succeeded ? t("Ký thành công!", "Signing Succeeded!") : (job?.state.isTerminal == true ? t("Ký thất bại", "Signing Failed") : t("Đang ký ứng dụng...", "Signing App...")))
+                        .font(.subheadline)
+                        .foregroundStyle(job?.state == .succeeded ? .green : (job?.state.isTerminal == true ? .red : .secondary))
+                    ProgressView(value: progress).tint(job?.state == .succeeded ? .green : .accentColor)
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { idx, step in
+                        let done = job?.state == .succeeded || (idx < steps.count - 1 ? progress >= steps[idx + 1].0 : progress >= 1.0)
+                        let active = !done && progress >= step.0 && job?.state.isTerminal != true
+                        HStack(spacing: 12) {
+                            if done {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            } else if active {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "circle").foregroundStyle(.tertiary)
+                            }
+                            Text(step.1)
+                                .font(.subheadline.weight(active || done ? .semibold : .regular))
+                                .foregroundStyle(done || active ? .primary : .secondary)
+                            Spacer()
+                        }
+                    }
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Spacer()
+
+                if job?.state == .succeeded, let ipaURL = job?.output?.ipaURL {
+                    Button {
+                        onInstall(ipaURL)
+                    } label: {
+                        Label(t("Cài đặt ngay", "Install Now"), systemImage: "arrow.down.app.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.green)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
+            .padding()
+            .navigationTitle(t("Tiến trình ký", "Signing Progress"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(t("Đóng", "Close"), action: onClose)
+                }
+            }
+        }
     }
 }
 
