@@ -786,9 +786,23 @@ struct NiKIPADetail: View {
                 }
                 .pickerStyle(.menu)
                 if let assessment = certificateAssessment {
-                    ForEach(Array(assessment.issues.prefix(3))) { issue in
+                    ForEach(assessment.issues.sorted { $0.severity == .blocking && $1.severity != .blocking }) { issue in
                         Text(language == "en" ? issue.en : issue.vi).font(.caption)
                             .foregroundStyle(issue.severity == .blocking ? Color.red : Color.orange)
+                    }
+                }
+                if let certificate = activeCertificate,
+                   certificateAssessment?.issues.contains(where: { $0.code == "bundle.mismatch" }) == true {
+                    Text(t("Profile cho phép: ", "Profile permits: ") + certificate.bundleIDPattern)
+                        .font(.caption.monospaced()).textSelection(.enabled)
+                    Text(t("Chọn profile phù hợp hoặc đổi Bundle ID bên dưới. Đổi ID có thể ảnh hưởng đăng nhập, thông báo và nhóm ứng dụng.", "Choose a matching profile or change the Bundle ID below. Changing it can affect sign-in, notifications and app groups."))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !certificate.bundleIDPattern.contains("*") && !certificate.bundleIDPattern.isEmpty {
+                        Button(t("Dùng Bundle ID của profile cho IPA này", "Use the profile Bundle ID for this IPA")) {
+                            item.options.customBundleID = certificate.bundleIDPattern
+                            library.save(item)
+                        }
+                        .disabled(activeJob != nil)
                     }
                 }
                 if let certificate = activeCertificate {

@@ -216,3 +216,18 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Build d30b78d / workflow 44226714053 đang in_progress tại lần kiểm tra bàn giao; source-checks success, chưa gán gate Apple cho typed editor.
 - Bản IPA đã xác minh gần nhất: 4d9b7e2, hai clean audits, chưa ký. Không khẳng định cài được trên iPhone 27.2 khi chưa có chứng chỉ/profile và kiểm thử thiết bị.
 - Toàn bộ 2C/5C và các mục còn thiếu vẫn chưa hoàn tất; xem BAN-GIAO-HIEN-TAI.md.
+
+### Kết quả Xcode mốc 15–16 — d30b78d
+
+- Workflow 44226714053 đã completed/success. Gate yêu cầu hai clean audits đã qua cho d30b78d014507c80ef487f8330da3ee18e65c295.
+- Artifact 14394666987, ZIP SHA256 d881769655b43c704bd2dfc08dd8062ed8a784db66e92e9af4d67cc393fb326a. Tải và verify-ipa.py cả hai IPA PASS: arm64 executable, CRC, bundle ID và localizations.
+- IPA pass2 SHA256 048974a776a7cf582c2153ae568fe22a10cdb21bd0e22b886de5704b5f087250; local /workspace/NiKSign-verified-builds/d30b78d/NiKSign-d30b78d-pass2-unsigned.ipa. Chưa ký.
+- Không bao gồm fix cancellation/token sau đó ở abcc93b; không gán gate d30b78d cho thay đổi mới. Cần gate riêng trước phát hành code cuối.
+- Tiếp theo: ký/cài theo phương thức người dùng có, kiểm tra import/relaunch, typed plist/undo/backup, trash/restore và khả năng 3105 trên iOS 27.2. Chưa có kết quả máy thật.
+
+## Mốc 17 — phản hồi kiểm thử iPhone
+
+- Bỏ banner NiKSign/Ký IPA & sửa tệp còn sót trong RepositoryHome và đổi tiêu đề màn kho sang 3105; giữ luồng tools/import riêng.
+- Lỗi ảnh ký là bundle.mismatch; không bỏ guard provisioning. Hiện mọi issue, ưu tiên blocking, hiển thị pattern profile và hướng xử lý. Profile ID cố định có nút áp dụng vào customBundleID mỗi IPA, không đổi IPA gốc hoặc profile; lưu tùy chọn và assess lại. Pattern wildcard vẫn cần ID phù hợp. Chưa xác minh ký/cài trên máy thật, có thể còn lỗi khác sau sửa ID.
+- Tệp hệ thống có bật tệp ẩn và thông báo đường dẫn/domain/code khi đọc thất bại. Không coi thư mục trống là chứng cứ sandbox. FileManager không tự có quyền vượt sandbox; đây là cải thiện chẩn đoán, KHÔNG phải đã sửa quyền 3105 trên 27.2.
+- Native parse, source/dependency integrity và CertificateCompatibilitySmoke Linux PASS. Cần Xcode cho UI mới và thử thiết bị.

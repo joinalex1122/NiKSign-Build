@@ -154,6 +154,7 @@ struct NiKSystemFiles: View {
     @State private var entries: [URL] = []
     @State private var message = ""
     @State private var query = ""
+    @State private var showHidden = false
     @State private var preview: NiKPreviewDocument?
 
     private var filtered: [URL] {
@@ -207,6 +208,10 @@ struct NiKSystemFiles: View {
                         )
                         .padding(.bottom, 6)
                 }
+
+                Toggle("Hiện tệp ẩn", isOn: $showHidden)
+                    .padding(.horizontal, 12)
+                    .onChange(of: showHidden) { _, _ in reload() }
 
                 ForEach(filtered, id: \.self) { url in
                     let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -311,12 +316,13 @@ struct NiKSystemFiles: View {
             entries = try FileManager.default.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
-                options: [.skipsHiddenFiles]
+                options: showHidden ? [] : [.skipsHiddenFiles]
             ).sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            message = entries.isEmpty ? "Thư mục trống hoặc bị hạn chế sandbox." : ""
+            message = entries.isEmpty ? "Không có mục nào hiển thị. Có thể thử bật Hiện tệp ẩn. Danh sách trống không xác nhận quyền truy cập hệ thống." : ""
         } catch {
             entries = []
-            message = error.localizedDescription
+            let detail = error as NSError
+            message = "Không đọc được \(directory.path).\n\(error.localizedDescription)\n[\(detail.domain):\(detail.code)]\nỨng dụng có thể chưa có quyền ngoài sandbox. Ký IPA không tự cấp quyền đọc hệ thống; cần kiểm tra trạng thái truy cập 3105 trên thiết bị này."
         }
     }
 }

@@ -42,7 +42,8 @@ entry = overlays['App.swift'].read_text()
 for state in ['appState','patchDraftCoordinator','fileOperationCoordinator','patchStore','repositoryStore']:
     assert f'.environmentObject({state})' in entry
 assert 'patchDraftCoordinator.presentImport' in entry and 'NiKToolsSheet(initialURL: request.url)' in entry
-assert 'NiKToolsSheet()' in overlays['views/RepositoryHomeView.swift'].read_text()
+assert 'showNiKTools' not in overlays['views/RepositoryHomeView.swift'].read_text()
+assert '.navigationTitle("3105")' in overlays['views/RepositoryHomeView.swift'].read_text()
 assert 'private func checkForUpdate() {}' in entry
 assert not (r/'Native/Vendor/3105').exists()
 print(f'PASS: {len(lock["sha256"])} upstream files intact; {len(units)} upstream translation units covered; single app entry, routes, localization, bridge and zlib configured.')
