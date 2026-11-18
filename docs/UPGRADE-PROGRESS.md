@@ -267,3 +267,10 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Apple audit được nối tests crypto: inspect/decode cả hai overload/update/public9, tamper, unknown/protected envelope, unchanged protected legacy. Chưa có Apple result cho mốc21 tại lúc checkpoint.
 - Sửa failed CI 6c5030e / run44233772991: certificate harness chưa copy NiKCertificateRevocation.swift nên cannot find symbol; bổ sung dependency và invalid-DER unknown fixture. Không tắt warning gate. Không gọi các mốc18–20 đã build sạch vì run đó thất bại.
 - Thông báo unsupported_version đổi thành mô tả phạm vi thật trong UI vi/en/zh, không chỉ yêu cầu cập nhật 3105 mơ hồ. Bước còn lại: gate Apple commit mới, tải/verify IPA, thử nhập và áp dụng trên iPhone. Không khẳng định giải quyết quyền sandbox hay truy cập dữ liệu CapCut trên27.2.
+
+## Mốc 22 — sửa workflow upload lỗi mạng
+
+- Run44235522878/5e43918 đã PASS hai clean audits (schema9 crypto + UI/chứng chỉ đều được Apple compile), nhưng toàn workflow fail ở upload do ETIMEDOUT/ENOTFOUND. Bằng chứng ở BUILD-5e43918-UPLOAD-FAILURE.md; chưa có IPA tải về của commit này.
+- Thêm tối đa3 attempts cho từng artifact IPA/source và diagnostics, chờ15/30 giây giữa attempts. Dùng step.outcome để retry, chỉ hai attempts đầu continue-on-error; attempt cuối vẫn làm job fail nếu hết lượt. Không bỏ qua audit và không biến lỗi build thành success. Diagnostics vẫn chạy sau audit fail, trừ khi canceled.
+- overwrite:true áp dụng cùng tên artifact của run để xử lý trường hợp upload trả lỗi sau tạo dở. Giữ retention mặc định. YAML anchors dùng chung mapping để path/name không lệch giữa attempts.
+- YAML parse/anchor resolution và source/dependency/whitespace checks PASS. Tiếp theo push chạy workflow mới, xác nhận upload đạt rồi tải/verify/checksum IPA; retry không bảo đảm khắc phục được outage kéo dài của dịch vụ GitHub.

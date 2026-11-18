@@ -53,18 +53,41 @@ jobs:
         run: |
           mkdir -p dist
           /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json upstream-overlays.json server-overlays.json
-      - uses: actions/upload-artifact@v7.0.2
-        with:
+      # Retry transient artifact service/DNS failures without rebuilding the app.
+      - name: Upload IPA and source
+        id: upload_ipa
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.2
+        with: &ipa_artifact
           name: NiKSign-unsigned-IPA-macos-15-intel
           path: |
             audit-results/pass1/NiKSign-unsigned.ipa
             audit-results/pass2/NiKSign-unsigned.ipa
             dist/NiKSign-3.3-source.zip
           if-no-files-found: error
-      - name: Preserve audit diagnostics
-        if: always()
+          overwrite: true
+      - name: Wait before retrying IPA upload
+        if: ${{ !cancelled() && steps.upload_ipa.outcome == 'failure' }}
+        run: sleep 15
+      - name: Retry IPA upload
+        id: upload_ipa_retry
+        if: ${{ !cancelled() && steps.upload_ipa.outcome == 'failure' }}
+        continue-on-error: true
         uses: actions/upload-artifact@v7.0.2
-        with:
+        with: *ipa_artifact
+      - name: Wait before final IPA upload
+        if: ${{ !cancelled() && steps.upload_ipa_retry.outcome == 'failure' }}
+        run: sleep 30
+      - name: Final IPA upload attempt
+        if: ${{ !cancelled() && steps.upload_ipa_retry.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7.0.2
+        with: *ipa_artifact
+      - name: Preserve audit diagnostics
+        id: upload_diagnostics
+        if: ${{ always() && !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.2
+        with: &diagnostic_artifact
           name: NiKSign-build-diagnostics-macos-15-intel
           path: |
             audit-results/*.log
@@ -72,3 +95,20 @@ jobs:
             build/build.log
             NiKSign.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           if-no-files-found: ignore
+          overwrite: true
+      - name: Wait before retrying diagnostic upload
+        if: ${{ !cancelled() && steps.upload_diagnostics.outcome == 'failure' }}
+        run: sleep 15
+      - name: Retry diagnostic upload
+        id: upload_diagnostics_retry
+        if: ${{ !cancelled() && steps.upload_diagnostics.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.2
+        with: *diagnostic_artifact
+      - name: Wait before final diagnostic upload
+        if: ${{ !cancelled() && steps.upload_diagnostics_retry.outcome == 'failure' }}
+        run: sleep 30
+      - name: Final diagnostic upload attempt
+        if: ${{ !cancelled() && steps.upload_diagnostics_retry.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7.0.2
+        with: *diagnostic_artifact
