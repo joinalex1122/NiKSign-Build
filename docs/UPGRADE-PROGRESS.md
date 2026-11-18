@@ -142,3 +142,12 @@ Mỗi mốc phải cập nhật file này với commit, test thật, lỗi còn 
 - Mốc 7 / 5229db4 đã PASS 2 clean audits, có artifact 14386558398. Hash và phạm vi chính xác trong VERIFIED-BUILD-5229db4.md; hai IPA local đã qua verifier. Giữ bản này để đối chiếu, không gọi là bản chứa mốc 8–10.
 - Nhánh handoff/niksign-upgrade-checkpoints giữ mốc 8–9 trong khi CI 5229 chạy. Khi checkpoint mốc 10 xong sẽ fast-forward codex/niksign-upgrades tới code mới để audit; không merge main.
 - Tiếp theo: properties/hash và trash/recovery thao tác tệp, clipboard/chuyển nền; typed IPA workspace (2C), patch conflicts/lifecycle (5C), QA/device. Chưa tuyên bố 4B hay toàn lộ trình hoàn tất.
+
+## Mốc 11 — thuộc tính tệp và SHA-256
+
+- Màn thuộc tính đọc metadata ở nền, có tên/type/size/ngày/quyền POSIX và SHA-256 cho tệp thường tối đa 1 GB. Thư mục không giả tổng dung lượng, không băm đệ quy.
+- Đối chiếu size/mtime/inode/type trước/sau khi băm; báo lỗi nếu tệp đổi. Root/parent/symlink guard dùng cùng FileLocation. Có hủy task khi đóng; Apple SHA-256 đọc từng chunk có cancellation.
+- Menu giữ cấp chính bằng thay mục Hex thành submenu Kiểm tra tệp → Hex / Thuộc tính & SHA-256; thư mục có Thuộc tính. Không thêm nút toolbar phụ.
+- FilePropertiesSmoke Linux PASS: metadata Unicode, known digest, directory semantics, giới hạn hash và symlink/outside-root. Thêm audit; UIKit/controller Apple typecheck và thao tác UI cần CI.
+- Mốc 10 đã push 446060385fe4192560c739b14d6a2ad07aba650d vào cả codex/niksign-upgrades và handoff/niksign-upgrade-checkpoints, kích hoạt gate cho các mốc 8–10. Mốc 11 sẽ checkpoint ở handoff trước để giữ runner đang chạy nếu đã có.
+- Tiếp theo ưu tiên 4B: trash/restore không overwrite, bảo vệ file/index/input/component của job đang chạy, clipboard và nền I/O. Chưa có trash; thao tác delete hiện vẫn là xóa trực tiếp, cần sửa trước gọi 4B hoàn tất.

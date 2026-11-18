@@ -1510,6 +1510,7 @@ struct NiKLocalFiles: View {
     @State private var renameTarget: NiKFileItem?
     @State private var renameText = ""
     @State private var editorDoc: NiKPreviewDocument?
+    @State private var propertiesDoc: NiKPreviewDocument?
     @State private var folderTarget: NiKFolderTarget?
     @State private var previewDoc: NiKPreviewDocument?
     @State private var hexTarget: NiKPreviewDocument?
@@ -1553,6 +1554,7 @@ struct NiKLocalFiles: View {
             .modifier(applySheets)
             .modifier(applyDialogsAndAlerts)
             .sheet(item: $editorDoc) { NiKTextEditorView(url: $0.url) }
+            .sheet(item: $propertiesDoc) { NiKFilePropertiesView(url: $0.url, root: browser.root) }
     }
 
     @ViewBuilder
@@ -1836,11 +1838,12 @@ struct NiKLocalFiles: View {
             } label: {
                 Label(t("Xem trước", "Preview"), systemImage: "eye")
             }
-            Button {
-                hexTarget = NiKPreviewDocument(url: item.url)
-            } label: {
-                Label(t("Xem Hex", "Hex View"), systemImage: "number.square")
-            }
+            Menu {
+                Button(t("Xem Hex", "Hex View")) { hexTarget = NiKPreviewDocument(url: item.url) }
+                Button(t("Thuộc tính & SHA-256", "Properties & SHA-256")) { propertiesDoc = NiKPreviewDocument(url: item.url) }
+            } label: { Label(t("Kiểm tra tệp", "Inspect File"), systemImage: "number.square") }
+        } else {
+            Button(t("Thuộc tính", "Properties")) { propertiesDoc = NiKPreviewDocument(url: item.url) }
         }
         Button {
             renameTarget = item

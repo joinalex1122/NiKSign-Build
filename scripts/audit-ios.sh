@@ -39,6 +39,8 @@ xcrun swiftc Native/Models/NiKAltSourceModels.swift Native/Services/NiKFileDiges
 python3 Tests/http_download_test.py /tmp/nik-source-download-test
 xcrun swiftc Native/Models/NiKFileBrowserState.swift Tests/FileBrowserStateSmoke.swift -o /tmp/nik-file-browser-test
 /tmp/nik-file-browser-test
+xcrun swiftc Native/Models/NiKFileBrowserState.swift Native/Services/NiKFileDigest.swift Native/Models/NiKFileProperties.swift Tests/FilePropertiesSmoke.swift -o /tmp/nik-file-properties-test
+/tmp/nik-file-properties-test
 bash scripts/test-file-tools.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
