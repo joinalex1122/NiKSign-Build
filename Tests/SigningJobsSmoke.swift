@@ -43,6 +43,23 @@ import Foundation
         expectFailure { _ = try NiKSigningJobJournal(url: url) }
         let preserved = try String(contentsOf: url, encoding: .utf8)
         precondition(preserved == "not json")
+        let removalURL = root.appendingPathComponent("removal/index.json")
+        let removal = try NiKSigningJobJournal(url: removalURL)
+        var active = NiKSigningJob(libraryID: UUID(), title: "active", input: root, certificateID: UUID(), options: defaults)
+        active.state = .signing; active.fraction = 0.84
+        let queued = NiKSigningJob(libraryID: UUID(), title: "queued", input: root, certificateID: UUID(), options: defaults)
+        var finished = NiKSigningJob(libraryID: UUID(), title: "finished", input: root, certificateID: UUID(), options: defaults)
+        finished.state = .failed
+        try removal.append([active, queued, finished])
+        try removal.requestRemoval([active.id, queued.id, finished.id])
+        precondition(removal.jobs.count == 1 && removal.jobs[0].id == active.id)
+        precondition(removal.jobs[0].state == .signing && removal.jobs[0].removalRequested == true && removal.jobs[0].fraction == 0.84)
+        expectFailure { try removal.removeFinished([active.id]) }
+        // A process restart has no running native call: recover and finish the pending removal.
+        let afterRemovalRecovery = try NiKSigningJobJournal(url: removalURL)
+        precondition(afterRemovalRecovery.jobs.isEmpty)
+        let recoveredRemoval = try NiKSigningJobJournal(url: removalURL)
+        precondition(recoveredRemoval.jobs.isEmpty)
         print("PASS: immutable job snapshot, duplicate rejection, interrupted recovery, failed commit leaves state intact, safe history removal and corrupt journal preservation")
     }
 }

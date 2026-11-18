@@ -20,6 +20,7 @@ struct NiKSigningJob: Codable, Identifiable, Sendable {
     var step: String
     var error: String?
     var output: NiKSignedArtifact?
+    var removalRequested: Bool?
 
     init(libraryID: UUID, title: String, input: URL, certificateID: UUID, options: NiKSigningOptions) {
         id = UUID(); self.libraryID = libraryID; self.title = title; self.input = input
@@ -60,7 +61,8 @@ final class NiKSigningJobJournal {
             recovered[index].updatedAt = Date()
             recovered[index].step = "Công việc bị gián đoạn. Có thể thử lại từ bản gốc."
         }
-        if needsRecovery { try commit(recovered) }
+        recovered.removeAll { $0.removalRequested == true && !$0.state.isActive }
+        if needsRecovery || recovered.count != jobs.count { try commit(recovered) }
     }
 
     func append(_ batch: [NiKSigningJob]) throws {
@@ -86,6 +88,16 @@ final class NiKSigningJobJournal {
             throw Failure(message: "Không thể xóa công việc đang chờ hoặc đang chạy.")
         }
         try commit(jobs.filter { !ids.contains($0.id) })
+    }
+
+    /// Remove inactive records atomically; running native work keeps its durable record until safe completion.
+    func requestRemoval(_ ids: Set<UUID>) throws {
+        var updated = jobs
+        for index in updated.indices where ids.contains(updated[index].id) && updated[index].state.isActive {
+            updated[index].removalRequested = true
+        }
+        updated.removeAll { ids.contains($0.id) && !$0.state.isActive }
+        try commit(updated)
     }
 
     private func commit(_ updated: [NiKSigningJob]) throws {

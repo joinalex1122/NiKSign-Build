@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
                         title:(NSString *)title
                     httpsHost:(nullable NSString *)httpsHost
     NS_SWIFT_NAME(start(file:bundleID:version:title:httpsHost:));
+- (nullable NSURL *)startTrustProfile:(NSData *)profileData NS_SWIFT_NAME(startTrustProfile(data:));
 - (void)stop;
 @end
 NS_ASSUME_NONNULL_END

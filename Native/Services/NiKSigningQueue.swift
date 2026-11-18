@@ -13,10 +13,10 @@ import Combine
     private var activeTask: Task<NiKSignedArtifact, Error>?
     private var activeID: UUID?
 
-    init() {
+    init(journalURL: URL? = nil) {
         do {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            journal = try NiKSigningJobJournal(url: support.appendingPathComponent("NiKSign/Jobs/index.json"))
+            journal = try NiKSigningJobJournal(url: journalURL ?? support.appendingPathComponent("NiKSign/Jobs/index.json"))
             jobs = journal?.jobs ?? []
         } catch { message = error.localizedDescription }
     }
@@ -63,6 +63,18 @@ import Combine
         do { try enqueue([newJob]) } catch { message = error.localizedDescription }
     }
 
+    func remove(_ ids: Set<UUID>) {
+        do {
+            guard let journal else { throw NiKError("Nhật ký chưa sẵn sàng.") }
+            try journal.requestRemoval(ids)
+            jobs = journal.jobs
+            if let activeID, ids.contains(activeID) {
+                cancellationRequests.insert(activeID)
+                activeTask?.cancel()
+            }
+        } catch { message = error.localizedDescription }
+    }
+
     func clearFinished() {
         do {
             guard let journal else { return }
@@ -94,7 +106,15 @@ import Combine
         job.state = .checking; job.updatedAt = Date()
         do { try persist(job) } catch { message = error.localizedDescription; return false }
         activeID = job.id
-        defer { activeID = nil; activeTask = nil; cancellationRequests.remove(job.id) }
+        defer {
+            activeID = nil; activeTask = nil; cancellationRequests.remove(job.id)
+            if let terminal = jobs.first(where: { $0.id == job.id }), terminal.removalRequested == true, terminal.state.isTerminal {
+                do {
+                    try journal?.removeFinished([job.id])
+                    jobs = journal?.jobs ?? jobs
+                } catch { message = error.localizedDescription }
+            }
+        }
         do {
             guard let cert = NiKCertificateStore.shared.profiles.first(where: { $0.id == job.certificateID }) else {
                 throw NiKError("Chứng chỉ của công việc không còn tồn tại. Không tự thay bằng chứng chỉ khác.")

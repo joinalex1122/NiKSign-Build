@@ -353,7 +353,7 @@ struct NiKCardPressButtonStyle: ButtonStyle {
 
 
 struct NiKLibraryView: View {
-    @StateObject private var otaServer = NiKHTTPSOTAServer()
+    @State private var installTarget: NiKPreviewDocument?
     @AppStorage("nik.libraryGrid") private var grid = false
     @ObservedObject var library: NiKLibrary
     @ObservedObject var certificates: NiKCertificateStore
@@ -406,6 +406,7 @@ struct NiKLibraryView: View {
                     }
                 }
             }
+            .sheet(item: $installTarget) { NiKInstallIPAView(url: $0.url) }
             .alert(t("Thông báo", "Notice"), isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -605,32 +606,10 @@ Image(systemName: "chevron.right")
 
 private func installSigned(_ item: NiKLibraryItem) {
     guard let url = NiKSignedFileAccess.available(item.signedPath) else {
-        errorMessage = t("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.", "Signed IPA is missing. Restore the file or sign again.")
+        errorMessage = t("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.", "Signed IPA is missing. Restore it or sign again.")
         return
     }
-    do {
-        guard let bid = item.signedBundleID, !bid.isEmpty,
-              let ver = item.signedVersion, !ver.isEmpty,
-              let title = item.signedDisplayName else {
-            errorMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
-            return
-        }
-        otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
-        try otaServer.start()
-        Task {
-            do {
-                try await otaServer.waitUntilReady()
-                let opened = await otaServer.openInstallURL()
-                if !opened {
-                    errorMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    } catch {
-        errorMessage = error.localizedDescription
-    }
+    installTarget = NiKPreviewDocument(url: url)
 }
 
     @ViewBuilder
@@ -673,8 +652,10 @@ struct NiKIPADetail: View {
     @State private var deleting = false
     @State private var signedURL: URL?
     @State private var errorMessage: String?
-@StateObject private var otaServer = NiKHTTPSOTAServer()
+@ObservedObject private var otaServer = NiKHTTPSOTAServer.shared
 @State private var otaStatusMessage = ""
+    @State private var installTarget: NiKPreviewDocument?
+    @State private var deferredInstallURL: URL?
     @State private var showSigningProgressSheet = false
     @State private var trackedJobID: UUID?
     @State private var autoInstallAfterSigning = false
@@ -760,15 +741,20 @@ struct NiKIPADetail: View {
                 } catch { errorMessage = error.localizedDescription }
             }
         }
-        .sheet(isPresented: $showSigningProgressSheet) {
+        .sheet(isPresented: $showSigningProgressSheet, onDismiss: {
+            if let pending = deferredInstallURL {
+                deferredInstallURL = nil
+                installTarget = NiKPreviewDocument(url: pending)
+            }
+        }) {
             NiKLCSignProgressSheet(job: trackedJob, itemTitle: item.title,
                 onInstall: { url in startHTTPSInstall(for: url) },
                 onClose: { showSigningProgressSheet = false })
         }
+        .sheet(item: $installTarget) { NiKInstallIPAView(url: $0.url) }
         .onAppear { signedURL = NiKSignedFileAccess.available(item.signedPath); syncCompletedJob() }
         .onChange(of: completedJob?.id) { _, _ in syncCompletedJob() }
         .onDisappear {
-            otaServer.stop()
             if !deleting && library.items.contains(where: { $0.id == item.id }) { library.save(item) }
         }
         .alert(t("Lỗi ký IPA", "Signing Error"), isPresented: Binding(
@@ -1072,33 +1058,16 @@ Label(t("Lưu vào thư mục Tệp", "Save to Files Folder"), systemImage: "fol
 }
 
 private func startHTTPSInstall(for url: URL) {
-do {
-guard NiKSignedFileAccess.available(url.path) != nil else {
-    throw NiKError("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.")
-}
-guard item.signedPath == url.path,
-      let bid = item.signedBundleID, !bid.isEmpty,
-      let ver = item.signedVersion, !ver.isEmpty,
-      let title = item.signedDisplayName else {
-    otaStatusMessage = t("Hãy ký lại IPA để có thông tin cài đặt chính xác.", "Sign the IPA again to generate verified installation metadata.")
-    return
-}
-otaServer.configure(ipaURL: url, bundleIdentifier: bid, bundleVersion: ver, title: title)
-try otaServer.start()
-otaStatusMessage = t("Đang khởi động máy chủ HTTPS OTA...", "Starting HTTPS OTA server...")
-Task {
-do {
-try await otaServer.waitUntilReady()
-if await otaServer.openInstallURL() {
-otaStatusMessage = t("Đã mở hộp thoại cài đặt OTA.", "Opened OTA install prompt.")
-} else {
-otaStatusMessage = otaServer.lastError ?? t("Không thể mở liên kết cài đặt itms-services.", "Unable to open itms-services install link.")
-}
-} catch { otaStatusMessage = error.localizedDescription }
-}
-} catch {
-otaStatusMessage = error.localizedDescription
-}
+    guard NiKSignedFileAccess.available(url.path) != nil else {
+        errorMessage = t("Không tìm thấy IPA đã ký. Hãy khôi phục tệp hoặc ký lại.", "Signed IPA is missing. Restore it or sign again.")
+        return
+    }
+    if showSigningProgressSheet {
+        deferredInstallURL = url
+        showSigningProgressSheet = false
+    } else {
+        installTarget = NiKPreviewDocument(url: url)
+    }
 }
 
 private func exportTrustProfile() {
@@ -1845,6 +1814,7 @@ struct NiKLocalFiles: View {
 
     @State private var zipTarget: NiKFileItem?
     @State private var ipaTarget: NiKFileItem?
+    @State private var installTarget: NiKPreviewDocument?
     @StateObject private var temporaryFiles = NiKTemporaryFiles()
     @State private var fileBusy = false
     @State private var certPendingP12: URL?
@@ -1883,6 +1853,7 @@ struct NiKLocalFiles: View {
             .sheet(item: $editorDoc) { NiKTextEditorView(url: $0.url) }
             .sheet(item: $typedPlistDoc) { NiKTypedPlistEditorView(url: $0.url) }
             .sheet(item: $propertiesDoc) { NiKFilePropertiesView(url: $0.url, root: browser.root) }
+            .sheet(item: $installTarget) { NiKInstallIPAView(url: $0.url) }
     }
 
     @ViewBuilder
@@ -2155,6 +2126,10 @@ struct NiKLocalFiles: View {
 
     @ViewBuilder
     private func rowContextMenu(_ item: NiKFileItem) -> some View {
+        if !item.isDirectory, NiKSignedFileAccess.available(item.url.path) != nil {
+            Button(t("Cài đặt", "Install")) { installTarget = NiKPreviewDocument(url: item.url) }
+        }
+
         if !item.isDirectory {
             let ext = item.url.pathExtension.lowercased()
             if ext == "zip" {
@@ -2245,6 +2220,7 @@ struct NiKLocalFiles: View {
             onCertZip: startCertImportFromZip,
             onPreview: { previewDoc = NiKPreviewDocument(url: $0) },
             onShare: { shareItem = NiKShareItem(url: $0) },
+            onInstall: { installTarget = NiKPreviewDocument(url: $0) },
             onSaveCert: completeCertImport,
             onCancelCert: clearPendingCertificate
         )
@@ -2485,6 +2461,7 @@ private struct DialogAlertModifier: ViewModifier {
     let onCertZip: (URL) -> Void
     let onPreview: (URL) -> Void
     let onShare: (URL) -> Void
+    let onInstall: (URL) -> Void
     let onSaveCert: () -> Void
     let onCancelCert: () -> Void
 
@@ -2520,6 +2497,9 @@ private struct DialogAlertModifier: ViewModifier {
                 set: { if !$0 { ipaTarget = nil } }
             )) {
                 if let ipa = ipaTarget {
+                    if NiKSignedFileAccess.available(ipa.url.path) != nil {
+                        Button(t("Cài đặt", "Install")) { onInstall(ipa.url) }
+                    }
                     Button(t("Nhập vào thư viện ký", "Import for Signing")) {
                         Task { await NiKLibrary.shared.receive(ipa.url) }
                     }

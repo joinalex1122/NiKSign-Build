@@ -3,6 +3,8 @@ import SwiftUI
 struct NiKSigningQueueView: View {
     @ObservedObject var queue: NiKSigningQueue
     @AppStorage("nik.language") private var language = "vi"
+    @State private var pendingRemoval: Set<UUID> = []
+    @State private var confirmRemoval = false
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
     var body: some View {
         List {
@@ -10,7 +12,15 @@ struct NiKSigningQueueView: View {
                 Text(t("Mỗi công việc giữ riêng tùy chọn và chứng chỉ khi thêm vào hàng đợi. Công việc bị gián đoạn cần được thử lại; NiKSign không tự ký lại sau khi mở app.", "Each job keeps its options and certificate snapshot. Interrupted jobs require retry; reopening the app does not automatically sign again."))
                     .font(.footnote).foregroundStyle(.secondary)
             }
-            ForEach(queue.jobs.reversed()) { job in row(job) }
+            ForEach(queue.jobs.reversed()) { job in
+                row(job)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(t("Xóa", "Delete"), role: .destructive) { askToRemove([job.id]) }
+                    }
+                    .contextMenu {
+                        Button(t("Xóa khỏi hàng đợi", "Remove from Queue"), role: .destructive) { askToRemove([job.id]) }
+                    }
+            }
             if queue.jobs.isEmpty { Text(t("Chưa có công việc", "No Jobs Yet")) }
         }
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 100) }
@@ -20,13 +30,23 @@ struct NiKSigningQueueView: View {
                 Menu {
                     Button(t("Chạy mục đang chờ", "Run Queued Jobs")) { queue.start() }
                     Button(t("Dọn lịch sử đã kết thúc", "Clear Finished History")) { queue.clearFinished() }
+                    Button(t("Xóa toàn bộ hàng đợi", "Delete All Jobs"), role: .destructive) { askToRemove(Set(queue.jobs.map(\.id))) }
+                        .disabled(queue.jobs.isEmpty)
                 } label: { Image(systemName: "ellipsis.circle") }
             }
+        }
+        .confirmationDialog(t("Xóa công việc đã chọn?", "Remove Selected Jobs?"), isPresented: $confirmRemoval, titleVisibility: .visible) {
+            Button(t("Xóa khỏi hàng đợi", "Remove from Queue"), role: .destructive) { queue.remove(pendingRemoval); pendingRemoval.removeAll() }
+            Button(t("Hủy", "Cancel"), role: .cancel) { pendingRemoval.removeAll() }
+        } message: {
+            Text(t("Bản gốc và IPA đã ký được giữ lại. Công việc đang chạy sẽ được hủy ở điểm an toàn rồi xóa.", "Originals and existing signed IPAs are kept. Running jobs are cancelled at a safe boundary before removal."))
         }
         .alert(t("Thông báo công việc", "Job Notice"), isPresented: Binding(get: { queue.message != nil }, set: { if !$0 { queue.message = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(queue.message ?? "") }
     }
+
+    private func askToRemove(_ ids: Set<UUID>) { pendingRemoval = ids; confirmRemoval = !ids.isEmpty }
 
     private func row(_ job: NiKSigningJob) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -35,7 +55,9 @@ struct NiKSigningQueueView: View {
             if !job.step.isEmpty { Text(job.step).font(.caption) }
             if job.state.isActive { ProgressView(value: job.fraction) }
             if let error = job.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
-            if queue.cancellationRequests.contains(job.id) {
+            if job.removalRequested == true {
+                Text(t("Đang hủy an toàn để xóa…", "Cancelling safely before removal…")).font(.caption)
+            } else if queue.cancellationRequests.contains(job.id) {
                 Text(t("Đang chờ bộ ký tới điểm hủy an toàn…", "Waiting for the signer to reach a safe cancellation boundary…")).font(.caption)
             } else if !job.state.isTerminal {
                 Button(t("Hủy công việc", "Cancel Job"), role: .destructive) { queue.cancel(job.id) }

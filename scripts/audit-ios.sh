@@ -12,6 +12,8 @@ python3 Tests/patch_v9_test.py
 python3 Tests/verify_ipa_test.py
 node Tests/web.test.js
 python3 Tests/zsign_provisioning_test.py
+xcrun swiftc Native/Models/NiKOTAURLs.swift Tests/OTAURLsSmoke.swift -o /tmp/nik-ota-urls-test
+/tmp/nik-ota-urls-test
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/CodecSmoke.swift -o /tmp/nik-codec-test
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/PatchSchema9Smoke.swift -o /tmp/nik-schema9-test
 /tmp/nik-schema9-test
@@ -23,6 +25,8 @@ xcrun swiftc -DNIKSIGN_STANDALONE_TEST Vendor/3105/ThreeOneOSFive/helpers/PatchP
 xcrun swiftc Native/NiKFileImport.swift Native/Integration/SupportPolicy.swift Tests/FileImportSmoke.swift -o /tmp/nik-file-import-test
 /tmp/nik-file-import-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Tests/SigningJobsSmoke.swift -o /tmp/nik-signing-jobs-test
+xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Native/Models/NiKLibraryItem.swift Native/Services/NiKFileMutationReservations.swift Native/Services/NiKSigningQueue.swift Tests/QueueRemovalSmoke.swift -o /tmp/nik-queue-removal-test
+/tmp/nik-queue-removal-test
 xcrun swiftc Native/Models/NiKPlistValue.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKCertificateCompatibility.swift Tests/CertificateCompatibilitySmoke.swift -o /tmp/nik-cert-compat-test
 /tmp/nik-cert-compat-test
 /tmp/nik-signing-jobs-test

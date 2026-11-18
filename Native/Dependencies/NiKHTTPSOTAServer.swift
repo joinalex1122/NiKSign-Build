@@ -7,6 +7,13 @@ import UIKit
 
 @MainActor
 final class NiKHTTPSOTAServer: ObservableObject {
+    static let shared = NiKHTTPSOTAServer()
+    var onStop: (@MainActor () -> Void)?
+    @Published private(set) var manifestRequests = 0
+    @Published private(set) var ipaRequests = 0
+    var manifestURL: URL? { NiKOTAURLs.manifest(port: port, token: token) }
+    func resetRequestCounts() { manifestRequests = 0; ipaRequests = 0 }
+
   enum OTAError: LocalizedError {
 case certificateGenerationFailed
 case identityImportFailed
@@ -40,15 +47,8 @@ private var identity: SecIdentity?
 private var certificateDER: Data?
 
 var itmsInstallURL: URL? {
-guard isRunning, port > 0 else { return nil }
-let manifest = "https://127.0.0.1:\(port)/\(token)/manifest.plist"
-var components = URLComponents()
-components.scheme = "itms-services"
-components.queryItems = [
-URLQueryItem(name: "action", value: "download-manifest"),
-URLQueryItem(name: "url", value: manifest)
-]
-return components.url
+    guard isRunning, let manifestURL else { return nil }
+    return NiKOTAURLs.install(manifest: manifestURL)
 }
   func configure(ipaURL: URL, bundleIdentifier: String, bundleVersion: String, title: String) {
 self.ipaURL = ipaURL
@@ -61,6 +61,7 @@ func start() throws {
 lastError = nil
 guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { throw OTAError.missingIPA }
 stop()
+resetRequestCounts()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
 if identity == nil || certificateDER == nil {
     let generated = try NiKLocalTLSIdentity.loadOrCreate()
@@ -126,6 +127,7 @@ if backgroundTask != .invalid {
 }
 isRunning = false
 port = 0
+onStop?()
 }
 
 func exportMobileConfig() throws -> Data {
@@ -151,7 +153,7 @@ func waitUntilReady() async throws {
 }
 
 func openInstallURL() async -> Bool {
-    guard let url = itmsInstallURL else { return false }
+    guard let url = itmsInstallURL else { lastError = "Máy chủ cài đặt chưa sẵn sàng."; return false }
     return await withCheckedContinuation { continuation in
         UIApplication.shared.open(url, options: [:]) { continuation.resume(returning: $0) }
     }
@@ -192,11 +194,13 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
             }
             let path = String(parts[1]), head = parts[0] == "HEAD"
             if path == "/\(self.token)/manifest.plist" {
+                self.manifestRequests += 1
                 do {
                     let plist = try self.manifestPlistData()
                     self.sendResponse(on: connection, status: "200 OK", contentType: "application/xml", body: plist, head: head)
                 } catch { connection.cancel() }
             } else if path == "/\(self.token)/app.ipa", let url = self.ipaURL {
+                self.ipaRequests += 1
                 self.sendFile(on: connection, url: url, head: head)
             } else {
                 self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data())

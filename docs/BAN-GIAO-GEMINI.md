@@ -12,6 +12,12 @@ Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` tro
 
 Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
 
+## Cập nhật mốc27 — luồng cài và xóa queue
+
+Người dùng xác nhận ký được trên9f28840 (run44328497383 success), nhưng chưa hiện prompt cài. Mốc27 thêm shared installer, URL itms-services:// đúng authority, system HTTPS manifest preflight, hướng dẫn cài public CA profile/full trust localhost qua Safari/Settings, không giả định open URL = cài thành công. Cài từ Saved library/detail/progress và Files/Signed dùng cùng view. Metadata đọc trực tiếp từ IPA nên vẫn cài được sau xóa lịch sử queue. HTTPS service không bị stop theo detail.onDisappear; background expiry vẫn có thể dừng. Cần kiểm thiết bị thật cho flow này.
+
+Queue có swipe/context delete từng mục và clear all có xác nhận; running job giữ journal removalRequested, cancel ở safe boundary rồi mới xóa, phục hồi pending removal sau restart. Không xóa originals hay signed outputs khi xóa history. Xem UPGRADE-PROGRESS mốc27 và các tests mới. Mốc27 Apple gate pending tại lúc viết.
+
 ## Cập nhật mốc25 — ưu tiên nội dung này hơn mô tả mốc23 bên dưới
 
 Đổi removeProvision=true ở mốc23 CHƯA sửa được lỗi trên máy. Native Zsign có hai nhánh mâu thuẫn: true ghi profile ở SignFolder rồi xóa ở GenerateCodeResources; false xóa cũ và không ghi lại. Mốc25 dùng local SwiftPM Vendor/Zsign, sửa điều kiện ghi thành !bRemoveProvision, Swift gọi false. Không sửa profile sau ký. UPSTREAM.json và dependencies-vendor-lock.json kiểm provenance. Native before/after regression 12 ca PASS; resource hash2/profile bytes đều kiểm. Không thay thế kiểm thử chứng chỉ và cài máy thật bằng ad-hoc fixture. Signer snapshot credentials riêng tránh đọc file thay đổi giữa preflight và ký; queue giữ progress khi thất bại. Đọc mốc25 trong UPGRADE-PROGRESS để lấy trạng thái mới nhất.

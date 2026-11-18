@@ -129,6 +129,28 @@
     return self.fileURL;
 }
 
+- (nullable NSURL *)startTrustProfile:(NSData *)profileData {
+    [self stop];
+    self.lastError = nil;
+    if (profileData.length == 0 || profileData.length > 65536) { return nil; }
+    GCDWebServer *server = [GCDWebServer new];
+    NSString *route = [NSString stringWithFormat:@"/%@/NiKSign-HTTPS.mobileconfig", [NSUUID UUID].UUIDString];
+    [server addHandlerForMethod:@"GET" path:route requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+        return [GCDWebServerDataResponse responseWithData:profileData contentType:@"application/x-apple-aspen-config"];
+    }];
+    NSError *error = nil;
+    if (![server startWithOptions:@{GCDWebServerOption_BindToLocalhost:@YES, GCDWebServerOption_Port:@0,
+                                   GCDWebServerOption_AutomaticallySuspendInBackground:@NO} error:&error]) {
+        self.lastError = error; return nil;
+    }
+    self.server = server;
+    self.fileURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%lu%@", (unsigned long)server.port, route]];
+#if TARGET_OS_IPHONE
+    self.bgTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"NiKSignTrustProfile" expirationHandler:^{ [self stop]; }];
+#endif
+    return self.fileURL;
+}
+
 - (void)stop {
     [self.server stop];
     self.server = nil;

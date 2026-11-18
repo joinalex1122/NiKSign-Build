@@ -86,7 +86,7 @@ print("PASS: symlink rejection and corrupted CRC cleanup")
 func signedFixture(_ name: String, bundleID: String, signature: Bool, executable: Data) throws -> URL {
     let url = root.appendingPathComponent(name + ".ipa")
     let archive = try Archive(url: url, accessMode: .create)
-    let info = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": bundleID, "CFBundleExecutable": "Demo"], format: .xml, options: 0)
+    let info = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": bundleID, "CFBundleExecutable": "Demo", "CFBundleVersion": "42", "CFBundleShortVersionString": "1.2", "CFBundleDisplayName": "Demo & Test"], format: .xml, options: 0)
     var files = ["Payload/Demo.app/Info.plist": info, "Payload/Demo.app/Demo": executable, "Payload/Demo.app/embedded.mobileprovision": Data("fixture".utf8)]
     if signature { files["Payload/Demo.app/_CodeSignature/CodeResources"] = Data("fixture".utf8) }
     for path in files.keys.sorted() {
@@ -119,3 +119,9 @@ do {
     precondition(failure.message == "IPA đầu ra thiếu embedded.mobileprovision.")
 }
 print("PASS: missing embedded profile reports the actual failing condition")
+
+let installMetadata = try NiKInstallMetadata.read(structuralFixture)
+precondition(installMetadata.bundleID == "com.example.demo" && installMetadata.version == "42" && installMetadata.title == "Demo & Test")
+try expectFailure { _ = try NiKInstallMetadata.read(missingProvision) }
+try expectFailure { _ = try NiKInstallMetadata.read(missingSignature) }
+print("PASS: installation reads actual signed IPA metadata/build version, rejects missing provisioning/signature resources")
