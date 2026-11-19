@@ -57,8 +57,8 @@ struct NiKHubPreview: View {
             .patchStorePresentation(patchStore)
             .repositoryStorePresentation(repositoryStore, patchStore: patchStore)
             .onAppear { appState.detectSupport() }
-        .onChange(of: patchDraftCoordinator.request?.id) { id in if id != nil { section = 2 } }
-        .onChange(of: patchDraftCoordinator.importRequest?.id) { id in if id != nil { section = 2 } }
+        .onChange(of: patchDraftCoordinator.request?.id) { _, id in if id != nil { section = 2 } }
+        .onChange(of: patchDraftCoordinator.importRequest?.id) { _, id in if id != nil { section = 2 } }
     }
 }
 
