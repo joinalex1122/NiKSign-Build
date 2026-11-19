@@ -533,7 +533,7 @@ bool ZFile::EnumFolder(const char* szFolder, bool bRecursive, enum_folder_callba
 			bFolder = true;
 		} else if (DT_UNKNOWN == ptr->d_type) {
 			struct stat st = { 0 };
-			if (0 == stat(strPath.c_str(), &st) && S_ISDIR(st.st_mode)) {
+			if (0 == lstat(strPath.c_str(), &st) && S_ISDIR(st.st_mode)) {
 				bFolder = true;
 			}
 		}

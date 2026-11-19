@@ -26,6 +26,7 @@ struct NiKCertificateProfile: Codable, Identifiable, Equatable, Sendable {
     var revocationStatus: RevocationStatus?
     var revocationCheckedAt: Date?
 
+    var isKnownRevoked: Bool { revocationStatus == .revoked }
     var effectiveExpirationDate: Date? {
         [expirationDate, certificateExpirationDate].compactMap { $0 }.min()
     }
@@ -33,6 +34,7 @@ struct NiKCertificateProfile: Codable, Identifiable, Equatable, Sendable {
         effectiveExpirationDate.map { max(0, $0.timeIntervalSince(now)) }
     }
     func freshRevocationStatus(at now: Date) -> RevocationStatus {
+        if isKnownRevoked { return .revoked }
         guard let checked = revocationCheckedAt, now >= checked,
               now.timeIntervalSince(checked) < 86400 else { return .unknown }
         return revocationStatus ?? .unknown

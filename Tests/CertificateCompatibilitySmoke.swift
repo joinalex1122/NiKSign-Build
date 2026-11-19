@@ -16,11 +16,11 @@ import Foundation
         precondition(!assess(profile, "other-device").canSign)
         precondition(assess(profile, nil).distribution == .adHoc)
         let differentID = NiKCertificateCompatibility.assess(profile, bundleID: "com.examples.demo", now: now)
-        precondition(differentID.canSign)
-        precondition(differentID.issues.contains { $0.code == "bundle.mismatch" && $0.severity == .warning })
+        precondition(!differentID.canSign)
+        precondition(differentID.issues.contains { $0.code == "bundle.mismatch" && $0.severity == .blocking })
         var fixedID = profile
         fixedID.bundleIDPattern = "com.example.fixed"
-        precondition(NiKCertificateCompatibility.assess(fixedID, bundleID: "com.other.app", now: now).canSign)
+        precondition(!NiKCertificateCompatibility.assess(fixedID, bundleID: "com.other.app", now: now).canSign)
         fixedID.certificateExpirationDate = now.addingTimeInterval(-1)
         precondition(!NiKCertificateCompatibility.assess(fixedID, bundleID: "com.other.app", now: now).canSign)
         precondition(!NiKCertificateCompatibility.bundleMatches(pattern: "com.example.*", bundleID: "com.example"))
@@ -38,6 +38,7 @@ import Foundation
         precondition(statusProfile.freshRevocationStatus(at: now.addingTimeInterval(-1)) == .unknown)
         statusProfile.revocationStatus = .revoked
         precondition(statusProfile.freshRevocationStatus(at: now) == .revoked)
+        precondition(statusProfile.freshRevocationStatus(at: now.addingTimeInterval(172800)) == .revoked)
         profile.certificateExpirationDate = now.addingTimeInterval(-1)
         precondition(!assess(profile, nil).canSign)
         profile.certificateExpirationDate = now.addingTimeInterval(86400)
@@ -46,7 +47,7 @@ import Foundation
         profile.expirationDate = now.addingTimeInterval(86400)
         profile.certMatchesProvision = false
         precondition(!assess(profile, nil).canSign)
-        precondition(NiKCertificateCompatibility.assess(profile, bundleID: "com.example.demo", now: now, allowMismatch: true).canSign)
+        precondition(!NiKCertificateCompatibility.assess(profile, bundleID: "com.example.demo", now: now, allowMismatch: true).canSign)
         profile.certMatchesProvision = true
         profile.provisionsAllDevices = true
         precondition(assess(profile, "other-device").canSign)

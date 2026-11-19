@@ -47,7 +47,7 @@ struct NiKSettingsView: View {
                 NiKBrand()
                 VStack(alignment: .leading, spacing: 4) {
                     Text("NiKSign").font(.title2.bold())
-                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.4.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "340"))")
+                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.4.1") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "341"))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

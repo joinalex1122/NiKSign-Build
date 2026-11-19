@@ -83,15 +83,18 @@ try expectFailure { try NiKArchive.extract(corrupt, to: root.appendingPathCompon
 precondition(!fm.fileExists(atPath: root.appendingPathComponent("crc-out").path))
 print("PASS: symlink rejection and corrupted CRC cleanup")
 
-func signedFixture(_ name: String, bundleID: String, signature: Bool, executable: Data) throws -> URL {
+let provisionFixture = try NiKProvisionFixture(directory: root)
+func signedFixture(_ name: String, bundleID: String, signature: Bool, executable: Data, profileData: Data? = nil, executableMode: UInt16 = 0o755, buildVersion: String? = "42") throws -> URL {
     let url = root.appendingPathComponent(name + ".ipa")
     let archive = try Archive(url: url, accessMode: .create)
-    let info = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": bundleID, "CFBundleExecutable": "Demo", "CFBundleVersion": "42", "CFBundleShortVersionString": "1.2", "CFBundleDisplayName": "Demo & Test"], format: .xml, options: 0)
-    var files = ["Payload/Demo.app/Info.plist": info, "Payload/Demo.app/Demo": executable, "Payload/Demo.app/embedded.mobileprovision": Data("fixture".utf8)]
+    var properties: [String: Any] = ["CFBundleIdentifier": bundleID, "CFBundleExecutable": "Demo", "CFBundleShortVersionString": "1.2", "CFBundleDisplayName": "Demo & Test"]
+    properties["CFBundleVersion"] = buildVersion
+    let info = try PropertyListSerialization.data(fromPropertyList: properties, format: .xml, options: 0)
+    var files = ["Payload/Demo.app/Info.plist": info, "Payload/Demo.app/Demo": executable, "Payload/Demo.app/embedded.mobileprovision": try profileData ?? provisionFixture.profile()]
     if signature { files["Payload/Demo.app/_CodeSignature/CodeResources"] = Data("fixture".utf8) }
     for path in files.keys.sorted() {
         let data = files[path]!
-        try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(data.count)) { offset, size in
+        try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(data.count), permissions: path.hasSuffix("/Demo") ? executableMode : 0o644) { offset, size in
             data.subdata(in: Int(offset)..<min(Int(offset) + size, data.count))
         }
     }
@@ -176,3 +179,5 @@ precondition(!fm.fileExists(atPath: ownedAbandoned.path) && fm.fileExists(atPath
 let recoveredLink = try unrelatedLink.resourceValues(forKeys: [.isSymbolicLinkKey])
 precondition(recoveredLink.isSymbolicLink == true)
 print("PASS: app-private installation crash recovery excludes unrelated directories and symlinks")
+
+try runSigningInstallabilitySmoke(root: root, fixture: provisionFixture)

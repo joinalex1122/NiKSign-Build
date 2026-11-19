@@ -12,6 +12,27 @@ enum NiKTLSServerCertificate {
         let password: String
         let certificateDER: Data
     }
+    static func isCurrent(_ der: Data, requireCA: Bool = false, minimumRemaining: Int = 300) -> Bool {
+        let certificate = der.withUnsafeBytes { raw -> OpaquePointer? in
+            var cursor = raw.bindMemory(to: UInt8.self).baseAddress
+            return d2i_X509(nil, &cursor, der.count)
+        }
+        guard let certificate else { return false }
+        defer { X509_free(certificate) }
+        var now = time_t(Date().timeIntervalSince1970), deadline = time_t(Date().timeIntervalSince1970) + minimumRemaining
+        if requireCA {
+            let requiredUsage = UInt32(KU_KEY_CERT_SIGN | KU_CRL_SIGN)
+            guard X509_check_ca(certificate) > 0,
+                  X509_get_ext_by_NID(certificate, NID_basic_constraints, -1) >= 0,
+                  X509_get_ext_by_NID(certificate, NID_key_usage, -1) >= 0,
+                  X509_get_key_usage(certificate) & requiredUsage == requiredUsage,
+                  let key = X509_get0_pubkey(certificate), EVP_PKEY_get_bits(key) >= 2048,
+                  X509_get_signature_nid(certificate) == NID_sha256WithRSAEncryption else { return false }
+        }
+        return true
+            && X509_cmp_time(X509_get0_notBefore(certificate), &now) < 0
+            && X509_cmp_time(X509_get0_notAfter(certificate), &deadline) > 0
+    }
     static func create(caP12: Data, password: String) throws -> Identity {
         let defaultProvider = OSSL_PROVIDER_load(nil, "default")
         let legacyProvider = OSSL_PROVIDER_load(nil, "legacy")
@@ -35,7 +56,8 @@ enum NiKTLSServerCertificate {
         }
         defer { EVP_PKEY_free(caKey); X509_free(caCert) }
         var days: Int32 = 0, seconds: Int32 = 0
-        guard X509_check_ca(caCert) > 0, X509_check_private_key(caCert, caKey) == 1,
+        var now = time_t(Date().timeIntervalSince1970)
+        guard X509_cmp_time(X509_get0_notBefore(caCert), &now) < 0, X509_check_ca(caCert) > 0, X509_check_private_key(caCert, caKey) == 1,
               ASN1_TIME_diff(&days, &seconds, nil, X509_get0_notAfter(caCert)) == 1 else { throw Failure() }
         let remaining = Int(days) * 86400 + Int(seconds)
         guard remaining > 300 else { throw Failure() }

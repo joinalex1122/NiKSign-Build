@@ -115,9 +115,11 @@ bool ZBundle::GetObjectsToSign(const string& strFolder, jvalue& jvInfo)
 	
 	for (const string& bundlePath : allBundles) {
 		jvalue jvNode;
-		if (GetSignFolderInfo(bundlePath, jvNode)) {
-			jvInfo["folders"].push_back(jvNode);
-		}
+        if (!GetSignFolderInfo(bundlePath, jvNode)) {
+            ZLog::ErrorV(">>> Invalid nested bundle metadata: %s\n", bundlePath.c_str());
+            return false;
+        }
+        jvInfo["folders"].push_back(jvNode);
 	}
 	
 	ZFile::EnumFolder(strFolder.c_str(), true, NULL, [&](bool bFolder, const string& strPath) {
@@ -125,6 +127,10 @@ bool ZBundle::GetObjectsToSign(const string& strFolder, jvalue& jvInfo)
 			string::npos != strPath.find("_WatchKitStub")) {
 			return false;
 		}
+#ifndef _WIN32
+        struct stat linkInfo;
+        if (lstat(strPath.c_str(), &linkInfo) == 0 && S_ISLNK(linkInfo.st_mode)) { return false; }
+#endif
 		bool bMachO = false;
 		{
 			FILE* fp = NULL;
@@ -139,6 +145,13 @@ bool ZBundle::GetObjectsToSign(const string& strFolder, jvalue& jvInfo)
 					bMachO = (magic == MH_MAGIC || magic == MH_CIGAM ||
 							  magic == MH_MAGIC_64 || magic == MH_CIGAM_64 ||
 							  magic == FAT_MAGIC || magic == FAT_CIGAM);
+                    if (bMachO && (magic == MH_MAGIC || magic == MH_CIGAM || magic == MH_MAGIC_64 || magic == MH_CIGAM_64)) {
+                        uint32_t fileType = 0;
+                        if (fseek(fp, 12, SEEK_SET) == 0 && fread(&fileType, sizeof(fileType), 1, fp) == 1) {
+                            if (magic == MH_CIGAM || magic == MH_CIGAM_64) { fileType = LE(fileType); }
+                            if (fileType == MH_OBJECT || fileType == MH_DSYM) { bMachO = false; }
+                        }
+                    }
 				}
 				fclose(fp);
 			}
@@ -175,6 +188,16 @@ bool ZBundle::GenerateCodeResources(const string& strFolder, jvalue& jvCodeRes)
 
 	setFiles.erase("_CodeSignature/CodeResources");
 	setFiles.erase(strBundleExe);
+#ifndef _WIN32
+    char canonical[PATH_MAX];
+    if (realpath((strFolder + "/" + strBundleExe).c_str(), canonical)) {
+        string actual = canonical;
+        char canonicalFolder[PATH_MAX];
+        if (!realpath(strFolder.c_str(), canonicalFolder)) { return false; }
+        string base = string(canonicalFolder) + "/";
+        if (actual.find(base) == 0) { setFiles.erase(actual.substr(base.size())); }
+    }
+#endif
 	
 	jvCodeRes.clear();
 	jvCodeRes["files"] = jvalue(jvalue::E_OBJECT);
@@ -189,9 +212,20 @@ bool ZBundle::GenerateCodeResources(const string& strFolder, jvalue& jvCodeRes)
 		}
 
 		string strFile = strFolder + "/" + strKey;
+#ifndef _WIN32
+        struct stat linkInfo;
+        if (lstat(strFile.c_str(), &linkInfo) == 0 && S_ISLNK(linkInfo.st_mode)) {
+            char target[PATH_MAX + 1];
+            ssize_t length = readlink(strFile.c_str(), target, PATH_MAX);
+            if (length < 0) { return false; }
+            target[length] = 0;
+            jvCodeRes["files2"][strKey]["symlink"] = target;
+            continue;
+        }
+#endif
 		string strSHA1Base64;
 		string strSHA256Base64;
-		ZSHA::SHABase64File(strFile.c_str(), strSHA1Base64, strSHA256Base64);
+        if (!ZSHA::SHABase64File(strFile.c_str(), strSHA1Base64, strSHA256Base64)) { return false; }
 
 #ifdef _WIN32
 		strKey = ic.A2U8(strKey);
@@ -302,9 +336,10 @@ bool ZBundle::SignNode(jvalue& jvNode)
 			ZLog::PrintV(">>> SignFile: \t%s\n", strFile.c_str());
 			ZMachO macho;
 			if (macho.InitV("%s/%s", m_strAppFolder.c_str(), strFile.c_str())) {
-				macho.Sign(m_pSignAsset, m_bForceSign, "", "", "", "");
+				if (!macho.Sign(m_pSignAsset, m_bForceSign, "", "", "", "")) { return false; }
 			} else {
-				ZLog::WarnV(">>> Warning: Skipping non-Mach-O file: \t%s\n", strFile.c_str());
+				ZLog::ErrorV(">>> Cannot parse code file: %s\n", strFile.c_str());
+                return false;
 			}
 		}
 	}
@@ -343,16 +378,16 @@ bool ZBundle::SignNode(jvalue& jvNode)
 	}
 
 	string strExePath = strBaseFolder + "/" + strBundleExe;
+#ifndef _WIN32
+    char canonicalExe[PATH_MAX];
+    if (realpath(strExePath.c_str(), canonicalExe)) { strExePath = canonicalExe; }
+#endif
 	ZLog::PrintV(">>> SignFolder: %s, (%s)\n", ("/" == strFolder) ? ZUtil::GetBaseName(m_strAppFolder.c_str()) : strFolder.c_str(), strBundleExe.c_str());
 
 	ZMachO macho;
 	if (!macho.Init(strExePath.c_str())) {
 		ZLog::ErrorV(">>> Can't parse BundleExecute file! %s\n", strExePath.c_str());
-#if !TARGET_OS_IOS
-		return false;
-#else
-		return true;
-#endif
+        return false;
 	}
 
 	bool bForceSign = m_bForceSign;

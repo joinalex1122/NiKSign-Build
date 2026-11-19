@@ -21,10 +21,10 @@ python3 scripts/check-integration.py
 python3 scripts/check-dependencies.py
 bash -n scripts/*.sh
 xcodegen generate
-bash scripts/audit-ios.sh
+for nik_pass in pass1 pass2; do bash scripts/audit-ios.sh "$nik_pass"; done
 ```
 
-Workflow `.github/workflows/build.yml` chạy **một lượt audit và một lượt build IPA**, tạo `NiKSign-unsigned.ipa` cùng bản nguồn. `scripts/build-ios.sh` dùng `xcodebuild -sdk iphoneos CODE_SIGNING_ALLOWED=NO`, mặc định Bundle ID `com.niksign.app`; có thể đặt `NIKSIGN_BUNDLE_ID` trong namespace của bạn. IPA build ra chưa có chữ ký cài đặt.
+Workflow `.github/workflows/build.yml` chạy **hai lượt audit/build sạch liên tiếp** theo yêu cầu kiểm chứng hiện tại, chỉ xuất IPA của lượt cuối, tạo `NiKSign-unsigned.ipa` cùng bản nguồn. `scripts/build-ios.sh` dùng `xcodebuild -sdk iphoneos CODE_SIGNING_ALLOWED=NO`, mặc định Bundle ID `com.niksign.app`; có thể đặt `NIKSIGN_BUNDLE_ID` trong namespace của bạn. IPA build ra chưa có chữ ký cài đặt.
 
 ## Cài OTA cục bộ
 

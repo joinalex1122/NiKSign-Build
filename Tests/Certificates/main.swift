@@ -13,6 +13,7 @@ func expectFailure(_ operation: () throws -> Void) {
 }
 do {
 let directory = URL(fileURLWithPath: CommandLine.arguments[1])
+let provisionFixture = try NiKProvisionFixture(directory: directory)
 precondition(NiKCertificateRevocation.check(der: Data([0, 1, 2])) == .unknown)
 let modern = try Data(contentsOf: directory.appendingPathComponent("modern.p12"))
 let legacy = try Data(contentsOf: directory.appendingPathComponent("legacy.p12"))
@@ -36,6 +37,12 @@ precondition(metadata.entitlements["get-task-allow"] == .bool(true))
 expectFailure { _ = try NiKCertificateStore.inspectP12(data: legacy, password: "wrong") }
 expectFailure { _ = try NiKCertificateStore.inspectP12(data: Data(legacy.prefix(20)), password: " test password ") }
 expectFailure { _ = try NiKCertificateStore.inspectP12(data: Data(), password: "") }
+let provision = try provisionFixture.profile(certificate: modernInfo.derData)
+let parsedProvision = try NiKCertificateStore.parseMobileProvision(data: provision)
+precondition(parsedProvision.bundleIDPattern == "com.example.*" && parsedProvision.teamID == "TEAMFIX123")
+try NiKProvisioningValidation.validate(provision, bundleID: "com.example.demo", certificateDER: modernInfo.derData)
+expectFailure { _ = try NiKCertificateStore.parseMobileProvision(data: Data("prefix<plist><dict/></plist>suffix".utf8)) }
+print("PASS: production CMS profile parser and actual p12 DER membership")
 print("PASS: modern and legacy p12 identity inspection, matching DER/fingerprint, password spaces, wrong password and damaged input")
 
 // Use an isolated service and remove synthetic test credentials afterward.
@@ -76,6 +83,23 @@ let reloadedTLS = try NiKLocalTLSIdentity.loadOrCreate(service: service)
 precondition(reloadedTLS.1 == firstTLS.1)
 print("PASS: separate Apple Security server identity, stable CA, hostname validation and wrong-host rejection")
 
+
+struct TestStoredIdentity: Codable { let p12: Data; let password: String }
+var rawIdentity: CFTypeRef?
+precondition(SecItemCopyMatching([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+    kSecAttrAccount as String: "identity-v1", kSecReturnData as String: true] as CFDictionary, &rawIdentity) == errSecSuccess)
+let rootEnvelope = try JSONDecoder().decode(TestStoredIdentity.self, from: rawIdentity as! Data)
+let leafEnvelope = try NiKTLSServerCertificate.create(caP12: rootEnvelope.p12, password: rootEnvelope.password)
+let recoveryService = service + ".recovery"
+defer { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: recoveryService] as CFDictionary) }
+let brokenEnvelope = try JSONEncoder().encode(TestStoredIdentity(p12: leafEnvelope.p12, password: leafEnvelope.password))
+precondition(SecItemAdd([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: recoveryService,
+    kSecAttrAccount as String: "identity-v1", kSecValueData as String: brokenEnvelope] as CFDictionary, nil) == errSecSuccess)
+let repaired = try NiKLocalTLSIdentity.loadOrCreate(service: recoveryService)
+precondition(repaired.1 != leafEnvelope.certificateDER && NiKTLSServerCertificate.isCurrent(repaired.1, requireCA: true))
+let repairedAgain = try NiKLocalTLSIdentity.loadOrCreate(service: recoveryService)
+precondition(repairedAgain.1 == repaired.1)
+print("PASS: invalid persisted CA repaired once; valid installed CA remains stable")
 
 let mobileConfig = try NiKOTAProfile.encode(certificateDER: firstTLS.1)
 let profile = try PropertyListSerialization.propertyList(from: mobileConfig, format: nil) as! [String: Any]

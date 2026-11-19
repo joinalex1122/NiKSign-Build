@@ -164,6 +164,10 @@ bool ZMachO::Sign(ZSignAsset* pSignAsset, bool bForce, string strBundleId, strin
 bool ZMachO::ReallocCodeSignSpace()
 {
 	ZLog::Warn(">>> Realloc CodeSignature space... \n");
+#ifndef _WIN32
+    struct stat originalMode;
+    if (stat(m_strFile.c_str(), &originalMode) != 0) { return false; }
+#endif
 
 	vector<uint32_t> arrMachOesSizes;
 	for (size_t i = 0; i < m_arrArchOes.size(); i++) {
@@ -182,6 +186,9 @@ bool ZMachO::ReallocCodeSignSpace()
 		CloseFile();
 		ZFile::RemoveFile(m_strFile.c_str());
 		string strNewArchOFile = m_strFile + ".archo.0";
+#ifndef _WIN32
+        if (chmod(strNewArchOFile.c_str(), originalMode.st_mode & 0777) != 0) { return false; }
+#endif
 		if (0 == rename(strNewArchOFile.c_str(), m_strFile.c_str())) {
 			return OpenFile(m_strFile.c_str());
 		}
@@ -248,7 +255,10 @@ bool ZMachO::ReallocCodeSignSpace()
 			ZFile::RemoveFile(strNewArchOFile.c_str());
 		}
 
-		ZFile::RemoveFile(m_strFile.c_str());
+#ifndef _WIN32
+        if (chmod(strNewFatMachOFile.c_str(), originalMode.st_mode & 0777) != 0) { return false; }
+#endif
+        ZFile::RemoveFile(m_strFile.c_str());
 		if (0 == rename(strNewFatMachOFile.c_str(), m_strFile.c_str())) {
 			return OpenFile(m_strFile.c_str());
 		}

@@ -31,24 +31,26 @@ jobs:
   ios:
     needs: source-checks
     runs-on: macos-15-intel
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       NIKSIGN_BUNDLE_ID: ${{ inputs.bundle_id || 'com.niksign.app' }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install build tools
         run: brew install xcodegen openssl@3 pkgconf
-      - name: One clean audit and IPA build
+      - name: Two consecutive clean audits and IPA builds
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p audit-results
-          bash scripts/audit-ios.sh 2>&1 | tee audit-results/build.log
-          python3 scripts/check-build-log.py audit-results/build.log
+          for nik_audit_pass in 1 2; do
+            bash scripts/audit-ios.sh "pass${nik_audit_pass}" 2>&1 | tee "audit-results/pass${nik_audit_pass}.log"
+            python3 scripts/check-build-log.py "audit-results/pass${nik_audit_pass}.log"
+          done
       - name: Package source archive
         run: |
           mkdir -p dist
-          /usr/bin/zip -qry dist/NiKSign-3.4-source.zip Native Vendor Tests scripts docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md dependencies-vendor-lock.json server-overlays.json
+          /usr/bin/zip -qry dist/NiKSign-3.4.1-source.zip Native Vendor Tests scripts docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md dependencies-vendor-lock.json server-overlays.json
       # Retry transient artifact service/DNS failures without rebuilding the app.
       - name: Upload IPA and source
         id: upload_ipa
@@ -57,8 +59,8 @@ jobs:
         with: &ipa_artifact
           name: NiKSign-unsigned-IPA-macos-15-intel
           path: |
-            audit-results/build/NiKSign-unsigned.ipa
-            dist/NiKSign-3.4-source.zip
+            audit-results/pass2/NiKSign-unsigned.ipa
+            dist/NiKSign-3.4.1-source.zip
           if-no-files-found: error
           overwrite: true
       - name: Wait before retrying IPA upload

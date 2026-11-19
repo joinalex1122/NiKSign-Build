@@ -66,5 +66,96 @@
         "after": "\tuint64_t uExecSegFlags = MH_EXECUTE == m_uFileType ? CS_EXECSEG_MAIN_BINARY : 0;\n\tif (MH_EXECUTE == m_uFileType && allowsDebugging) {\n\t\tuExecSegFlags |= CS_EXECSEG_ALLOW_UNSIGNED;\n\t}"
       }
     ]
+  },
+  "installabilityPatch": {
+    "description": "Fail on nested signing/CMS errors, preserve mode on signature reallocation and symlink resource semantics; no signer cache or nil completion dereference.",
+    "files": {
+      "src/bundle.cpp": {
+        "beforeSHA256": "835418d8581442a2097add826ab5314367665006acf3023b5d7d324445181ea2",
+        "afterSHA256": "be77479763b4184a882d1a144a033fadabccd492ddf5ef4979a2a854e27da6f3",
+        "replacements": [
+          {
+            "before": "\t\treturn depthA > depthB;\n\t});\n\t\n\tfor (const string& bundlePath : allBundles) {\n\t\tjvalue jvNode;\n\t\tif (GetSignFolderInfo(bundlePath, jvNode)) {\n\t\t\tjvInfo[\"folders\"].push_back(jvNode);\n\t\t}\n\t}\n\t\n\tZFile::EnumFolder(strFolder.c_str(), true, NULL, [&](bool bFolder, const string& strPath) {\n\t\tif (bFolder || string::npos != strPath.find(\".dSYM\") ||\n\t\t\tstring::npos != strPath.find(\"_WatchKitStub\")) {\n\t\t\treturn false;\n\t\t}\n\t\tbool bMachO = false;\n\t\t{\n\t\t\tFILE* fp = NULL;\n#ifdef _WIN32\n\t\t\tfopen_s(&fp, strPath.c_str(), \"rb\");\n",
+            "after": "\t\treturn depthA > depthB;\n\t});\n\t\n\tfor (const string& bundlePath : allBundles) {\n\t\tjvalue jvNode;\n        if (!GetSignFolderInfo(bundlePath, jvNode)) {\n            ZLog::ErrorV(\">>> Invalid nested bundle metadata: %s\\n\", bundlePath.c_str());\n            return false;\n        }\n        jvInfo[\"folders\"].push_back(jvNode);\n\t}\n\t\n\tZFile::EnumFolder(strFolder.c_str(), true, NULL, [&](bool bFolder, const string& strPath) {\n\t\tif (bFolder || string::npos != strPath.find(\".dSYM\") ||\n\t\t\tstring::npos != strPath.find(\"_WatchKitStub\")) {\n\t\t\treturn false;\n\t\t}\n#ifndef _WIN32\n        struct stat linkInfo;\n        if (lstat(strPath.c_str(), &linkInfo) == 0 && S_ISLNK(linkInfo.st_mode)) { return false; }\n#endif\n\t\tbool bMachO = false;\n\t\t{\n\t\t\tFILE* fp = NULL;\n#ifdef _WIN32\n\t\t\tfopen_s(&fp, strPath.c_str(), \"rb\");\n"
+          },
+          {
+            "before": "\t\t\t\tuint32_t magic = 0;\n\t\t\t\tif (1 == fread(&magic, sizeof(magic), 1, fp)) {\n\t\t\t\t\tbMachO = (magic == MH_MAGIC || magic == MH_CIGAM ||\n\t\t\t\t\t\t\t  magic == MH_MAGIC_64 || magic == MH_CIGAM_64 ||\n\t\t\t\t\t\t\t  magic == FAT_MAGIC || magic == FAT_CIGAM);\n\t\t\t\t}\n\t\t\t\tfclose(fp);\n\t\t\t}\n\t\t}\n\t\tif (bMachO) {\n",
+            "after": "\t\t\t\tuint32_t magic = 0;\n\t\t\t\tif (1 == fread(&magic, sizeof(magic), 1, fp)) {\n\t\t\t\t\tbMachO = (magic == MH_MAGIC || magic == MH_CIGAM ||\n\t\t\t\t\t\t\t  magic == MH_MAGIC_64 || magic == MH_CIGAM_64 ||\n\t\t\t\t\t\t\t  magic == FAT_MAGIC || magic == FAT_CIGAM);\n                    if (bMachO && (magic == MH_MAGIC || magic == MH_CIGAM || magic == MH_MAGIC_64 || magic == MH_CIGAM_64)) {\n                        uint32_t fileType = 0;\n                        if (fseek(fp, 12, SEEK_SET) == 0 && fread(&fileType, sizeof(fileType), 1, fp) == 1) {\n                            if (magic == MH_CIGAM || magic == MH_CIGAM_64) { fileType = LE(fileType); }\n                            if (fileType == MH_OBJECT || fileType == MH_DSYM) { bMachO = false; }\n                        }\n                    }\n\t\t\t\t}\n\t\t\t\tfclose(fp);\n\t\t\t}\n\t\t}\n\t\tif (bMachO) {\n"
+          },
+          {
+            "before": "\tstrBundleExe = ic.U82A(strBundleExe);\n#endif\n\n\tsetFiles.erase(\"_CodeSignature/CodeResources\");\n\tsetFiles.erase(strBundleExe);\n\t\n\tjvCodeRes.clear();\n\tjvCodeRes[\"files\"] = jvalue(jvalue::E_OBJECT);\n\tjvCodeRes[\"files2\"] = jvalue(jvalue::E_OBJECT);\n\n",
+            "after": "\tstrBundleExe = ic.U82A(strBundleExe);\n#endif\n\n\tsetFiles.erase(\"_CodeSignature/CodeResources\");\n\tsetFiles.erase(strBundleExe);\n#ifndef _WIN32\n    char canonical[PATH_MAX];\n    if (realpath((strFolder + \"/\" + strBundleExe).c_str(), canonical)) {\n        string actual = canonical;\n        char canonicalFolder[PATH_MAX];\n        if (!realpath(strFolder.c_str(), canonicalFolder)) { return false; }\n        string base = string(canonicalFolder) + \"/\";\n        if (actual.find(base) == 0) { setFiles.erase(actual.substr(base.size())); }\n    }\n#endif\n\t\n\tjvCodeRes.clear();\n\tjvCodeRes[\"files\"] = jvalue(jvalue::E_OBJECT);\n\tjvCodeRes[\"files2\"] = jvalue(jvalue::E_OBJECT);\n\n"
+          },
+          {
+            "before": "\t\t\tZLog::Print(\">>> Removed embedded.mobileprovision\\n\");\n\t\t\tcontinue;\n\t\t}\n\n\t\tstring strFile = strFolder + \"/\" + strKey;\n\t\tstring strSHA1Base64;\n\t\tstring strSHA256Base64;\n\t\tZSHA::SHABase64File(strFile.c_str(), strSHA1Base64, strSHA256Base64);\n\n#ifdef _WIN32\n\t\tstrKey = ic.A2U8(strKey);\n#endif\n\n",
+            "after": "\t\t\tZLog::Print(\">>> Removed embedded.mobileprovision\\n\");\n\t\t\tcontinue;\n\t\t}\n\n\t\tstring strFile = strFolder + \"/\" + strKey;\n#ifndef _WIN32\n        struct stat linkInfo;\n        if (lstat(strFile.c_str(), &linkInfo) == 0 && S_ISLNK(linkInfo.st_mode)) {\n            char target[PATH_MAX + 1];\n            ssize_t length = readlink(strFile.c_str(), target, PATH_MAX);\n            if (length < 0) { return false; }\n            target[length] = 0;\n            jvCodeRes[\"files2\"][strKey][\"symlink\"] = target;\n            continue;\n        }\n#endif\n\t\tstring strSHA1Base64;\n\t\tstring strSHA256Base64;\n        if (!ZSHA::SHABase64File(strFile.c_str(), strSHA1Base64, strSHA256Base64)) { return false; }\n\n#ifdef _WIN32\n\t\tstrKey = ic.A2U8(strKey);\n#endif\n\n"
+          },
+          {
+            "before": "\t\tfor (size_t i = 0; i < jvNode[\"files\"].size(); i++) {\n\t\t\tstring strFile = jvNode[\"files\"][i];\n\t\t\tZLog::PrintV(\">>> SignFile: \\t%s\\n\", strFile.c_str());\n\t\t\tZMachO macho;\n\t\t\tif (macho.InitV(\"%s/%s\", m_strAppFolder.c_str(), strFile.c_str())) {\n\t\t\t\tmacho.Sign(m_pSignAsset, m_bForceSign, \"\", \"\", \"\", \"\");\n\t\t\t} else {\n\t\t\t\tZLog::WarnV(\">>> Warning: Skipping non-Mach-O file: \\t%s\\n\", strFile.c_str());\n\t\t\t}\n\t\t}\n\t}\n\t\n\tif (jvNode.has(\"folders\")) {\n",
+            "after": "\t\tfor (size_t i = 0; i < jvNode[\"files\"].size(); i++) {\n\t\t\tstring strFile = jvNode[\"files\"][i];\n\t\t\tZLog::PrintV(\">>> SignFile: \\t%s\\n\", strFile.c_str());\n\t\t\tZMachO macho;\n\t\t\tif (macho.InitV(\"%s/%s\", m_strAppFolder.c_str(), strFile.c_str())) {\n\t\t\t\tif (!macho.Sign(m_pSignAsset, m_bForceSign, \"\", \"\", \"\", \"\")) { return false; }\n\t\t\t} else {\n\t\t\t\tZLog::ErrorV(\">>> Cannot parse code file: %s\\n\", strFile.c_str());\n                return false;\n\t\t\t}\n\t\t}\n\t}\n\t\n\tif (jvNode.has(\"folders\")) {\n"
+          },
+          {
+            "before": "\t\tstrBaseFolder += \"/\";\n\t\tstrBaseFolder += strFolder;\n\t}\n\n\tstring strExePath = strBaseFolder + \"/\" + strBundleExe;\n\tZLog::PrintV(\">>> SignFolder: %s, (%s)\\n\", (\"/\" == strFolder) ? ZUtil::GetBaseName(m_strAppFolder.c_str()) : strFolder.c_str(), strBundleExe.c_str());\n\n\tZMachO macho;\n\tif (!macho.Init(strExePath.c_str())) {\n\t\tZLog::ErrorV(\">>> Can't parse BundleExecute file! %s\\n\", strExePath.c_str());\n#if !TARGET_OS_IOS\n\t\treturn false;\n#else\n\t\treturn true;\n#endif\n\t}\n\n\tbool bForceSign = m_bForceSign;\n\tif (\"/\" == strFolder) { // inject/remove dylib before CodeResources generation\n\t\tfor (const string& strDylibFile : m_arrInjectDylibs) {\n",
+            "after": "\t\tstrBaseFolder += \"/\";\n\t\tstrBaseFolder += strFolder;\n\t}\n\n\tstring strExePath = strBaseFolder + \"/\" + strBundleExe;\n#ifndef _WIN32\n    char canonicalExe[PATH_MAX];\n    if (realpath(strExePath.c_str(), canonicalExe)) { strExePath = canonicalExe; }\n#endif\n\tZLog::PrintV(\">>> SignFolder: %s, (%s)\\n\", (\"/\" == strFolder) ? ZUtil::GetBaseName(m_strAppFolder.c_str()) : strFolder.c_str(), strBundleExe.c_str());\n\n\tZMachO macho;\n\tif (!macho.Init(strExePath.c_str())) {\n\t\tZLog::ErrorV(\">>> Can't parse BundleExecute file! %s\\n\", strExePath.c_str());\n        return false;\n\t}\n\n\tbool bForceSign = m_bForceSign;\n\tif (\"/\" == strFolder) { // inject/remove dylib before CodeResources generation\n\t\tfor (const string& strDylibFile : m_arrInjectDylibs) {\n"
+          }
+        ]
+      },
+      "src/macho.cpp": {
+        "beforeSHA256": "67ce63e7c24f28e568d5d38cca7453e5bebf0da6882f44808ae377ff3d27bf3a",
+        "afterSHA256": "6a6a859c231d8d7cad98e1871ab290513255f257da4bb5e53d30abadcbcdc8a7",
+        "replacements": [
+          {
+            "before": "}\n\nbool ZMachO::ReallocCodeSignSpace()\n{\n\tZLog::Warn(\">>> Realloc CodeSignature space... \\n\");\n\n\tvector<uint32_t> arrMachOesSizes;\n\tfor (size_t i = 0; i < m_arrArchOes.size(); i++) {\n\t\tstring strNewArchOFile;\n\t\tZUtil::StringFormatV(strNewArchOFile, \"%s.archo.%d\", m_strFile.c_str(), i);\n",
+            "after": "}\n\nbool ZMachO::ReallocCodeSignSpace()\n{\n\tZLog::Warn(\">>> Realloc CodeSignature space... \\n\");\n#ifndef _WIN32\n    struct stat originalMode;\n    if (stat(m_strFile.c_str(), &originalMode) != 0) { return false; }\n#endif\n\n\tvector<uint32_t> arrMachOesSizes;\n\tfor (size_t i = 0; i < m_arrArchOes.size(); i++) {\n\t\tstring strNewArchOFile;\n\t\tZUtil::StringFormatV(strNewArchOFile, \"%s.archo.%d\", m_strFile.c_str(), i);\n"
+          },
+          {
+            "before": "\n\tif (1 == m_arrArchOes.size()) {\n\t\tCloseFile();\n\t\tZFile::RemoveFile(m_strFile.c_str());\n\t\tstring strNewArchOFile = m_strFile + \".archo.0\";\n\t\tif (0 == rename(strNewArchOFile.c_str(), m_strFile.c_str())) {\n\t\t\treturn OpenFile(m_strFile.c_str());\n\t\t}\n\t} else { //fat\n\t\tuint32_t uAlign = 16384;\n",
+            "after": "\n\tif (1 == m_arrArchOes.size()) {\n\t\tCloseFile();\n\t\tZFile::RemoveFile(m_strFile.c_str());\n\t\tstring strNewArchOFile = m_strFile + \".archo.0\";\n#ifndef _WIN32\n        if (chmod(strNewArchOFile.c_str(), originalMode.st_mode & 0777) != 0) { return false; }\n#endif\n\t\tif (0 == rename(strNewArchOFile.c_str(), m_strFile.c_str())) {\n\t\t\treturn OpenFile(m_strFile.c_str());\n\t\t}\n\t} else { //fat\n\t\tuint32_t uAlign = 16384;\n"
+          },
+          {
+            "before": "\n\t\t\tZFile::UnmapFile((void*)pData, sSize);\n\t\t\tZFile::RemoveFile(strNewArchOFile.c_str());\n\t\t}\n\n\t\tZFile::RemoveFile(m_strFile.c_str());\n\t\tif (0 == rename(strNewFatMachOFile.c_str(), m_strFile.c_str())) {\n\t\t\treturn OpenFile(m_strFile.c_str());\n\t\t}\n\t}\n\n",
+            "after": "\n\t\t\tZFile::UnmapFile((void*)pData, sSize);\n\t\t\tZFile::RemoveFile(strNewArchOFile.c_str());\n\t\t}\n\n#ifndef _WIN32\n        if (chmod(strNewFatMachOFile.c_str(), originalMode.st_mode & 0777) != 0) { return false; }\n#endif\n        ZFile::RemoveFile(m_strFile.c_str());\n\t\tif (0 == rename(strNewFatMachOFile.c_str(), m_strFile.c_str())) {\n\t\t\treturn OpenFile(m_strFile.c_str());\n\t\t}\n\t}\n\n"
+          }
+        ]
+      },
+      "src/archo.cpp": {
+        "beforeSHA256": "9e2cd9ad6df145a71ba56710ce9d65f3a77993eeaa77e3123c0997d8e54b57b0",
+        "afterSHA256": "c04cb6b0cbac39683af9c3081d3ff33be6080a78d6b6cf190980521b814e646a",
+        "replacements": [
+          {
+            "before": "\t\t\t\t\tsize_t wildcard = group.find('*');\n\t\t\t\t\tif (wildcard == string::npos) {\n\t\t\t\t\t\tgroups.push_back(group);\n\t\t\t\t\t} else if (wildcard == group.size() - 1 && applicationId.compare(0, wildcard, group, 0, wildcard) == 0) {\n\t\t\t\t\t\tgroups.push_back(applicationId);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tentitlements[\"keychain-access-groups\"] = groups;\n\t\t\t}\n\t\t}\n",
+            "after": "\t\t\t\t\tsize_t wildcard = group.find('*');\n\t\t\t\t\tif (wildcard == string::npos) {\n\t\t\t\t\t\tgroups.push_back(group);\n\t\t\t\t\t} else if (wildcard == group.size() - 1 && applicationId.compare(0, wildcard, group, 0, wildcard) == 0) {\n\t\t\t\t\t\tgroups.push_back(applicationId);\n                    } else if (wildcard == group.size() - 1) {\n                        // A profile may authorize a Keychain seed different from its App ID seed.\n                        groups.push_back(group.substr(0, wildcard) + strBundleId);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tentitlements[\"keychain-access-groups\"] = groups;\n\t\t\t}\n\t\t}\n"
+          },
+          {
+            "before": "\t\tstrAltnateCodeDirectorySlot.swap(strCodeDirectorySlot);\n\t}\n\n\tstring strCMSSignatureSlot;\n\tif (!pSignAsset->m_bAdhoc) { //adhoc remove cms signature slot\n\t\tZSign::SlotBuildCMSSignature(pSignAsset, strCodeDirectorySlot, strAltnateCodeDirectorySlot, strCMSSignatureSlot);\n\t}\n\n\tuint32_t uCodeDirectorySlotLength = (uint32_t)strCodeDirectorySlot.size();\n\tuint32_t uRequirementsSlotLength = (uint32_t)strRequirementsSlot.size();\n\tuint32_t uEntitlementsSlotLength = (uint32_t)strEntitlementsSlot.size();\n",
+            "after": "\t\tstrAltnateCodeDirectorySlot.swap(strCodeDirectorySlot);\n\t}\n\n\tstring strCMSSignatureSlot;\n\tif (!pSignAsset->m_bAdhoc) { //adhoc remove cms signature slot\n        if (!ZSign::SlotBuildCMSSignature(pSignAsset, strCodeDirectorySlot, strAltnateCodeDirectorySlot, strCMSSignatureSlot)) { return false; }\n\t}\n\n\tuint32_t uCodeDirectorySlotLength = (uint32_t)strCodeDirectorySlot.size();\n\tuint32_t uRequirementsSlotLength = (uint32_t)strRequirementsSlot.size();\n\tuint32_t uEntitlementsSlotLength = (uint32_t)strEntitlementsSlot.size();\n"
+          },
+          {
+            "before": "\t} else {\n\t\tZSHA::SHA(strCodeResourcesData, strCodeResourcesSHA1, strCodeResourcesSHA256);\n\t}\n\n\tstring strCodeSignBlob;\n\tBuildCodeSignature(pSignAsset, bForce, strBundleId, strInfoSHA1, strInfoSHA256, strCodeResourcesSHA1, strCodeResourcesSHA256, strCodeSignBlob);\n\tif (strCodeSignBlob.empty()) {\n\t\tZLog::Error(\">>> Build CodeSignature failed!\\n\");\n\t\treturn false;\n\t}\n\n",
+            "after": "\t} else {\n\t\tZSHA::SHA(strCodeResourcesData, strCodeResourcesSHA1, strCodeResourcesSHA256);\n\t}\n\n\tstring strCodeSignBlob;\n    if (!BuildCodeSignature(pSignAsset, bForce, strBundleId, strInfoSHA1, strInfoSHA256, strCodeResourcesSHA1, strCodeResourcesSHA256, strCodeSignBlob)) { return false; }\n\tif (strCodeSignBlob.empty()) {\n\t\tZLog::Error(\">>> Build CodeSignature failed!\\n\");\n\t\treturn false;\n\t}\n\n"
+          }
+        ]
+      },
+      "swift/zsign.mm": {
+        "beforeSHA256": "941034c1a3f61ce2fc7e9c08a43c40a9f1e1234c357fc50a14031adc71b9610d",
+        "afterSHA256": "e7a8be1ef8a9a016766fba59efdb87dda189a9f535361febee476b66ef3a0b20",
+        "replacements": [
+          {
+            "before": "\tZSignAsset zsa;\n\tif (!zsa.Init(strCertFile, strPKeyFile, strProvFile, strEntitleFile, strPassword, bAdhoc, bSHA256Only, false)) {\n\t\treturn -1;\n\t}\n\t\n\tbool bEnableCache = true;\n\tstring strFolder = strPath;\n\t\n\tatimer.Reset();\n\tZBundle bundle;\n\tbool bRet = bundle.SignFolder(&zsa, strFolder, strBundleId, strBundleVersion, strDisplayName, arrDylibFiles, arrDisDylibFiles, bForce, bWeakInject, bEnableCache, excludeprovion);\n\tZLog::PrintV(\">>> Signing:\\t%s %s\\n\", strPath.c_str(), (bAdhoc ? \" (Ad-hoc)\" : \"\"));\n\tatimer.PrintResult(bRet, \">>> Signed %s!\", bRet ? \"OK\" : \"Failed\");\n\t\n\tcompletionHandler(bRet);\n\t\n\tgtimer.Print(\">>> Done.\");\n\treturn bRet ? 0 : -1;\n}\n\n",
+            "after": "\tZSignAsset zsa;\n\tif (!zsa.Init(strCertFile, strPKeyFile, strProvFile, strEntitleFile, strPassword, bAdhoc, bSHA256Only, false)) {\n\t\treturn -1;\n\t}\n\t\n\tbool bEnableCache = false;\n\tstring strFolder = strPath;\n\t\n\tatimer.Reset();\n\tZBundle bundle;\n\tbool bRet = bundle.SignFolder(&zsa, strFolder, strBundleId, strBundleVersion, strDisplayName, arrDylibFiles, arrDisDylibFiles, bForce, bWeakInject, bEnableCache, excludeprovion);\n\tZLog::PrintV(\">>> Signing:\\t%s %s\\n\", strPath.c_str(), (bAdhoc ? \" (Ad-hoc)\" : \"\"));\n\tatimer.PrintResult(bRet, \">>> Signed %s!\", bRet ? \"OK\" : \"Failed\");\n\t\n\tif (completionHandler) { completionHandler(bRet); }\n\t\n\tgtimer.Print(\">>> Done.\");\n\treturn bRet ? 0 : -1;\n}\n\n"
+          }
+        ]
+      },
+      "src/common/fs.cpp": {
+        "beforeSHA256": "69ab879d7edb69d2509e2e939dec37960918793a07e25cb2e30c08cf72eb33bd",
+        "afterSHA256": "90ebcff7637dbf634a52112ab8e8ff387c2d82e2a660ab55b9b998983d07807a",
+        "replacements": [
+          {
+            "before": "\t\tbool bFolder = false;\n\t\tif (DT_DIR == ptr->d_type) {\n\t\t\tbFolder = true;\n\t\t} else if (DT_UNKNOWN == ptr->d_type) {\n\t\t\tstruct stat st = { 0 };\n\t\t\tif (0 == stat(strPath.c_str(), &st) && S_ISDIR(st.st_mode)) {\n\t\t\t\tbFolder = true;\n\t\t\t}\n\t\t}\n\n\t\tif (NULL != filter) {\n",
+            "after": "\t\tbool bFolder = false;\n\t\tif (DT_DIR == ptr->d_type) {\n\t\t\tbFolder = true;\n\t\t} else if (DT_UNKNOWN == ptr->d_type) {\n\t\t\tstruct stat st = { 0 };\n\t\t\tif (0 == lstat(strPath.c_str(), &st) && S_ISDIR(st.st_mode)) {\n\t\t\t\tbFolder = true;\n\t\t\t}\n\t\t}\n\n\t\tif (NULL != filter) {\n"
+          }
+        ]
+      }
+    }
   }
 }

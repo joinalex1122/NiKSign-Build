@@ -197,6 +197,7 @@ struct NiKSignView: View {
                     }
 
                     if let artifact = signedArtifact {
+                        ForEach(artifact.warnings ?? [], id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Đã xuất: \(artifact.displayName) (\(artifact.bundleID) · v\(artifact.version))")
                                 .font(.caption.weight(.semibold))

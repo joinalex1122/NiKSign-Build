@@ -14,6 +14,6 @@
 | Tệp | Duyệt Documents/IPALibrary/Signed của NiKSign, xem/sửa tệp nhập, khôi phục/thùng rác |
 | Giao diện | Ba tab Ký IPA/Tệp/Cài đặt, sáng/tối/hệ thống, tiếng Việt/Anh |
 
-Profile không khớp Bundle ID tạo cảnh báo, không chặn riêng bước ký. Các lỗi khóa riêng, chứng chỉ/profile hết hạn, ZIP hỏng, mã hóa hoặc chữ ký đầu ra thiếu dữ liệu vẫn phải xử lý. Khả năng cài đặt do iOS quyết định; app không tạo quyền ngoài provisioning.
+Profile không khớp Bundle ID hoặc chứng chỉ .p12 sẽ chặn bước ký, kèm lỗi cụ thể. Extension không được profile đơn cho phép được gỡ trước khi ký và ghi rõ trong kết quả. Các lỗi khóa riêng, chứng chỉ/profile hết hạn, ZIP hỏng, mã hóa hoặc chữ ký đầu ra thiếu dữ liệu vẫn phải xử lý. Khả năng cài đặt do iOS quyết định; app không tạo quyền ngoài provisioning.
 
 Kiểm tra OCSP tự động: lần đầu khi chọn chứng chỉ, sau đó tối đa mỗi 6 giờ với trạng thái tốt; thử lại sau 15 phút khi chưa xác minh/lỗi mạng; trạng thái thu hồi kiểm tra lại sau 24 giờ. Kiểm tra chỉ chạy khi app đang hoạt động. Dữ liệu OCSP tốt quá 24 giờ hiển thị chưa xác minh.

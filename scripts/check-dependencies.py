@@ -16,6 +16,13 @@ for e in items:
             assert 'path: Vendor/Zsign' in config and provenance['revision'] == e['revision']
             for name, digest in provenance['originalSHA256'].items():
                 value = (r/'Vendor/Zsign'/name).read_bytes()
+                patched = provenance['installabilityPatch']['files'].get(name)
+                if patched:
+                    assert hashlib.sha256(value).hexdigest() == patched['afterSHA256'], name
+                    for replacement in reversed(patched['replacements']):
+                        assert value.count(replacement['after'].encode()) == 1
+                        value = value.replace(replacement['after'].encode(), replacement['before'].encode(), 1)
+                    assert hashlib.sha256(value).hexdigest() == patched['beforeSHA256'], name
                 if name == 'src/bundle.cpp':
                     value = value.replace(b'if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', b'if (bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', 1)
                 if name == 'src/archo.cpp':

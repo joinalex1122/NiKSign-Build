@@ -28,12 +28,13 @@ def signature(binary):
     return b, blobs
 
 def verify(app, expected_id, patched, debug, ssl, tmp):
+    assert (app/'Demo').stat().st_mode & 0o111 == 0o111
     b, blobs = signature(app/'Demo')
     ent = plistlib.loads(blobs[5][8:])
     # Profile wildcard must become each binary's own concrete ID, including appex.
     assert ent['application-identifier'] == ('SEEDFIX123.' + expected_id if patched else 'SEEDFIX123.*')
     assert ent['com.apple.developer.team-identifier'] == 'TEAMFIX123'
-    assert ent['keychain-access-groups'] == (['SEEDFIX123.' + expected_id, 'SEEDFIX123.shared'] if patched else ['SEEDFIX123.*','SEEDFIX123.shared'])
+    assert ent['keychain-access-groups'] == (['SEEDFIX123.' + expected_id, 'SEEDFIX123.shared', 'TEAMFIX123.' + expected_id] if patched else ['SEEDFIX123.*','SEEDFIX123.shared','TEAMFIX123.*'])
     assert ent['com.apple.developer.associated-domains'] == ['applinks:*.example.invalid']
     assert ent['com.apple.security.application-groups'] == ['group.example.fixture']
     assert ent['get-task-allow'] is debug
@@ -94,27 +95,47 @@ def main():
         objects=[]
         for i,src in enumerate(sources):
             obj=tmp/f'{i}.o';run(compiler+flags+['-c',src,'-o',obj]);objects.append(obj)
-        current=(VENDOR/'src/archo.cpp').read_text();patch=json.loads((VENDOR/'UPSTREAM.json').read_text())['entitlementsPatch'];old=current
-        for replacement in patch['replacements']:
-            assert old.count(replacement['after'])==1
-            old=old.replace(replacement['after'],replacement['before'],1)
+        current=(VENDOR/'src/archo.cpp').read_text();provenance=json.loads((VENDOR/'UPSTREAM.json').read_text());patch=provenance['entitlementsPatch'];old=current
+        for rep in reversed(provenance['installabilityPatch']['files']['src/archo.cpp']['replacements']): old=old.replace(rep['after'],rep['before'],1)
+        for rep in patch['replacements']: old=old.replace(rep['after'],rep['before'],1)
         assert hashlib.sha256(old.encode()).hexdigest()==patch['originalSHA256']
         for label,code in [('before',old),('fixed',current)]:
             src=tmp/f'{label}.cpp';src.write_text(code);obj=tmp/f'{label}.o';binary=tmp/label
             run(compiler+flags+['-c',src,'-o',obj]);run(compiler+[*objects,obj,*libs,'-o',binary])
             for debug in [False,True]:
-                ent={'application-identifier':'SEEDFIX123.*','com.apple.developer.team-identifier':'TEAMFIX123','keychain-access-groups':['SEEDFIX123.*','SEEDFIX123.shared'],'get-task-allow':debug,'com.apple.developer.associated-domains':['applinks:*.example.invalid'],'com.apple.security.application-groups':['group.example.fixture']}
+                ent={'application-identifier':'SEEDFIX123.*','com.apple.developer.team-identifier':'TEAMFIX123','keychain-access-groups':['SEEDFIX123.*','SEEDFIX123.shared','TEAMFIX123.*'],'get-task-allow':debug,'com.apple.developer.associated-domains':['applinks:*.example.invalid'],'com.apple.security.application-groups':['group.example.fixture']}
                 profile={'TeamIdentifier':['TEAMFIX123'],'Entitlements':ent}
                 (tmp/'profile.plist').write_bytes(plistlib.dumps(profile))
                 run([ssl,'cms','-sign','-binary','-nodetach','-in',tmp/'profile.plist','-signer',tmp/'leaf.pem','-inkey',tmp/'leaf.key','-outform','DER','-out',tmp/'profile.mobileprovision'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 app=tmp/f'{label}-{debug}.app';ext=app/'PlugIns/Demo.appex';ext.mkdir(parents=True)
                 for folder,bid in [(app,'com.example.fixture'),(ext,'com.example.fixture.extension')]:
                     shutil.copy2(tmp/'profile.mobileprovision',folder/'embedded.mobileprovision')
-                    shutil.copy2(executable,folder/'Demo');(folder/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'Demo','CFBundleIdentifier':bid,'CFBundleVersion':'1','CFBundleName':'Fixture'}))
+                    shutil.copy2(executable,folder/'Demo');(folder/'Demo').chmod(0o755);(folder/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'Demo','CFBundleIdentifier':bid,'CFBundleVersion':'1','CFBundleName':'Fixture'}))
+                (app/'resource.o').write_bytes(struct.pack('<8I',0xfeedfacf,0x100000c,0,1,0,0,0,0))
+                framework=app/'Frameworks/Fixture.framework';version=framework/'Versions/A';(version/'Resources').mkdir(parents=True)
+                lib=bytearray(executable.read_bytes());struct.pack_into('<I',lib,12,6) # Synthetic MH_DYLIB fixture; never executed.
+                (version/'Fixture').write_bytes(lib);(version/'Fixture').chmod(0o755)
+                (version/'Resources/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'com.example.library','CFBundleExecutable':'Fixture','CFBundleVersion':'1'}))
+                (framework/'Versions/Current').symlink_to('A');(framework/'Fixture').symlink_to('Versions/Current/Fixture')
+                (framework/'Resources').symlink_to('Versions/Current/Resources');(framework/'Info.plist').symlink_to('Resources/Info.plist')
                 run([binary,app,tmp/'key.p12',tmp/'profile.mobileprovision'])
-                # Existing native signer only embeds at the root; supply selected
-                # profile in the extension before signing in production later.
                 verify(app,'com.example.fixture',label=='fixed',debug,ssl,tmp)
                 verify(ext,'com.example.fixture.extension',label=='fixed',debug,ssl,tmp)
-        print('PASS: real detached CMS/page/special-slot hashes and tamper rejection; before/after wildcard identity, per-extension IDs and actual get-task-allow flags; synthetic trust only')
+                assert (framework/'Fixture').is_symlink() and (version/'Fixture').stat().st_mode & 0o111 == 0o111
+                _,library_blobs=signature(version/'Fixture')
+                assert 5 not in library_blobs or plistlib.loads(library_blobs[5][8:]) == {} # No application entitlements on libraries.
+                (tmp/'library.der').write_bytes(library_blobs[0x10000][8:]);(tmp/'library.cd').write_bytes(library_blobs[0])
+                run([ssl,'cms','-verify','-binary','-inform','DER','-in',tmp/'library.der','-content',tmp/'library.cd','-noverify','-out',os.devnull],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                for bundle in [app,ext,framework]:
+                    resources=plistlib.loads((bundle/'_CodeSignature/CodeResources').read_bytes())
+                    for name,record in resources['files2'].items():
+                        file=bundle/name
+                        if 'symlink' in record: assert file.is_symlink() and os.readlink(file)==record['symlink']
+                        elif 'hash2' in record: assert hashlib.sha256(file.read_bytes()).digest()==record['hash2'],(bundle,name)
+                if label=='fixed':
+                    (app/'broken.dylib').write_bytes(bytes.fromhex('cffaedfe')+bytes(28))
+                    assert subprocess.run([binary,app,tmp/'key.p12',tmp/'profile.mobileprovision'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 4
+                    (app/'broken.dylib').unlink()
+
+        print('PASS: real detached CMS/page/special-slot hashes and tamper rejection; before/after wildcard identity, per-extension IDs and actual get-task-allow flags; execute permissions, nested framework CMS and resource/symlink seals, nested failure propagation; synthetic trust only')
 if __name__=='__main__':main()

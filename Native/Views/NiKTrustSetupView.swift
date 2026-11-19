@@ -29,7 +29,7 @@ struct NiKTrustSetupView: View {
                     .disabled(install.busy)
             }
             Section(t("Thực hiện trong Cài đặt", "Complete in Settings")) {
-                Text(t("1. Bấm Tải hồ sơ HTTPS và cho phép Safari tải hồ sơ.\n2. Vào Cài đặt → Cài đặt chung → VPN & Quản lý thiết bị → NiKSign Local HTTPS OTA → Cài đặt.\n3. Vào Cài đặt → Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng nhận → bật tin cậy đầy đủ cho localhost.\n4. Quay lại NiKSign và kiểm tra tin cậy.", "1. Tap Download HTTPS Profile and allow Safari to download it.\n2. Open Settings → General → VPN & Device Management → NiKSign Local HTTPS OTA → Install.\n3. Open Settings → General → About → Certificate Trust Settings → enable full trust for localhost.\n4. Return to NiKSign and check trust."))
+                Text(t("1. Bấm Tải hồ sơ HTTPS và cho phép Safari tải hồ sơ.\n2. Vào Cài đặt → Cài đặt chung → VPN & Quản lý thiết bị → NiKSign Local HTTPS OTA → Cài đặt.\n3. Vào Cài đặt → Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng nhận → bật tin cậy đầy đủ cho NiKSign Local OTA CA (localhost trên hồ sơ cũ).\n4. Quay lại NiKSign và kiểm tra tin cậy.", "1. Tap Download HTTPS Profile and allow Safari to download it.\n2. Open Settings → General → VPN & Device Management → NiKSign Local HTTPS OTA → Install.\n3. Open Settings → General → About → Certificate Trust Settings → enable full trust for NiKSign Local OTA CA (localhost on older profiles).\n4. Return to NiKSign and check trust."))
                     .font(.footnote)
                 Button(t("Tải hồ sơ HTTPS trong Safari", "Download HTTPS Profile in Safari")) {
                     downloaded = true

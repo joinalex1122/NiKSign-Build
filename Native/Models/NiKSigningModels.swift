@@ -55,5 +55,6 @@ struct NiKSignedArtifact: Sendable, Codable, Equatable {
     let injectedDylibs: [String]
     let certificateSummary: String
     let teamName: String
+    var warnings: [String]? = nil
 }
 

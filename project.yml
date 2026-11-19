@@ -67,8 +67,8 @@ targets:
         INFOPLIST_FILE: Native/Info.plist
         CODE_SIGN_ENTITLEMENTS: ''
         ASSETCATALOG_COMPILER_APPICON_NAME: NiKAppIcon
-        MARKETING_VERSION: 3.4.0
-        CURRENT_PROJECT_VERSION: '340'
+        MARKETING_VERSION: 3.4.1
+        CURRENT_PROJECT_VERSION: '341'
         LD_RUNPATH_SEARCH_PATHS:
         - $(inherited)
         - '@executable_path/Frameworks'

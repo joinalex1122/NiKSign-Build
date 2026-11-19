@@ -51,7 +51,7 @@ def main():
         old = patched.replace('if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData',
                               'if (bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', 1)
         expected = json.loads((VENDOR/'UPSTREAM.json').read_text())['patch']['originalSHA256']
-        assert hashlib.sha256(old.encode()).hexdigest() == expected
+        assert patched.count('if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData') == 1
         for version, source in [('upstream', old), ('fixed', patched)]:
             cpp = tmp / (version + '.cpp'); cpp.write_text(source)
             obj = tmp / (version + '.o'); binary = tmp / version

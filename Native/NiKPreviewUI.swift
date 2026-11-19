@@ -857,7 +857,6 @@ struct NiKIPADetail: View {
         if item.options.removeSupportedDevicesRestriction { result.append(t("Bỏ giới hạn thiết bị", "Remove device restriction")) }
         if item.options.removeExtensions { result.append(t("Gỡ Extensions / Watch", "Remove Extensions / Watch")) }
         if item.options.weakDylibInjection { result.append("Weak dylib") }
-        if item.options.allowCertificateMismatch { result.append(t("Cho phép cert/profile lệch", "Allow cert/profile mismatch")) }
         if !item.options.injectedFiles.isEmpty { result.append("\(item.options.injectedFiles.count) " + t("thành phần chèn", "injected components")) }
         return result
     }
@@ -980,6 +979,7 @@ struct NiKIPADetail: View {
             Label(t("Đã ký thành công!", "Signed Successfully!"), systemImage: "checkmark.circle.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
+            ForEach(completedJob?.output?.warnings ?? [], id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
             Text(url.lastPathComponent)
                 .font(.caption)
                 .foregroundStyle(.secondary)

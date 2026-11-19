@@ -22,7 +22,7 @@ struct NiKInstallMetadata: Sendable {
         guard checksum == entries[0].checksum,
               let info = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let bundleID = info["CFBundleIdentifier"] as? String, !bundleID.isEmpty, bundleID.utf8.count <= 255,
-              let version = (info["CFBundleVersion"] ?? info["CFBundleShortVersionString"]) as? String,
+              let version = info["CFBundleVersion"] as? String,
               !version.isEmpty, version.utf8.count <= 255 else { throw Failure(message: "Thiếu Bundle ID hoặc phiên bản cài đặt trong IPA.") }
         let title = (info["CFBundleDisplayName"] ?? info["CFBundleName"]) as? String ?? bundleID
         guard title.utf8.count <= 1024 else { throw Failure(message: "Tên ứng dụng quá dài.") }

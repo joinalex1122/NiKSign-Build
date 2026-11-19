@@ -86,8 +86,13 @@ import UIKit
                   let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
                   let items = plist["items"] as? [[String: Any]], items.count == 1,
                   let info = items[0]["metadata"] as? [String: Any],
-                  info["bundle-identifier"] as? String == metadata?.bundleID else { throw NiKError("Không đọc được manifest cài đặt đúng ứng dụng.") }
+                  info["bundle-identifier"] as? String == metadata?.bundleID,
+                  info["bundle-version"] as? String == metadata?.version,
+                  info["title"] as? String == metadata?.title,
+                  let assets = items[0]["assets"] as? [[String: Any]], assets.count == 1,
+                  assets[0]["url"] as? String == url.deletingLastPathComponent().appendingPathComponent("app.ipa").absoluteString else { throw NiKError("Không đọc được manifest cài đặt đúng ứng dụng.") }
             trustState = .trusted
+            trustError = nil
             phase = .ready
         } catch {
             if Task.isCancelled { stop(); return }

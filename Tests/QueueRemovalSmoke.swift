@@ -8,7 +8,7 @@ protocol ObservableObject {}
 
 // Test doubles isolate signing latency; the queue/journal and cancellation/removal code are production.
 struct NiKError: LocalizedError { let value: String; init(_ value: String) { self.value = value }; var errorDescription: String? { value } }
-struct FixtureCertificate { let id: UUID }
+struct FixtureCertificate { let id: UUID; var isKnownRevoked = false }
 @MainActor final class NiKCertificateStore {
     static let shared = NiKCertificateStore()
     var profiles: [FixtureCertificate] = []
@@ -66,6 +66,11 @@ actor SigningService {
         try await wait { queue.jobs.first?.state == .succeeded && !queue.isRunning }
         queue.remove([success.id]); precondition(queue.jobs.isEmpty)
         let retained = try Data(contentsOf: output); precondition(retained == Data([1, 2, 3]))
+        NiKCertificateStore.shared.profiles[0].isKnownRevoked = true
+        let revoked = job("revoked"); try queue.enqueue([revoked])
+        try await wait { queue.jobs.first?.state == .failed && !queue.isRunning }
+        precondition(queue.jobs.first?.error?.contains("thu hồi") == true)
+        print("PASS: known-revoked job fails before the signer runs")
         print("PASS: real queue keeps active record until cancellation boundary, removes queued jobs, and preserves signed files when history is removed")
     }
 }

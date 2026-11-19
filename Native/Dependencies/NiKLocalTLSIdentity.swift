@@ -75,7 +75,12 @@ if readStatus == errSecSuccess, let stored = result as? Data {
         let identity = value as! SecIdentity
         var cert: SecCertificate?
         if SecIdentityCopyCertificate(identity, &cert) == errSecSuccess, let cert {
-            return (identity, SecCertificateCopyData(cert) as Data)
+            let der = SecCertificateCopyData(cert) as Data
+            if NiKTLSServerCertificate.isCurrent(der, requireCA: true) { return (identity, der) }
+            // Expired/noncompliant local roots rotate once; the new profile needs user trust. Compliant roots stay stable.
+            let deleted = SecItemDelete(query as CFDictionary)
+            guard deleted == errSecSuccess else { throw Failure.securityFailure(operation: "replace expired CA", status: deleted) }
+            return try loadOrCreate(service: service)
         }
     }
     throw NiKLocalTLSIdentity.Failure.identityImportFailed
@@ -109,7 +114,7 @@ guard X509_set_version(x509, 2) == 1,
       X509_gmtime_adj(X509_getm_notAfter(x509), 60 * 60 * 24 * 365) != nil,
       X509_set_pubkey(x509, key) == 1,
       let name = X509_get_subject_name(x509),
-      X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0) == 1,
+      X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "NiKSign Local OTA CA", -1, -1, 0) == 1,
       X509_set_issuer_name(x509, name) == 1 else {
     throw Failure.certificateGenerationFailed
 }
@@ -120,7 +125,7 @@ X509V3_set_ctx(&extCtx, x509, x509, nil, nil, 0)
 
 let extensions: [(Int32, String)] = [
 (NID_basic_constraints, "critical,CA:TRUE"),
-(NID_key_usage, "critical,digitalSignature,keyEncipherment,keyCertSign"),
+(NID_key_usage, "critical,keyCertSign,cRLSign"),
 (NID_ext_key_usage, "serverAuth"),
 (NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1")
 ]

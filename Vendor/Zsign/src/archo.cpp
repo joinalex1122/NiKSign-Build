@@ -372,6 +372,9 @@ bool ZArchO::BuildCodeSignature(ZSignAsset* pSignAsset,
 						groups.push_back(group);
 					} else if (wildcard == group.size() - 1 && applicationId.compare(0, wildcard, group, 0, wildcard) == 0) {
 						groups.push_back(applicationId);
+                    } else if (wildcard == group.size() - 1) {
+                        // A profile may authorize a Keychain seed different from its App ID seed.
+                        groups.push_back(group.substr(0, wildcard) + strBundleId);
 					}
 				}
 				entitlements["keychain-access-groups"] = groups;
@@ -471,7 +474,7 @@ bool ZArchO::BuildCodeSignature(ZSignAsset* pSignAsset,
 
 	string strCMSSignatureSlot;
 	if (!pSignAsset->m_bAdhoc) { //adhoc remove cms signature slot
-		ZSign::SlotBuildCMSSignature(pSignAsset, strCodeDirectorySlot, strAltnateCodeDirectorySlot, strCMSSignatureSlot);
+        if (!ZSign::SlotBuildCMSSignature(pSignAsset, strCodeDirectorySlot, strAltnateCodeDirectorySlot, strCMSSignatureSlot)) { return false; }
 	}
 
 	uint32_t uCodeDirectorySlotLength = (uint32_t)strCodeDirectorySlot.size();
@@ -598,7 +601,7 @@ bool ZArchO::Sign(ZSignAsset* pSignAsset,
 	}
 
 	string strCodeSignBlob;
-	BuildCodeSignature(pSignAsset, bForce, strBundleId, strInfoSHA1, strInfoSHA256, strCodeResourcesSHA1, strCodeResourcesSHA256, strCodeSignBlob);
+    if (!BuildCodeSignature(pSignAsset, bForce, strBundleId, strInfoSHA1, strInfoSHA256, strCodeResourcesSHA1, strCodeResourcesSHA256, strCodeSignBlob)) { return false; }
 	if (strCodeSignBlob.empty()) {
 		ZLog::Error(">>> Build CodeSignature failed!\n");
 		return false;

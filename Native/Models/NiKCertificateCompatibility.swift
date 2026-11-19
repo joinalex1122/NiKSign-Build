@@ -20,13 +20,7 @@ struct NiKCertificateAssessment: Sendable {
 
 enum NiKCertificateCompatibility {
     static func bundleMatches(pattern: String, bundleID: String) -> Bool {
-        guard !pattern.isEmpty, !bundleID.isEmpty, !bundleID.contains("*") else { return false }
-        if pattern == "*" { return true }
-        if pattern.hasSuffix(".*") {
-            let prefix = String(pattern.dropLast())
-            return bundleID.hasPrefix(prefix) && bundleID.count > prefix.count && !bundleID.contains("*")
-        }
-        return !pattern.contains("*") && pattern == bundleID
+        NiKProvisioningPattern.matches(pattern: pattern, bundleID: bundleID)
     }
 
     static func assess(_ profile: NiKCertificateProfile, bundleID: String?, deviceUDID: String? = nil, now: Date = Date(), allowMismatch: Bool = false) -> NiKCertificateAssessment {
@@ -34,6 +28,7 @@ enum NiKCertificateCompatibility {
         func add(_ code: String, _ blocking: Bool, _ vi: String, _ en: String) {
             issues.append(.init(code: code, severity: blocking ? .blocking : .warning, vi: vi, en: en))
         }
+        if profile.isKnownRevoked { add("certificate.revoked", true, "Chứng chỉ đã bị thu hồi.", "The certificate is revoked.") }
         if profile.teamID.isEmpty { add("team.missing", true, "Profile thiếu Team ID.", "The profile has no Team ID.") }
         if let expiry = profile.expirationDate {
             if expiry <= now { add("profile.expired", true, "Hồ sơ provisioning đã hết hạn.", "The provisioning profile has expired.") }
@@ -45,14 +40,14 @@ enum NiKCertificateCompatibility {
             add("certificate.notYetValid", true, "Chứng chỉ chưa đến ngày có hiệu lực.", "The certificate is not valid yet.")
         }
         if !profile.certMatchesProvision {
-            add("certificate.mismatch", !allowMismatch, "Chứng chỉ không khớp với profile.", "The certificate does not match the profile.")
+            add("certificate.mismatch", true, "Chứng chỉ không khớp với profile.", "The certificate does not match the profile.")
         }
         if profile.bundleIDPattern.isEmpty {
             add("profile.appID.missing", true, "Profile thiếu Application Identifier.", "The profile has no Application Identifier.")
         }
         if let bundleID {
             if !bundleMatches(pattern: profile.bundleIDPattern, bundleID: bundleID) {
-                add("bundle.mismatch", false, "Bundle ID không khớp profile. Vẫn có thể ký và giữ ID; iOS có thể từ chối cài hoặc chạy.", "Bundle ID differs from the profile. Signing can proceed with this ID; iOS may reject installation or launch.")
+                add("bundle.mismatch", true, "Bundle ID không được profile cho phép. Chọn profile phù hợp hoặc đổi Bundle ID.", "The profile does not allow this bundle ID. Choose a compatible profile or change the bundle ID.")
             }
         } else {
             add("bundle.unknown", false, "Chưa chọn IPA; chưa kiểm tra Bundle ID của ứng dụng.", "No IPA selected; its Bundle ID has not been checked.")

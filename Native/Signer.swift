@@ -62,12 +62,6 @@ actor SigningService {
         if let expiry = provInfo.expirationDate, expiry < Date() {
             throw NiKError("Hồ sơ .mobileprovision (\(provInfo.name)) đã hết hạn vào \(expiry.formatted(date: .numeric, time: .omitted)).")
         }
-        if !options.allowCertificateMismatch && !provInfo.developerCertificatesDER.isEmpty {
-            guard provInfo.developerCertificatesDER.contains(certInfo.derData) else {
-                throw NiKError("Chứng chỉ .p12 (\(certInfo.summary)) không khớp với danh sách chứng chỉ trong .mobileprovision (\(provInfo.name)).")
-            }
-        }
-
         // Step 2: minizip preflight and CRC-checked extraction.
         try report(2, 0.30, "Đang kiểm tra cấu trúc ZIP và giải nén IPA…")
         var entries: UInt64 = 0, expandedBytes: UInt64 = 0
@@ -81,21 +75,15 @@ actor SigningService {
             count += 1
             let path = entry.path.hasSuffix("/") ? String(entry.path.dropLast()) : entry.path
             _ = try NiKPathValidator.canonicalRelativePath(path)
-            guard paths.insert(path).inserted, entry.type != .symlink else {
-                throw NiKError("IPA có đường dẫn trùng hoặc symbolic link không hỗ trợ.")
+            guard paths.insert(path).inserted else {
+                throw NiKError("IPA có đường dẫn trùng.")
             }
             total += entry.uncompressedSize
             guard total <= 1_073_741_824, count <= 50_000 else {
                 throw NiKError("IPA vượt giới hạn giải nén 1 GB hoặc 50.000 mục.")
             }
         }
-        for entry in archive {
-            try Task.checkCancellation()
-            let destination = work.appendingPathComponent(entry.path)
-            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let checksum = try archive.extract(entry, to: destination)
-            guard checksum == entry.checksum else { throw NiKError("IPA bị lỗi CRC khi giải nén.") }
-        }
+        try NiKIPAArchive.extract(archive, to: work)
 
         // Step 3: Inspect Payload/*.app and Mach-O binary.
         try report(3, 0.50, "Đang phân tích Info.plist và kiểm tra mã hóa Mach-O…")
@@ -114,6 +102,7 @@ actor SigningService {
             throw NiKError("Không đọc được Info.plist của ứng dụng.")
         }
 
+        if let platforms = plist["CFBundleSupportedPlatforms"] as? [String], !platforms.contains("iPhoneOS") { throw NiKError("IPA không phải bản build cho iPhoneOS.") }
         let originalBundleID = (plist["CFBundleIdentifier"] as? String) ?? ""
         let trimmedCustomBundleID = options.customBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         let effectiveBundleID = trimmedCustomBundleID.isEmpty ? originalBundleID : trimmedCustomBundleID
@@ -125,11 +114,13 @@ actor SigningService {
               executable != ".", executable != ".." else {
             throw NiKError("Bundle ID hoặc executable không hợp lệ. Không chấp nhận Bundle ID thuộc không gian com.apple.")
         }
+        guard let build = plist["CFBundleVersion"] as? String, !build.isEmpty else { throw NiKError("Info.plist thiếu CFBundleVersion hợp lệ.") }
         if !trimmedCustomBundleID.isEmpty {
             _ = try NiKPathValidator.canonicalBundleIdentifier(trimmedCustomBundleID)
         }
 
         _ = try NiKPathValidator.canonicalBundleIdentifier(effectiveBundleID)
+        try NiKProvisioningValidation.validate(provData, bundleID: effectiveBundleID, certificateDER: certInfo.derData)
         let descriptor = NiKCertificateProfile(id: UUID(), name: provInfo.name, certSummary: certInfo.summary,
             teamName: provInfo.teamName, teamID: provInfo.teamID, appIDName: provInfo.appIDName,
             bundleIDPattern: provInfo.bundleIDPattern, creationDate: provInfo.creationDate,
@@ -151,24 +142,19 @@ actor SigningService {
                                  [0xca,0xfe,0xba,0xbe], [0xbe,0xba,0xfe,0xca],
                                  [0xca,0xfe,0xba,0xbf], [0xbf,0xba,0xfe,0xca]]
         guard headers.contains(Array(binary.prefix(4))) else { throw NiKError("Thiếu binary Mach-O hợp lệ.") }
-        try NiKBinaryInspector.requireUnencrypted(at: executableURL)
+        try NiKBinaryInspector.requireApplicationExecutable(at: executableURL)
 
         // Step 4: Apply Info.plist modifications, extension cleanup, and dylib/deb injection.
         try report(4, 0.68, "Đang áp dụng tùy biến gói và chèn Tweak…")
-        if options.removeExtensions {
-            for folderName in ["PlugIns", "Extensions", "Watch"] {
-                let targetFolder = app.appendingPathComponent(folderName)
-                if fm.fileExists(atPath: targetFolder.path) {
-                    try fm.removeItem(at: targetFolder)
-                }
-            }
-        }
+        let preparationWarnings = try NiKSigningBundlePreparation.prepare(app: app, oldID: originalBundleID,
+            newID: effectiveBundleID, profilePattern: provInfo.bundleIDPattern, removeAll: options.removeExtensions, buildVersion: plist["CFBundleVersion"] as? String,
+            shortVersion: options.customVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? plist["CFBundleShortVersionString"] as? String : options.customVersion.trimmingCharacters(in: .whitespacesAndNewlines))
+        if !preparationWarnings.isEmpty { try report(4, 0.70, preparationWarnings.joined(separator: "\n")) }
 
         var plistModified = false
         if !trimmedCustomBundleID.isEmpty && trimmedCustomBundleID != originalBundleID {
             plist["CFBundleIdentifier"] = trimmedCustomBundleID
             plistModified = true
-            try updateExtensionBundleIdentifiers(in: app, oldPrefix: originalBundleID, newPrefix: trimmedCustomBundleID)
         }
 
         let trimmedDisplayName = options.customDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -217,17 +203,37 @@ actor SigningService {
             weakLink: options.weakDylibInjection
         )
 
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
-
-        // Stage profiles BEFORE sealing resources, including retained extensions/Watch apps.
-        var signingBundles = [app]
-        if let walker = fm.enumerator(at: app, includingPropertiesForKeys: [.isDirectoryKey]) {
-            for case let candidate as URL in walker where ["app", "appex"].contains(candidate.pathExtension.lowercased()) {
-                guard try candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { continue }
-                signingBundles.append(candidate)
+        var codeFiles: [URL] = []
+        // Set every code file executable before native reallocation/signing.
+        if let walker = fm.enumerator(at: app, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) {
+            for case let url as URL in walker {
+                if url.pathExtension == "dSYM" { walker.skipDescendants(); continue }
+                let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+                let handle = try FileHandle(forReadingFrom: url)
+                let magic = try handle.read(upToCount: 4); try handle.close()
+                if let magic, headers.contains(Array(magic)), try NiKBinaryInspector.isRuntimeCode(at: url) {
+                    try NiKBinaryInspector.requireSupportedSigningContainer(at: url)
+                    codeFiles.append(url)
+                    try NiKBinaryInspector.requireUnencrypted(at: url)
+                    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+                }
             }
         }
+
+        // Stage profiles BEFORE sealing resources, including retained extensions/Watch apps.
+        let codeBundles = try NiKSigningBundlePreparation.codeBundles(in: app)
+        for bundle in codeBundles {
+            if ["app", "appex"].contains(bundle.url.pathExtension) { try NiKBinaryInspector.requireApplicationExecutable(at: bundle.executable) }
+            else if bundle.url.pathExtension == "framework" { try NiKBinaryInspector.requireFrameworkExecutable(at: bundle.executable) }
+            else { try NiKBinaryInspector.requireUnencrypted(at: bundle.executable) }
+        }
+        let signingBundles = codeBundles.filter { ["app", "appex"].contains($0.url.pathExtension) }.map(\.url)
         for bundle in signingBundles {
+            let infoData = try Data(contentsOf: bundle.appendingPathComponent("Info.plist"))
+            guard let metadata = try PropertyListSerialization.propertyList(from: infoData, format: nil) as? [String: Any],
+                  let identifier = metadata["CFBundleIdentifier"] as? String else { throw NiKError("Bundle con thiếu định danh.") }
+            try NiKProvisioningValidation.validate(provData, bundleID: identifier, certificateDER: certInfo.derData)
             try provData.write(to: bundle.appendingPathComponent("embedded.mobileprovision"), options: .atomic)
         }
 
@@ -239,6 +245,7 @@ actor SigningService {
             provisionPath: signingProfile.path,
             p12Path: signingP12.path,
             p12Password: password,
+            adhoc: false,
             // Local native fix embeds and seals the selected profile when removal is false.
             removeProvision: false,
             completion: { completed = $0 }
@@ -262,8 +269,10 @@ actor SigningService {
                 throw NiKError("Metadata bundle con không hợp lệ: " + bundle.lastPathComponent)
             }
             try NiKBinaryInspector.requireSignedIdentity(at: bundle.appendingPathComponent(executable),
-                applicationID: String(seed) + "." + identifier, teamID: provInfo.teamID)
+                applicationID: String(seed) + "." + identifier, teamID: provInfo.teamID, allowedEntitlements: provInfo.entitlements.mapValues(\.foundationValue))
         }
+
+        for file in codeFiles { try NiKBinaryInspector.requireSignedCode(at: file, certificateDER: certInfo.derData, teamID: provInfo.teamID) }
 
         // Step 6: Repackage signed IPA.
         try report(6, 0.96, "Đang đóng gói tệp IPA đã ký…")
@@ -274,7 +283,7 @@ actor SigningService {
         let staging = work.appendingPathComponent("signed-output.ipa")
         try fm.zipItem(at: payload, to: staging, compressionMethod: .deflate)
         try Task.checkCancellation()
-        try NiKSignedOutputValidator.validate(staging, expectedBundleID: effectiveBundleID)
+        try NiKSignedOutputValidator.validate(staging, expectedBundleID: effectiveBundleID, certificateDER: certInfo.derData, expectedProfile: provData)
         try Task.checkCancellation()
         try fm.moveItem(at: staging, to: output)
 
@@ -293,30 +302,9 @@ actor SigningService {
             version: finalVersion,
             injectedDylibs: injectedDylibs,
             certificateSummary: certInfo.summary,
-            teamName: provInfo.teamName
+            teamName: provInfo.teamName,
+            warnings: preparationWarnings
         )
     }
 
-    private func updateExtensionBundleIdentifiers(in appURL: URL, oldPrefix: String, newPrefix: String) throws {
-        guard !oldPrefix.isEmpty else { return }
-        let fm = FileManager.default
-        for folderName in ["PlugIns", "Extensions"] {
-            let dir = appURL.appendingPathComponent(folderName)
-            guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
-            for item in items where item.pathExtension == "appex" {
-                let plistURL = item.appendingPathComponent("Info.plist")
-                guard let data = try? Data(contentsOf: plistURL),
-                      var dict = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any],
-                      let extID = dict["CFBundleIdentifier"] as? String,
-                      extID.hasPrefix(oldPrefix + ".") else {
-                    continue
-                }
-                let suffix = String(extID.dropFirst(oldPrefix.count))
-                dict["CFBundleIdentifier"] = newPrefix + suffix
-                if let out = try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0) {
-                    try? out.write(to: plistURL, options: .atomic)
-                }
-            }
-        }
-    }
 }

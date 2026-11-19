@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+nik_audit_label=${1:-build}
+case "$nik_audit_label" in build|pass1|pass2) ;; *) exit 2 ;; esac
 # These are ignored generated products, never application input or user documents.
 rm -rf build NiKSign.xcodeproj
 python3 scripts/check-integration.py
@@ -21,7 +23,7 @@ xcrun swiftc Native/NiKFileImport.swift Tests/FileImportSmoke.swift -o /tmp/nik-
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Tests/SigningJobsSmoke.swift -o /tmp/nik-signing-jobs-test
 xcrun swiftc Native/Models/NiKSigningModels.swift Native/Models/NiKSigningJob.swift Native/Models/NiKLibraryItem.swift Native/Services/NiKFileMutationReservations.swift Native/Services/NiKSigningQueue.swift Tests/QueueRemovalSmoke.swift -o /tmp/nik-queue-removal-test
 /tmp/nik-queue-removal-test
-xcrun swiftc Native/Models/NiKPlistValue.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKCertificateCompatibility.swift Tests/CertificateCompatibilitySmoke.swift -o /tmp/nik-cert-compat-test
+xcrun swiftc Native/Models/NiKPlistValue.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKCertificateCompatibility.swift Native/Models/NiKProvisioningPattern.swift Tests/CertificateCompatibilitySmoke.swift -o /tmp/nik-cert-compat-test
 /tmp/nik-cert-compat-test
 /tmp/nik-signing-jobs-test
 xcrun swiftc Native/Models/NiKFileRecoveryRecord.swift Native/Services/NiKFileDigest.swift Native/Services/NiKFileRecoveryStore.swift Tests/FileRecoverySmoke.swift -o /tmp/nik-file-recovery-test
@@ -56,8 +58,9 @@ xcrun swiftc Native/Services/NiKSignedFileAccess.swift Tests/SignedFileAccessSmo
 /tmp/nik-signed-file-test
 bash scripts/test-file-tools.sh
 bash scripts/test-local-tls.sh
+bash scripts/test-https-ota.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
 python3 scripts/check-build-log.py build/build.log
-mkdir -p "audit-results/build"
-cp dist/NiKSign-unsigned.ipa build/binary-info.txt "audit-results/build/"
+mkdir -p "audit-results/${nik_audit_label}"
+cp dist/NiKSign-unsigned.ipa build/binary-info.txt "audit-results/${nik_audit_label}/"

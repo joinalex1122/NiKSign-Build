@@ -322,16 +322,7 @@ throw NiKError("Không mở được khóa riêng .p12 (OSStatus: \(lastStatus))
     }
 
     nonisolated static func parseMobileProvision(data: Data) throws -> NiKProvisionMetadata {
-        let startMarker = Data("<plist".utf8)
-        let endMarker = Data("</plist>".utf8)
-        guard let startRange = data.range(of: startMarker),
-              let endRange = data.range(of: endMarker, in: startRange.lowerBound..<data.endIndex) else {
-            throw NiKError("Tệp .mobileprovision không chứa cấu trúc XML plist hợp lệ.")
-        }
-        let plistSlice = data.subdata(in: startRange.lowerBound..<endRange.upperBound)
-        guard let dict = try PropertyListSerialization.propertyList(from: plistSlice, format: nil) as? [String: Any] else {
-            throw NiKError("Không đọc được thuộc tính trong .mobileprovision.")
-        }
+        let dict = try NiKProvisioningValidation.decode(data)
         let name = (dict["Name"] as? String) ?? "Provisioning Profile"
         let teamName = (dict["TeamName"] as? String) ?? ""
         let prefixes = (dict["ApplicationIdentifierPrefix"] as? [String]) ?? []

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Combine)
 import Combine
+#endif
 
 @MainActor final class NiKSigningQueue: ObservableObject {
     static let shared = NiKSigningQueue()
@@ -119,6 +121,7 @@ import Combine
             guard let cert = NiKCertificateStore.shared.profiles.first(where: { $0.id == job.certificateID }) else {
                 throw NiKError("Chứng chỉ của công việc không còn tồn tại. Không tự thay bằng chứng chỉ khác.")
             }
+            guard !cert.isKnownRevoked else { throw NiKError("Chứng chỉ của công việc đã bị thu hồi. Hãy chọn chứng chỉ khác.") }
             let credentials = try NiKCertificateStore.shared.credentials(for: cert)
             let jobID = job.id, input = job.input, options = job.options
             activeTask = Task {
@@ -134,7 +137,7 @@ import Combine
                 job.output = nil
                 throw CancellationError()
             }
-            job.state = .succeeded; job.fraction = 1; job.step = "Đã ký và kiểm tra cấu trúc đầu ra"
+            job.state = .succeeded; job.fraction = 1; job.step = (["Đã ký và kiểm tra profile/đầu ra"] + (output.warnings ?? [])).joined(separator: "\n")
             job.updatedAt = Date()
             try persist(job)
             if var item = NiKLibrary.shared.items.first(where: { $0.id == job.libraryID }) {

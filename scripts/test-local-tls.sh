@@ -27,11 +27,15 @@ if "$tls_openssl" verify -CAfile "$tls_test_dir/not-ca.pem" -verify_ip 127.0.0.1
 fi
 "$tls_openssl" pkcs12 -in "$tls_test_dir/leaf.p12" -passin "file:$tls_test_dir/leaf-password" -nokeys -out "$tls_test_dir/chain.pem"
 python3 - "$tls_test_dir" "$tls_openssl" <<'PY'
-import pathlib, subprocess, sys
+import pathlib, subprocess, sys, ssl
 root = pathlib.Path(sys.argv[1])
 assert (root/'chain.pem').read_text().count('BEGIN CERTIFICATE') == 2
 text = subprocess.check_output([sys.argv[2], 'x509', '-in', str(root/'leaf.pem'), '-noout', '-text'], text=True)
 assert 'CA:FALSE' in text and 'TLS Web Server Authentication' in text
+assert '2048 bit' in text and 'sha256WithRSAEncryption' in text
+dates=subprocess.check_output([sys.argv[2], 'x509', '-in', str(root/'leaf.pem'), '-noout', '-dates'],text=True).splitlines()
+a,b=[ssl.cert_time_to_seconds(x.split('=',1)[1]) for x in dates]
+assert 0 < b-a <= 825*86400
 assert 'DNS:localhost' in text and 'IP Address:127.0.0.1' in text
 print('PASS: actual server CA chain, SAN/EKU/basic constraints, unrelated root and wrong-host rejection')
 PY

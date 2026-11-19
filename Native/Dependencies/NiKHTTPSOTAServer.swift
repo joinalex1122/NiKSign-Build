@@ -3,11 +3,17 @@ import Combine
 import Network
 import Security
 import OpenSSL
+#if canImport(UIKit)
 import UIKit
+#endif
 
 @MainActor
 final class NiKHTTPSOTAServer: ObservableObject {
     static let shared = NiKHTTPSOTAServer()
+    private let identityLoader: () throws -> (SecIdentity, Data)
+    init(identityLoader: @escaping () throws -> (SecIdentity, Data) = { try NiKLocalTLSIdentity.loadOrCreateServer() }) {
+        self.identityLoader = identityLoader
+    }
     var onStop: (@MainActor () -> Void)?
     @Published private(set) var manifestRequests = 0
     @Published private(set) var ipaRequests = 0
@@ -47,7 +53,10 @@ case .missingIPA: return "No IPA file configured."
 
 private var listener: NWListener?
 private var connections: [ObjectIdentifier: NWConnection] = [:]
+private var pendingHeaders = Set<ObjectIdentifier>()
+#if canImport(UIKit)
 private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+#endif
 private let queue = DispatchQueue(label: "com.niksign.https.ota.server", qos: .userInitiated)
 
 private var ipaURL: URL?
@@ -83,11 +92,7 @@ if requireIPA {
 stop()
 resetRequestCounts()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-if identity == nil || certificateDER == nil {
-    let generated = try NiKLocalTLSIdentity.loadOrCreateServer()
-    identity = generated.0
-    certificateDER = generated.1
-}
+try ensureIdentity()
 guard let secIdentity = identity else { throw OTAError.identityImportFailed }
 
 let tlsOptions = NWProtocolTLS.Options()
@@ -128,9 +133,11 @@ newListener.newConnectionHandler = { [weak self, weak newListener] connection in
     }
 }
 self.listener = newListener
+#if canImport(UIKit)
 backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "NiKSign Local OTA") { [weak self] in
     Task { @MainActor in self?.stop() }
 }
+#endif
 newListener.start(queue: queue)
 }
 
@@ -141,26 +148,33 @@ listener?.cancel()
 listener = nil
 connections.values.forEach { $0.cancel() }
 connections.removeAll()
+pendingHeaders.removeAll()
+#if canImport(UIKit)
 if backgroundTask != .invalid {
     UIApplication.shared.endBackgroundTask(backgroundTask)
     backgroundTask = .invalid
 }
+#endif
 isRunning = false
 port = 0
 onStop?()
 }
 
-func exportMobileConfig() throws -> Data {
-let certData: Data
-if let existing = certificateDER {
-certData = existing
-} else {
-let (secIdentity, der) = try NiKLocalTLSIdentity.loadOrCreateServer()
-self.identity = secIdentity
-self.certificateDER = der
-certData = der
+private func ensureIdentity() throws {
+    if let identity {
+        var certificate: SecCertificate?
+        if SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess, let certificate,
+           NiKTLSServerCertificate.isCurrent(SecCertificateCopyData(certificate) as Data, minimumRemaining: 3600) { return }
+    }
+    let generated = try identityLoader()
+    identity = generated.0; certificateDER = generated.1
 }
-return try NiKOTAProfile.encode(certificateDER: certData)
+func exportMobileConfig() throws -> Data {
+    let oldRoot = certificateDER
+    try ensureIdentity()
+    if let oldRoot, oldRoot != certificateDER, isRunning { stop() }
+    guard let certificateDER else { throw OTAError.certificateGenerationFailed }
+    return try NiKOTAProfile.encode(certificateDER: certificateDER)
 }
 func waitUntilReady() async throws {
     for _ in 0..<200 {
@@ -173,10 +187,14 @@ func waitUntilReady() async throws {
 }
 
 func openInstallURL() async -> Bool {
+    #if canImport(UIKit)
     guard let url = itmsInstallURL else { lastError = "Máy chủ cài đặt chưa sẵn sàng."; return false }
     return await withCheckedContinuation { continuation in
         UIApplication.shared.open(url, options: [:]) { continuation.resume(returning: $0) }
     }
+    #else
+    return false
+    #endif
 }
 
 private func handle(connection: NWConnection) {
@@ -184,8 +202,14 @@ private func handle(connection: NWConnection) {
     let id = ObjectIdentifier(connection)
     acceptedConnections += 1
     connections[id] = connection
+    pendingHeaders.insert(id)
     connection.stateUpdateHandler = { [weak self, weak connection] state in
-        if case .cancelled = state { Task { @MainActor in self?.connections.removeValue(forKey: id) } }
+        if case .cancelled = state {
+            Task { @MainActor [weak self, weak connection] in
+                guard let self, let connection, self.connections[id] === connection else { return }
+                self.connections.removeValue(forKey: id); self.pendingHeaders.remove(id)
+            }
+        }
         if case .failed(let error) = state {
             Task { @MainActor [weak self, weak connection] in
                 guard let self, let connection, self.connections[id] === connection else { return }
@@ -195,7 +219,12 @@ private func handle(connection: NWConnection) {
         }
     }
     connection.start(queue: queue)
-    queue.asyncAfter(deadline: .now() + 120) { [weak connection] in connection?.cancel() }
+    queue.asyncAfter(deadline: .now() + 15) { [weak self, weak connection] in
+        Task { @MainActor in
+            guard let self, self.pendingHeaders.contains(id) else { return }
+            connection?.cancel()
+        }
+    }
     receiveRequest(connection: connection, buffer: Data())
 }
 
@@ -212,14 +241,17 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
                 self.receiveRequest(connection: connection, buffer: request)
                 return
             }
+            self.pendingHeaders.remove(ObjectIdentifier(connection))
             guard let header = String(data: request[..<end.lowerBound], encoding: .utf8),
-                  let line = header.components(separatedBy: "\r\n").first else { connection.cancel(); return }
-            let parts = line.split(separator: " ")
-            guard parts.count == 3, ["GET", "HEAD"].contains(parts[0]), parts[2].hasPrefix("HTTP/1.") else {
-                self.sendResponse(on: connection, status: "405 Method Not Allowed", contentType: "text/plain", body: Data())
+                  let parsed = try? NiKOTAHTTP.Request(header) else {
+                self.sendResponse(on: connection, status: "400 Bad Request", contentType: "text/plain", body: Data())
                 return
             }
-            let path = String(parts[1]), head = parts[0] == "HEAD"
+            guard ["GET", "HEAD"].contains(parsed.method) else {
+                self.sendResponse(on: connection, status: "405 Method Not Allowed", contentType: "text/plain", body: Data(), extraHeaders: "Allow: GET, HEAD\r\n")
+                return
+            }
+            let path = parsed.path, head = parsed.method == "HEAD"
             if path == "/\(self.token)/health" {
                 self.sendResponse(on: connection, status: "200 OK", contentType: "text/plain", body: Data("NiKSign Local HTTPS".utf8), head: head)
             } else if path == "/\(self.token)/install", self.ipaURL != nil, let link = self.itmsInstallURL {
@@ -233,7 +265,7 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
                 } catch { connection.cancel() }
             } else if path == "/\(self.token)/app.ipa", let url = self.ipaURL {
                 self.ipaRequests += 1
-                self.sendFile(on: connection, url: url, head: head)
+                self.sendFile(on: connection, url: url, head: head, range: parsed.headers["if-range"] == nil && !head ? parsed.headers["range"] : nil)
             } else {
                 self.sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data())
             }
@@ -242,33 +274,22 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
 }
 
 private func manifestPlistData() throws -> Data {
-let ipaAddress = "https://127.0.0.1:\(port)/\(token)/app.ipa"
-let manifest: [String: Any] = [
-"items": [[
-"assets": [[
-"kind": "software-package",
-"url": ipaAddress
-]],
-"metadata": [
-"bundle-identifier": bundleIdentifier,
-"bundle-version": bundleVersion,
-"kind": "software",
-"title": displayTitle
-]
-]]
-]
-return try PropertyListSerialization.data(fromPropertyList: manifest, format: .xml, options: 0)
+    guard let url = URL(string: "https://127.0.0.1:\(port)/\(token)/app.ipa") else { throw OTAError.missingIPA }
+    return try NiKOTAHTTP.manifest(ipaURL: url, bundleID: bundleIdentifier, buildVersion: bundleVersion, title: displayTitle)
 }
 
-private func sendFile(on connection: NWConnection, url: URL, head: Bool) {
+private func sendFile(on connection: NWConnection, url: URL, head: Bool, range: String?) {
     do {
         let handle = try FileHandle(forReadingFrom: url)
         let size = try handle.seekToEnd()
-        try handle.seek(toOffset: 0)
-        let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size)\r\nConnection: close\r\n\r\n"
+        let response = NiKOTAHTTP.FileResponse.make(size: size, range: range)
+        try handle.seek(toOffset: response.offset)
+        let rangeHeader = response.contentRange.map { "Content-Range: \($0)\r\n" } ?? ""
+        let header = "HTTP/1.1 \(response.status)\r\nContent-Type: application/octet-stream\r\nContent-Length: \(response.length)\r\nAccept-Ranges: bytes\r\n\(rangeHeader)Connection: close\r\n\r\n"
         connection.send(content: Data(header.utf8), completion: .contentProcessed { error in
-            guard error == nil, !head else { try? handle.close(); connection.cancel(); return }
-            Self.sendNextChunk(on: connection, handle: handle, remaining: size)
+            guard error == nil else { try? handle.close(); connection.cancel(); return }
+            guard !head, response.length > 0 else { try? handle.close(); Self.finish(connection); return }
+            Self.sendNextChunk(on: connection, handle: handle, remaining: response.length)
         })
     } catch {
         sendResponse(on: connection, status: "404 Not Found", contentType: "text/plain", body: Data("IPA unavailable".utf8))
@@ -276,7 +297,7 @@ private func sendFile(on connection: NWConnection, url: URL, head: Bool) {
 }
 
 nonisolated private static func sendNextChunk(on connection: NWConnection, handle: FileHandle, remaining: UInt64) {
-    guard remaining > 0 else { try? handle.close(); connection.cancel(); return }
+    guard remaining > 0 else { try? handle.close(); finish(connection); return }
     do {
         guard let data = try handle.read(upToCount: Int(min(remaining, 65536))), !data.isEmpty else {
             try? handle.close(); connection.cancel(); return
@@ -288,13 +309,23 @@ nonisolated private static func sendNextChunk(on connection: NWConnection, handl
     } catch { try? handle.close(); connection.cancel() }
 }
 
-private func sendResponse(on connection: NWConnection, status: String, contentType: String, body: Data, head: Bool = false) {
-let header = "HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+private func sendResponse(on connection: NWConnection, status: String, contentType: String, body: Data, head: Bool = false, extraHeaders: String = "") {
+let header = "HTTP/1.1 \(status)\r\nContent-Type: \(contentType)\r\nContent-Length: \(body.count)\r\n\(extraHeaders)Connection: close\r\n\r\n"
 var payload = Data(header.utf8)
 if !head { payload.append(body) }
-connection.send(content: payload, completion: .contentProcessed { _ in
-connection.cancel()
+connection.send(content: payload, completion: .contentProcessed { error in
+    if error != nil { connection.cancel() } else { Self.finish(connection) }
 })
+}
+
+// Half-close only after all bytes have been enqueued; drain the peer's EOF.
+// Immediate cancel can abort a queued response, particularly the last IPA chunk.
+nonisolated private static func finish(_ connection: NWConnection) {
+    connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { error in
+        guard error == nil else { connection.cancel(); return }
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { _, _, _, _ in connection.cancel() }
+    })
+    DispatchQueue.global().asyncAfter(deadline: .now() + 15) { [weak connection] in connection?.cancel() }
 }
 
 }

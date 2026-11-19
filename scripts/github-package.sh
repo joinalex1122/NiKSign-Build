@@ -6,5 +6,5 @@ if ! command -v xcodebuild >/dev/null; then
     echo 'Run on macOS with Xcode; this helper never commits unbuilt changes.' >&2
     exit 1
 fi
-bash scripts/audit-ios.sh
+for nik_pass in pass1 pass2; do bash scripts/audit-ios.sh "$nik_pass"; done
 printf '%s\n' 'Build passed. Review the diff and commit explicitly; no automatic push.'
