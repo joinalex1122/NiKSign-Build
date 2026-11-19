@@ -162,6 +162,7 @@ struct NiKPreviewRoot: View {
     @AppStorage("nik.theme") private var theme = "system"
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.certPrompted") private var certPrompted = false
+    @AppStorage("nik.otaTrustIntro.v1") private var trustIntroAcknowledged = false
     @StateObject private var library = NiKLibrary.shared
     @StateObject private var certificates = NiKCertificateStore.shared
     @State private var choice = "both"
@@ -173,7 +174,9 @@ struct NiKPreviewRoot: View {
     var body: some View {
         Group {
             if mode.isEmpty { welcome }
-            else {
+            else if hasSigner && !trustIntroAcknowledged {
+                NavigationStack { NiKTrustSetupView(onContinue: { trustIntroAcknowledged = true }) }
+            } else {
                activeTabView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .safeAreaInset(edge: .bottom, spacing: 0) { liquidGlassTabBar }
@@ -184,6 +187,7 @@ struct NiKPreviewRoot: View {
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .onAppear { configure() }
         .onChange(of: mode) { _, _ in configure() }
+        .onChange(of: trustIntroAcknowledged) { _, _ in configure() }
         .onChange(of: library.notice) { _, notice in if !notice.isEmpty && hasSigner { tab = 0 } }
         .alert(t("Không nhập được IPA", "IPA Import Failed"), isPresented: Binding(
             get: { !library.error.isEmpty }, set: { if !$0 { library.error = "" } }
@@ -198,7 +202,7 @@ struct NiKPreviewRoot: View {
         if mode == "tools" && tab == 0 { tab = 1 }
         if mode == "sign" && tab == 1 { tab = 0 }
         if mode != "sign" { appState.detectSupport() }
-        if hasSigner && !certPrompted { certPrompted = true; prompt = true }
+        if hasSigner && trustIntroAcknowledged && !certPrompted { certPrompted = true; prompt = true }
     }
     private var welcome: some View {
         VStack(spacing: 22) {
@@ -382,6 +386,11 @@ struct NiKLibraryView: View {
                     }
                     searchBarCard
                     certificateBannerCard
+                    NavigationLink { NiKSignedAppsView() } label: {
+                        Label(t("Ứng dụng đã ký", "Signed Applications"), systemImage: "app.badge.checkmark")
+                            .frame(maxWidth: .infinity, alignment: .leading).padding()
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                    }
                     libraryListCard
                 }
                 .padding(.horizontal, 16)

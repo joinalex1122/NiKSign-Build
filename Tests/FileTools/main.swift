@@ -125,3 +125,22 @@ precondition(installMetadata.bundleID == "com.example.demo" && installMetadata.v
 try expectFailure { _ = try NiKInstallMetadata.read(missingProvision) }
 try expectFailure { _ = try NiKInstallMetadata.read(missingSignature) }
 print("PASS: installation reads actual signed IPA metadata/build version, rejects missing provisioning/signature resources")
+
+let signedDirectory = root.appendingPathComponent("Signed", isDirectory: true)
+let initiallyEmpty = try NiKSignedApps.scan(directory: signedDirectory)
+precondition(initiallyEmpty.isEmpty)
+try fm.createDirectory(at: signedDirectory, withIntermediateDirectories: true)
+try fm.copyItem(at: structuralFixture, to: signedDirectory.appendingPathComponent("kept-after-queue-clear.ipa"))
+try fm.copyItem(at: missingProvision, to: signedDirectory.appendingPathComponent("damaged.ipa"))
+try fm.copyItem(at: structuralFixture, to: signedDirectory.appendingPathComponent("ignored.txt"))
+try fm.createSymbolicLink(at: signedDirectory.appendingPathComponent("outside.ipa"), withDestinationURL: structuralFixture)
+let signedApps = try NiKSignedApps.scan(directory: signedDirectory)
+precondition(signedApps.count == 2)
+let kept = signedApps.first { $0.url.lastPathComponent == "kept-after-queue-clear.ipa" }!
+precondition(kept.title == "Demo & Test" && kept.version == "42" && kept.bundleID == "com.example.demo" && kept.issue == nil && kept.size > 0)
+precondition(signedApps.first { $0.url.lastPathComponent == "damaged.ipa" }?.issue != nil)
+// No queue or library index exists: discovery is entirely from the Signed directory.
+try fm.removeItem(at: kept.url)
+let afterRemoval = try NiKSignedApps.scan(directory: signedDirectory)
+precondition(afterRemoval.count == 1 && afterRemoval[0].issue != nil)
+print("PASS: signed application discovery without queue/library index, metadata, damaged IPA visibility, symlink exclusion and removal refresh")

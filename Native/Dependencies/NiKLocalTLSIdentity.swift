@@ -29,6 +29,29 @@ private static func importOptions(password: String) -> CFDictionary {
     return options as CFDictionary
 }
 
+/// Returns a server identity and the existing public CA certificate for the trust profile.
+/// The persistent root is deliberately not replaced during upgrades or each server restart.
+static func loadOrCreateServer(service: String = "com.niksign.local-ota-identity") throws -> (SecIdentity, Data) {
+    let (_, rootDER) = try loadOrCreate(service: service)
+    let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service, kSecAttrAccount as String: "identity-v1",
+        kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+    var result: CFTypeRef?
+    let readStatus = SecItemCopyMatching(query as CFDictionary, &result)
+    guard readStatus == errSecSuccess, let data = result as? Data else {
+        throw Failure.securityFailure(operation: "read CA", status: readStatus)
+    }
+    let stored = try? JSONDecoder().decode(StoredIdentity.self, from: data)
+    let leaf = try NiKTLSServerCertificate.create(caP12: stored?.p12 ?? data, password: stored?.password ?? "")
+    var imported: CFArray?
+    let status = SecPKCS12Import(leaf.p12 as CFData, importOptions(password: leaf.password), &imported)
+    guard status == errSecSuccess, let values = imported as? [[String: Any]],
+          let identity = values.first?[kSecImportItemIdentity as String] else {
+        throw Failure.securityFailure(operation: "import server identity", status: status)
+    }
+    return (identity as! SecIdentity, rootDER)
+}
+
 static func loadOrCreate(service: String = "com.niksign.local-ota-identity") throws -> (SecIdentity, Data) {
 let query: [String: Any] = [
     kSecClass as String: kSecClassGenericPassword,

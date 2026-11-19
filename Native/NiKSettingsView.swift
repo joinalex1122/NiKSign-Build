@@ -15,6 +15,11 @@ struct NiKSettingsView: View {
                     brandCard
                     preferencesCard
                     card {
+                        NavigationLink { NiKTrustSetupView() } label: {
+                            row("checkmark.shield", .cyan, t("Tin cậy & Cài IPA", "Trust & IPA Installation"), t("Tải hồ sơ và kiểm tra HTTPS", "Download Profile and Check HTTPS"))
+                        }
+                    }
+                    card {
                         NavigationLink { NiKCertificateSettings(store: certificates) } label: {
                             row("signature", .orange, t("Chứng chỉ", "Certificates"), "\(certificates.profiles.count) " + t("chứng chỉ đã lưu", "saved certificates"))
                         }

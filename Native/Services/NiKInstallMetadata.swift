@@ -6,7 +6,7 @@ struct NiKInstallMetadata: Sendable {
     let bundleID: String
     let version: String
     let title: String
-    static func read(_ url: URL) throws -> Self {
+    static func read(_ url: URL, validateArchive: Bool = true) throws -> Self {
         let zip = try Archive(url: url, accessMode: .read)
         let entries = zip.filter { entry in
             let parts = entry.path.split(separator: "/", omittingEmptySubsequences: false)
@@ -26,7 +26,19 @@ struct NiKInstallMetadata: Sendable {
               !version.isEmpty, version.utf8.count <= 255 else { throw Failure(message: "Thiếu Bundle ID hoặc phiên bản cài đặt trong IPA.") }
         let title = (info["CFBundleDisplayName"] ?? info["CFBundleName"]) as? String ?? bundleID
         guard title.utf8.count <= 1024 else { throw Failure(message: "Tên ứng dụng quá dài.") }
-        try NiKSignedOutputValidator.validate(url, expectedBundleID: bundleID)
+        if validateArchive {
+            try NiKSignedOutputValidator.validate(url, expectedBundleID: bundleID)
+        } else {
+            // Listing reads only the bounded Info.plist. Installation always performs full CRC validation.
+            let root = String(entries[0].path.dropLast("Info.plist".count))
+            guard let executable = info["CFBundleExecutable"] as? String, !executable.isEmpty,
+                  !executable.contains("/"), !executable.contains("\\"), executable != ".", executable != "..",
+                  zip[root + executable]?.type == .file,
+                  zip[root + "embedded.mobileprovision"]?.type == .file,
+                  zip[root + "_CodeSignature/CodeResources"]?.type == .file else {
+                throw Failure(message: "IPA thiếu executable, profile hoặc tài nguyên chữ ký.")
+            }
+        }
         return Self(bundleID: bundleID, version: version, title: title)
     }
 }

@@ -5,6 +5,11 @@ import UIKit
 @MainActor final class NiKInstallationController: ObservableObject {
     static let shared = NiKInstallationController()
     enum Phase { case idle, preparing, trustRequired, ready, requestSent, failed }
+    enum TrustState { case unknown, checking, trusted, required, unavailable }
+    @Published private(set) var trustState: TrustState = .unknown
+    @Published private(set) var trustError: String?
+    @Published private(set) var deliveryNotice: String?
+    private var deliveryTask: Task<Void, Never>?
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var busy = false
     @Published private(set) var error: String?
@@ -19,6 +24,7 @@ import UIKit
         if let lease { NiKFileMutationReservations.shared.release(lease); self.lease = nil }
     }
     func stop() {
+        deliveryTask?.cancel(); deliveryTask = nil; deliveryNotice = nil
         profileServer.stop(); server.stop(); releaseLease()
         phase = .idle
     }
@@ -46,7 +52,7 @@ import UIKit
     }
     func checkConnection() async {
         guard !busy, let fileURL else { return }
-        if !server.isRunning { await prepare(fileURL); return }
+        if !server.isServingIPA { await prepare(fileURL); return }
         busy = true; defer { busy = false }
         await probeHTTPS()
     }
@@ -67,15 +73,14 @@ import UIKit
                   let items = plist["items"] as? [[String: Any]], items.count == 1,
                   let info = items[0]["metadata"] as? [String: Any],
                   info["bundle-identifier"] as? String == metadata?.bundleID else { throw NiKError("Không đọc được manifest cài đặt đúng ứng dụng.") }
+            trustState = .trusted
             phase = .ready
         } catch {
             if Task.isCancelled { stop(); return }
-            let code = (error as NSError).code
-            if (error as NSError).domain == NSURLErrorDomain,
-               [NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasUnknownRoot,
-                NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateNotYetValid].contains(code) {
-                phase = .trustRequired
+            if Self.requiresTrust(error) {
+                phase = .trustRequired; trustState = .required
             } else { phase = .failed }
+            trustError = error.localizedDescription
             self.error = error.localizedDescription
         }
     }
@@ -88,17 +93,71 @@ import UIKit
         }
         busy = true; defer { busy = false }
         server.resetRequestCounts()
-        if await server.openInstallURL() { phase = .requestSent }
+        if await server.openInstallURL() { phase = .requestSent; observeDelivery() }
         else { phase = .failed; error = "iOS không nhận liên kết itms-services. Hãy kiểm tra giới hạn cài đặt/MDM trên thiết bị." }
+    }
+    func checkTrust() async {
+        guard !busy else { return }
+        busy = true; trustState = .checking; trustError = nil
+        defer { busy = false }
+        do {
+            if !server.isRunning {
+                try server.startTrustCheck()
+                try await server.waitUntilReady()
+            }
+            guard let url = server.healthURL else { throw NiKError("Máy chủ HTTPS chưa sẵn sàng.") }
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 15
+            let session = URLSession(configuration: config)
+            defer { session.invalidateAndCancel() }
+            let (data, response) = try await session.data(from: url)
+            try Task.checkCancellation()
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  data == Data("NiKSign Local HTTPS".utf8) else { throw NiKError("Phản hồi kiểm tra HTTPS không hợp lệ.") }
+            trustState = .trusted
+        } catch {
+            trustState = Self.requiresTrust(error) ? .required : .unavailable
+            trustError = error.localizedDescription
+        }
+    }
+    private static func requiresTrust(_ error: Error) -> Bool {
+        let value = error as NSError
+        return value.domain == NSURLErrorDomain && [NSURLErrorServerCertificateUntrusted,
+            NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateHasBadDate,
+            NSURLErrorServerCertificateNotYetValid, NSURLErrorSecureConnectionFailed].contains(value.code)
+    }
+    private func observeDelivery() {
+        deliveryTask?.cancel(); deliveryNotice = nil
+        deliveryTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { return }
+            guard let self, self.phase == .requestSent else { return }
+            if !self.server.isRunning {
+                self.deliveryNotice = "Máy chủ đã dừng trước khi hoàn tất tải. Quay lại NiKSign, chuẩn bị lại rồi cài."
+            } else if self.server.manifestRequests == 0 {
+                self.deliveryNotice = self.server.acceptedConnections == 0
+                    ? "iOS chưa kết nối tới máy chủ cài đặt. Giữ NiKSign mở và thử lại; mở liên kết chưa có nghĩa là cài thành công."
+                    : "Có kết nối nhưng chưa đọc được manifest. Kiểm tra tin cậy HTTPS trong Cài đặt và thử lại."
+            } else if self.server.ipaRequests == 0 {
+                self.deliveryNotice = "Đã có yêu cầu manifest nhưng chưa có yêu cầu tải IPA. iOS có thể đã từ chối yêu cầu cài; kiểm tra hồ sơ tin cậy và chứng chỉ ký."
+            }
+        }
     }
     func downloadTrustProfile() async {
         guard !busy else { return }
-        busy = true; defer { busy = false }
+        busy = true; trustError = nil; defer { busy = false }
         do {
             let data = try server.exportMobileConfig()
             guard let url = profileServer.startTrustProfile(data: data) else { throw NiKError("Không mở được máy chủ tải hồ sơ HTTPS.") }
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 5; configuration.timeoutIntervalForResource = 10
+            let session = URLSession(configuration: configuration)
+            defer { session.invalidateAndCancel() }
+            let (received, response) = try await session.data(from: url)
+            guard (response as? HTTPURLResponse)?.statusCode == 200, received == data else {
+                throw NiKError("Máy chủ tải hồ sơ chưa phản hồi đúng. Quay lại NiKSign và thử tải lại.")
+            }
             let accepted = await UIApplication.shared.open(url, options: [:])
             if !accepted { throw NiKError("Không mở được Safari để tải hồ sơ.") }
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription; trustError = error.localizedDescription }
     }
 }

@@ -63,6 +63,12 @@ struct NiKFilesHome: View {
                     }
                     .buttonStyle(.plain)
 
+                    NavigationLink { NiKSignedAppsView() } label: {
+                        homeCard(title: t("Ứng dụng đã ký", "Signed Applications"),
+                                 subtitle: t("Cài đặt, chia sẻ và quản lý IPA đã ký", "Install, share and manage signed IPAs"),
+                                 icon: "app.badge.checkmark", color: .cyan)
+                    }.buttonStyle(.plain)
+
                     NavigationLink {
                         NiKSystemFiles(directory: URL(fileURLWithPath: "/", isDirectory: true))
                     } label: {

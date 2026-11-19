@@ -26,6 +26,7 @@ struct NiKInstallIPAView: View {
                         case .requestSent: Text(t("Đã gửi yêu cầu cho iOS. Việc mở liên kết không xác nhận hộp thoại đã hiện hoặc ứng dụng đã cài.", "Request sent to iOS. Opening the link does not confirm a prompt appeared or the app was installed."))
                         default: EmptyView()
                         }
+                        if let notice = install.deliveryNotice { Text(notice).font(.footnote).foregroundStyle(.orange) }
                         if let error = install.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                     }
                     Button(t("Kiểm tra / Chuẩn bị lại", "Check / Prepare Again")) { Task { await install.prepare(url) } }
@@ -33,12 +34,15 @@ struct NiKInstallIPAView: View {
                     Button(t("Cài đặt", "Install")) { Task { await install.install() } }
                         .disabled(!correctFile || install.busy || !server.isRunning || install.phase == .trustRequired || install.metadata == nil)
                     if correctFile, server.isRunning {
+                        Text(t("Kết nối: \(server.acceptedConnections)", "Connections: \(server.acceptedConnections)")).font(.caption)
+                        if let error = server.connectionError { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                         Text(t("Manifest: \(server.manifestRequests) yêu cầu · IPA: \(server.ipaRequests) yêu cầu", "Manifest: \(server.manifestRequests) requests · IPA: \(server.ipaRequests) requests")).font(.caption)
                     }
                 }
                 Section(t("Thiết lập HTTPS lần đầu", "First-time HTTPS Setup")) {
                     Text(t("1. Tải hồ sơ HTTPS bằng nút bên dưới.\n2. Vào Cài đặt → Cài đặt chung → VPN & Quản lý thiết bị, cài hồ sơ NiKSign Local HTTPS OTA.\n3. Vào Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng nhận, bật tin cậy đầy đủ cho chứng nhận của hồ sơ vừa cài (tên localhost).\n4. Quay lại NiKSign, bấm Kiểm tra / Chuẩn bị lại rồi Cài đặt.", "1. Download the HTTPS profile below.\n2. In Settings → General → VPN & Device Management, install NiKSign Local HTTPS OTA.\n3. In General → About → Certificate Trust Settings, enable full trust for the certificate from that profile (named localhost).\n4. Return to NiKSign, check/prepare again, then install."))
                         .font(.footnote)
+                    NavigationLink(t("Mở thiết lập tin cậy", "Open Trust Setup")) { NiKTrustSetupView() }
                     Button(t("Tải hồ sơ HTTPS trong Safari", "Download HTTPS Profile in Safari")) { Task { await install.downloadTrustProfile() } }
                         .disabled(install.busy)
                 }

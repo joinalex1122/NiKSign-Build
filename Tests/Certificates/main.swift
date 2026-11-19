@@ -51,6 +51,31 @@ precondition(firstTLS.1 == secondTLS.1)
 precondition(SecCertificateCreateWithData(nil, firstTLS.1 as CFData) != nil)
 try firstTLS.1.write(to: directory.appendingPathComponent("local-ota.cer"))
 print("PASS: actual local TLS identity generation, DER certificate and stable Keychain reload")
+let leafTLS = try NiKLocalTLSIdentity.loadOrCreateServer(service: service)
+precondition(leafTLS.1 == firstTLS.1)
+var serverCertificate: SecCertificate?
+precondition(SecIdentityCopyCertificate(leafTLS.0, &serverCertificate) == errSecSuccess)
+let serverDER = SecCertificateCopyData(serverCertificate!) as Data
+precondition(serverDER != firstTLS.1)
+try serverDER.write(to: directory.appendingPathComponent("local-server.cer"))
+let anchor = SecCertificateCreateWithData(nil, firstTLS.1 as CFData)!
+func testServerTrust(host: String) -> Bool {
+    var trust: SecTrust?
+    guard SecTrustCreateWithCertificates([serverCertificate!, anchor] as CFArray,
+        SecPolicyCreateSSL(true, host as CFString), &trust) == errSecSuccess, let trust else { return false }
+    // Test-only trust anchor. Production URLSession always uses default system trust.
+    SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+    SecTrustSetAnchorCertificatesOnly(trust, true)
+    SecTrustSetNetworkFetchAllowed(trust, false)
+    return SecTrustEvaluateWithError(trust, nil)
+}
+precondition(testServerTrust(host: "127.0.0.1"))
+precondition(testServerTrust(host: "localhost"))
+precondition(!testServerTrust(host: "example.com"))
+let reloadedTLS = try NiKLocalTLSIdentity.loadOrCreate(service: service)
+precondition(reloadedTLS.1 == firstTLS.1)
+print("PASS: separate Apple Security server identity, stable CA, hostname validation and wrong-host rejection")
+
 
 let mobileConfig = try NiKOTAProfile.encode(certificateDER: firstTLS.1)
 let profile = try PropertyListSerialization.propertyList(from: mobileConfig, format: nil) as! [String: Any]
@@ -61,6 +86,8 @@ precondition(payloads[0]["PayloadType"] as? String == "com.apple.security.root")
 precondition(payloads[0]["PayloadContent"] as? Data == firstTLS.1)
 precondition(payloads[0]["PayloadVersion"] as? Int == 1)
 precondition(profile["PayloadRemovalDisallowed"] as? Bool == false)
+let secondProfile = try PropertyListSerialization.propertyList(from: NiKOTAProfile.encode(certificateDER: firstTLS.1), format: nil) as! [String: Any]
+precondition(profile["PayloadIdentifier"] as? String == secondProfile["PayloadIdentifier"] as? String)
 print("PASS: real mobileconfig builder, root certificate payload and DER round trip")
 try await MainActor.run {
     let root = directory.appendingPathComponent("corrupt-store")

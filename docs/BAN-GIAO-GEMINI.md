@@ -1,4 +1,4 @@
-# Bàn giao NiKSign cho Gemini — 18/11/2026
+# Bàn giao NiKSign cho Gemini — 19/11/2026
 
 ## Đọc trước, không bắt đầu lại
 
@@ -8,9 +8,15 @@ Repo: https://github.com/joinalex1122/NiKSign-Build
 Nhánh làm việc: `codex/niksign-upgrades`.
 Checkpoint: `handoff/niksign-upgrade-checkpoints`.
 Main/PR cũ không phản ánh tiến độ mới; chưa merge main. Checkout nhánh nâng cấp, không reset về main.
-Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` trong gói bàn giao. Tài liệu này đi kèm mã mốc23.
+Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` trong gói bàn giao. Tài liệu được cập nhật tới mốc30; các trạng thái cũ bên dưới là lịch sử.
 
-Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
+Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–30), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
+
+## Cập nhật mốc30 — tin cậy ngay lần mở đầu và ứng dụng đã ký
+
+Mốc29/4170f12 đã qua run44428678083 success. Mốc30 thêm first-launch trust onboarding sau chọn chế độ có ký (có Để sau, mở lại trong Settings), check HTTPS thật qua health route không cần IPA, giữ root Keychain identity-v1 nhưng tạo server leaf CA:FALSE/SAN/EKU ký bởi root đó. Không tự bật trust, không dùng delegate chấp nhận self-signed. Profile public root có identifier theo hash để tránh lặp profile khi tải lại. Bootstrap HTTP profile được probe trước mở Safari; IPA/manifest vẫn HTTPS. Thêm counters connection/TLS errors + thông báo chưa giao manifest/IPA, không coi openURL là cài thành công. Server health-only không phục vụ IPA cũ hết reservation.
+
+Ứng dụng đã ký xuất hiện ở Ký IPA và Tệp: quét Signed độc lập history, cài/chia sẻ/thùng rác; đọc Info.plist nhẹ cho list, full CRC/structure trước install. Local OpenSSL chain regression và FileToolsSmoke PASS; Apple audit mới và thiết bị vẫn cần xác minh. Chưa kết luận ảnh lỗi127.0.0.1 được sửa triệt để, cần thử cài profile/fulltrust→check→install và xem counters/TLS error mới. Chi tiết UPGRADE-PROGRESS mốc30; bổ sung hoàn tất gate theo đúng commit sau push.
 
 ## Cập nhật mốc29 — worse_query đã được nối vào code
 

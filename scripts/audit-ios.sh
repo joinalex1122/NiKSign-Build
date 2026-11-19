@@ -65,6 +65,7 @@ xcrun swiftc Native/Services/NiKPatchContainerAccess.swift Tests/PatchContainerA
 xcrun swiftc Native/Services/NiKSignedFileAccess.swift Tests/SignedFileAccessSmoke.swift -o /tmp/nik-signed-file-test
 /tmp/nik-signed-file-test
 bash scripts/test-file-tools.sh
+bash scripts/test-local-tls.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh
 python3 scripts/check-build-log.py build/build.log

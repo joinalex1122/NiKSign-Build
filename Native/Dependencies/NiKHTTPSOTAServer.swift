@@ -12,7 +12,15 @@ final class NiKHTTPSOTAServer: ObservableObject {
     @Published private(set) var manifestRequests = 0
     @Published private(set) var ipaRequests = 0
     var manifestURL: URL? { NiKOTAURLs.manifest(port: port, token: token) }
-    func resetRequestCounts() { manifestRequests = 0; ipaRequests = 0 }
+    @Published private(set) var acceptedConnections = 0
+    @Published private(set) var connectionError: String?
+    var healthURL: URL? {
+        guard isRunning else { return nil }
+        return URL(string: "https://127.0.0.1:\(port)/\(token)/health")
+    }
+    func resetRequestCounts() {
+        manifestRequests = 0; ipaRequests = 0; acceptedConnections = 0; connectionError = nil
+    }
 
   enum OTAError: LocalizedError {
 case certificateGenerationFailed
@@ -57,14 +65,22 @@ self.bundleVersion = bundleVersion
 self.displayTitle = title
 }
 
-func start() throws {
+func start() throws { try start(requireIPA: true) }
+func startTrustCheck() throws {
+    ipaURL = nil // A standalone trust check must never expose a stale, unreserved IPA.
+    try start(requireIPA: false)
+}
+var isServingIPA: Bool { isRunning && ipaURL != nil }
+private func start(requireIPA: Bool) throws {
 lastError = nil
-guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { throw OTAError.missingIPA }
+if requireIPA {
+    guard let ipaURL, FileManager.default.fileExists(atPath: ipaURL.path) else { throw OTAError.missingIPA }
+}
 stop()
 resetRequestCounts()
 token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
 if identity == nil || certificateDER == nil {
-    let generated = try NiKLocalTLSIdentity.loadOrCreate()
+    let generated = try NiKLocalTLSIdentity.loadOrCreateServer()
     identity = generated.0
     certificateDER = generated.1
 }
@@ -135,7 +151,7 @@ let certData: Data
 if let existing = certificateDER {
 certData = existing
 } else {
-let (secIdentity, der) = try NiKLocalTLSIdentity.loadOrCreate()
+let (secIdentity, der) = try NiKLocalTLSIdentity.loadOrCreateServer()
 self.identity = secIdentity
 self.certificateDER = der
 certData = der
@@ -162,10 +178,17 @@ func openInstallURL() async -> Bool {
 private func handle(connection: NWConnection) {
     guard connections.count < 8 else { connection.cancel(); return }
     let id = ObjectIdentifier(connection)
+    acceptedConnections += 1
     connections[id] = connection
     connection.stateUpdateHandler = { [weak self, weak connection] state in
         if case .cancelled = state { Task { @MainActor in self?.connections.removeValue(forKey: id) } }
-        if case .failed = state { connection?.cancel() }
+        if case .failed(let error) = state {
+            Task { @MainActor [weak self, weak connection] in
+                guard let self, let connection, self.connections[id] === connection else { return }
+                self.connectionError = error.localizedDescription
+                connection.cancel()
+            }
+        }
     }
     connection.start(queue: queue)
     queue.asyncAfter(deadline: .now() + 120) { [weak connection] in connection?.cancel() }
@@ -193,7 +216,9 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
                 return
             }
             let path = String(parts[1]), head = parts[0] == "HEAD"
-            if path == "/\(self.token)/manifest.plist" {
+            if path == "/\(self.token)/health" {
+                self.sendResponse(on: connection, status: "200 OK", contentType: "text/plain", body: Data("NiKSign Local HTTPS".utf8), head: head)
+            } else if path == "/\(self.token)/manifest.plist", self.ipaURL != nil {
                 self.manifestRequests += 1
                 do {
                     let plist = try self.manifestPlistData()
