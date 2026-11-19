@@ -15,7 +15,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/verify-ipa.py'
 spec = importlib.util.spec_from_file_location('verify_ipa', SCRIPT)
 validator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(validator)
-BUNDLE = 'com.niksign.app'
+BUNDLE = 'com.apple.mobile.MobileHouseArrest'
 ROOT = 'Payload/NiKSign.app/'
 
 
