@@ -1,1 +1,1 @@
-Bàn giao hiện tại: [SIGN-ONLY-REFACTOR.md](SIGN-ONLY-REFACTOR.md). Các tài liệu trong history chỉ là lịch sử; không dùng để khôi phục chức năng ngoài ký IPA.
+Bản Sign-only 3.4.0 (340) đã build Xcode và audit PASS, 0 compiler diagnostics. Xem [bằng chứng và IPA](VERIFIED-SIGN-ONLY-3.4.0.md) và [danh sách file xóa/sửa, phạm vi bàn giao](SIGN-ONLY-REFACTOR.md). Các tài liệu trong history chỉ mô tả các snapshot cũ.

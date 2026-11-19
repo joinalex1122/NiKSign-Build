@@ -13,6 +13,6 @@ Các revision và giấy phép đầy đủ nằm ở `Native/Licenses/component
 | SWCompression (MIT) | Giải nén/đọc tar trong deb |
 | GCDWebServer (BSD-3-Clause) | HTTP loopback cho tải hồ sơ tin cậy và chia sẻ tệp; HTTPS OTA dùng Network.framework |
 
-BitByteData 2.0.4 là dependency bắc cầu của SWCompression được ghim để giữ tương thích iOS 17. Framework Apple dùng Foundation, SwiftUI/UIKit, Security, Network, CoreImage và CryptoKit từ SDK.
+BitByteData 2.0.4 là dependency bắc cầu của SWCompression được ghim để giữ tương thích iOS 17. Framework Apple dùng Foundation, SwiftUI/UIKit, Security, Network, CoreImage, CryptoKit và AppIntents từ SDK. AppIntents được liên kết để bộ tạo metadata Xcode 16 hoạt động đúng; không có capability truy cập ngoài sandbox.
 
 Zsign có các thay đổi native được ghi rõ hash gốc, hash sau sửa và replacements trong `Vendor/Zsign/UPSTREAM.json`: giữ profile trước khi seal, tạo application-identifier cụ thể cho từng bundle từ App ID seed trong profile, XML/DER nhất quán, kiểm tra đúng giá trị get-task-allow, dùng CPU/VM macro SDK trên Apple. Không đổi wildcard hợp lệ của quyền không liên quan. Kiểm tra dependency khôi phục các byte gốc để so hash.

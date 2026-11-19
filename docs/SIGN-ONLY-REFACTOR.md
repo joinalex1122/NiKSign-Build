@@ -1,6 +1,6 @@
 # Bàn giao refactor Sign-only — 2026-11-19
 
-Working tree: `/workspace/NiKSign-upgrades`, base `38226a33a0c325a11e4d47dbecd75358b81d1c5f`. Người dùng đã xác nhận cho phép nhánh CI tạm ngày 2026-11-19. Chuẩn bị commit kiểm chứng trên codex/niksign-sign-only-ci; chờ kết quả Xcode. Phiên bản 3.4.0 (340).
+Working tree: `/workspace/NiKSign-upgrades`, base `38226a33a0c325a11e4d47dbecd75358b81d1c5f`. Người dùng đã xác nhận nhánh CI tạm. Bản 3.4.0 (340), commit 01cbc2f186478ced39e4f9167f31b95b1e58fbcc đã PASS toàn bộ workflow 44535871357 trên macOS/Xcode với 0 warning/error diagnostics.
 
 ## Đã thực hiện
 
@@ -12,20 +12,16 @@ Working tree: `/workspace/NiKSign-upgrades`, base `38226a33a0c325a11e4d47dbecd75
 6. Native Zsign sửa application-identifier cụ thể từ App ID seed từng app/extension; XML/DER nhất quán; giá trị get-task-allow đúng. Stage profile trong mọi app/appex trước resource seal và kiểm tra CMS/entitlement identity sau ký. Không bypass provisioning của iOS.
 7. Viết lại README/FEATURES/VALIDATION/DEPENDENCIES/THIRD_PARTY_NOTICES; chuyển tài liệu cũ vào docs/history với prefix pre-sign-only. Giữ giấy phép GPL của NiKSign và giấy phép các thư viện đang dùng.
 
-## Kiểm chứng tại môi trường hiện tại
+## Kiểm chứng hoàn tất
 
-- PASS: check-integration.py, check-dependencies.py, bash syntax, Swift frontend parse Native.
-- PASS: minizip (5 ca), IPA validator (7 ca).
-- PASS: Foundation smoke tests trong audit (trừ FileImport dùng NSFileCoordinator và QueueRemoval dùng Combine chỉ có Apple SDK).
-- PASS: native zsign_provisioning_test.py --macho /tmp/nik-owned-arm64.
-- PASS: native zsign_cms_test.py --macho /tmp/nik-owned-arm64: CMS thật, page/special-slot hashes, tamper rejection, app/extension IDs/debug flags. Khóa tổng hợp, không phải chứng chỉ Apple tin cậy.
-- PASS: File tools SwiftPM với ZIPFoundation thật; tạo/kiểm tra chuỗi server TLS bằng OpenSSL, SAN/EKU, từ chối host/root sai.
-- CHƯA PASS: xcodegen generate và xcodebuild -sdk iphoneos CODE_SIGNING_ALLOWED=NO vì Linux không có Xcode (đã gọi cả hai lệnh, exit 127 command not found). Không được xem build trước làm bằng chứng cho nguồn refactor này.
-- Chưa thử iPhone: cold launch, import/cert selection/batch/source, OCSP mạng, trust profile và OTA/transition background bằng chứng chỉ người dùng.
+- PASS: check-integration.py, check-dependencies.py, bash syntax.
+- PASS trên macOS: xcodegen generate; xcodebuild iphoneos arm64 với CODE_SIGNING_ALLOWED=NO; 0 compiler warnings/errors; IPA CRC/arm64/metadata validator.
+- PASS: toàn bộ regression native/Swift trong audit, 45 dòng PASS, gồm CMS thật (khóa tổng hợp), profile seal, từng extension, queue cancellation/removal, Keychain/PKCS12, TLS, download/hash, xử lý/khôi phục tệp.
+- IPA 3.4.0 (340): 5,484,504 bytes, SHA-256 310d65f1eec68eabf2fed87dad763e8795f39e28f10f74734c3c304244e718ac. Artifact 14536028345 chứa đúng một IPA.
+- Binary scan: 8 marker query/exploit/identity cũ đều 0; source ZIP không chứa các cây vendor/overlay đã gỡ.
+- Chưa kiểm thử iPhone: cần người dùng ký cài IPA, kiểm tra luồng thực tế và OTA. Kết quả test synthetic không chứng minh Apple chấp nhận chứng chỉ.
 
-## Bước còn lại bắt buộc
-
-Chạy `bash scripts/audit-ios.sh` trên macOS (một lượt). Script chạy đủ source checks/test rồi xcodegen/xcodebuild, kiểm tra log và IPA. Sửa mọi lỗi symbol/type/SDK trước commit cuối. Người dùng đã xác nhận ngoại lệ: được commit trên nhánh CI tạm để chạy Xcode. Chỉ coi bản đạt kiểm chứng sau khi audit/build thật thành công. Không ghi đè main khi chưa có kết quả.
+Xem [bằng chứng build](VERIFIED-SIGN-ONLY-3.4.0.md) và [workflow 44535871357](https://github.com/joinalex1122/NiKSign-Build/actions/runs/44535871357). Commit ghi kết quả sau đó chỉ sửa tài liệu, không thay mã đã build và không chạy app build lần hai.
 
 ## File đã xóa (169)
 
@@ -277,9 +273,10 @@ Chạy `bash scripts/audit-ios.sh` trên macOS (một lượt). Script chạy đ
 
 Các file production mới: `NiKPathValidator.swift` (bundle/path riêng), `NiKRevocationSchedule.swift` (lịch/backoff OCSP), `NiKOTALandingPage.swift` (HTML cài đặt escape an toàn). Các test mới: `PathValidatorSmoke`, `RevocationScheduleSmoke`, `ZsignCMS/main.cpp`, `zsign_cms_test.py`.
 
-## Theo dõi CI
+## Đối chiếu main và kết quả CI
 
-- 44533181646 / 0c5c163: source-checks PASS; macOS audit phát hiện fallback HTTP trả 501 thay vì 404. Đã thêm handler mặc định trước token routes ở cả server tệp và bootstrap profile. Chờ CI bản sửa; chưa xác nhận Xcode.
+Đã nhập history main 39d17db vào nhánh CI, giữ hai chỉnh sửa padding của người dùng; các thay đổi Apple identity/exploit được thay thế đúng yêu cầu Sign-only. Pre-copy profile mở rộng cho app/appex và build một lượt được giữ. AppIntents.framework chỉ là framework public của SDK, được liên kết để giải quyết cảnh báo metadata Xcode 16.
 
-- 44533648315 / 30df10a: toàn bộ regression macOS (kể cả native CMS, QueueRemoval, PKCS12/Keychain) PASS; xcodegen PASS, Xcode BUILD SUCCEEDED và IPA arm64/CRC PASS. QA chặn một cảnh báo metadata vì thiếu AppIntents.framework; đã thêm liên kết framework public của SDK. Không khôi phục mã truy cập ngoài sandbox.
-- Đã đối chiếu main 39d17db và giữ hai chỉnh sửa padding của người dùng. Các thay đổi Apple identity/trạng thái exploit được thay thế theo scope Sign-only; profile pre-copy và single build đã giữ. Merge history main vào nhánh CI trước khi chạy kiểm chứng bản cuối.
+Hai lỗi CI đã sửa: fallback HTTP 501→404; cảnh báo thiếu SDK metadata framework. Lần cuối 44535871357 PASS. Không gỡ test hay hạ cổng QA. Mã build 01cbc2f là ancestor của commit ghi kết quả tài liệu.
+
+File tài liệu xác nhận thêm sau build: `docs/VERIFIED-SIGN-ONLY-3.4.0.md`. Các cập nhật cuối ở VALIDATION.md, DEPENDENCIES.md và hai file bàn giao chỉ ghi kết quả và giới hạn kiểm chứng.
