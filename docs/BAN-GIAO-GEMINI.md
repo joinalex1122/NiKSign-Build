@@ -1,5 +1,9 @@
 # Bàn giao NiKSign cho Gemini — 19/11/2026
 
+## Quy định build mới — 19/11/2026
+
+Theo yêu cầu mới của người dùng: từ nay chỉ build MỘT lượt, kể cả bản phát hành. Workflow chạy audit-ios.sh 1, xuất một IPA; bỏ lượt pass2. Giữ các kiểm tra và tests trong lượt đó. Các yêu cầu hai lượt trong tài liệu cũ đã được thay thế; không tự bật lại.
+
 ## Đọc trước, không bắt đầu lại
 
 Người dùng chỉ có iPhone, báo iOS 27.2 chính thức; đã cài và kiểm thử NiKSign. Muốn sửa thực tế, nâng cấp liên tục và cập nhật bàn giao sau mỗi mốc. Không nói đã hoàn tất tính năng chỉ vì build qua. Không đòi xác nhận lại các sửa lỗi/nâng cấp đã được giao. Người dùng yêu cầu riêng: tạo bàn giao này cho Gemini.
