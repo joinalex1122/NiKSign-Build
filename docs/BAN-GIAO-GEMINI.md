@@ -1,5 +1,9 @@
 # Bàn giao NiKSign cho Gemini — 19/11/2026
 
+## Gate đã đạt — đọc trước trạng thái lịch sử bên dưới
+
+Mã38226a3/run44454201571 đã completed/success, một lượt audit/build, IPA arm64 đã tải lại và kiểm CRC. Đọc VERIFIED-OTA-BUILD-38226a3.md để lấy hash/bằng chứng/giới hạn và bước thử trên iPhone. Mốc31 trong progress chứa cả các lượt fail trước, đã được thay thế về gate; chưa xác nhận cài trên máy thật. Tài liệu trong checkpoint có thể mới hơn code commit về phần ghi nhận QA; mã ứng dụng vẫn là38226a3.
+
 ## Quy định build mới — 19/11/2026
 
 Theo yêu cầu mới của người dùng: từ nay chỉ build MỘT lượt, kể cả bản phát hành. Workflow chạy audit-ios.sh 1, xuất một IPA; bỏ lượt pass2. Giữ các kiểm tra và tests trong lượt đó. Các yêu cầu hai lượt trong tài liệu cũ đã được thay thế; không tự bật lại.
@@ -77,7 +81,7 @@ Chưa có bằng chứng quyền ngoài sandbox hoạt động trên iOS27.2 v�
 - `5f568455dc61fc7682cde5306c65b13a9cfc7da1`, run https://github.com/joinalex1122/NiKSign-Build/actions/runs/44240972874 : API xác nhận completed/success. Chứa mốc1–22, chưa có fix23. Người dùng đã tải artifact; `pass1`/`pass2` là hai build cùng mã nguồn, dùng IPA pass2. Không gọi hai thư mục là hai phiên bản.
 - `5e43918a24b56d1a0a8228c6f33a3e3a81e4f07a`, run44235522878: hai clean audits/codecs/IPA verify PASS, workflow fail chỉ vì upload ETIMEDOUT/ENOTFOUND. Xem BUILD-5e43918-UPLOAD-FAILURE.md. Mốc22 thêm3 upload attempts, vẫn fail nếu attempt cuối lỗi; không tắt warning gate.
 - Các IPA cũ4d9b7e2/d30b78d không chứa fix mới. Không phát lại chúng dưới tên mới. Toàn bộ IPA là unsigned, không có chứng chỉ của người dùng trong bàn giao.
-- Gate bắt buộc: hai clean audits liên tiếp, zero warnings/errors trên mỗi full audit log; build xong chưa đủ, phải upload và tải/verify checksum. Sau đó mới báo có IPA mới.
+- Gate hiện tại theo yêu cầu mới: MỘT clean audit/build, zero warnings/errors trên log; build xong chưa đủ, phải upload và tải/verify checksum. Sau đó mới báo có IPA mới.
 
 ## Phạm vi schema9 thực sự
 
@@ -109,7 +113,7 @@ Còn lớn:
 ## Kiểm thử và môi trường
 
 Workspace: `/workspace/NiKSign-upgrades`; Linux Swift6.1.2: `/workspace/.niksign-toolchain/swift-6.1.2-RELEASE-ubuntu24.04/usr/bin/swiftc`.
-Linux không typecheck SwiftUI/UIKit/Security và không build IPA. Native parse chỉ syntax. Xcode16.4/macOS15 Intel/SDK18.5 ở Actions, iOS deployment17.
+Linux không typecheck SwiftUI/UIKit/Security và không build IPA. Native parse chỉ syntax. Actions dùng macOS15 Intel, iOS deployment17; phiên bản Xcode/SDK xem log của run tương ứng.
 
 Chạy `python3 scripts/check-integration.py`, `python3 scripts/check-dependencies.py`, tests phù hợp; `bash scripts/audit-ios.sh 1` trên macOS. Harness Certificates phải copy OCSP service; lỗi thiếu symbol này đã sửa. Audit có PatchSchema9Smoke và PatchContainerAccessSmoke.
 Mốc23 local PASS: FileToolsSmoke (ZIP/CRC/missing profile), PatchContainerAccessSmoke, Native parse và source checks. Linux SwiftPM ZIPFoundation có warning PrivacyInfo.xcprivacy, không gọi Linux zero-warning. Chưa có Apple gate cho code23 tại lúc viết bàn giao.
@@ -117,7 +121,7 @@ Mốc23 local PASS: FileToolsSmoke (ZIP/CRC/missing profile), PatchContainerAcce
 ## Cách tiếp tục
 
 1. Kiểm SHA nhánh mới và workflow gắn SHA đó, xử lý lỗi thật. Không lặp lại gate trên code cũ để chứng minh code mới.
-2. Tải IPA pass2 khi upload success, kiểm verify-ipa.py với Bundle ID com.niksign.app, ghi checksum và phát đúng build cho người dùng.
+2. Tải IPA duy nhất trong artifact của đúng commit khi upload success, kiểm verify-ipa.py với Bundle ID com.niksign.app, ghi checksum và phát đúng build cho người dùng.
 3. Người dùng thử Garena từ bản gốc, CapCut patch; thu thông báo chi tiết và log truy cập đã che dữ liệu nhạy cảm. Sửa đúng tầng signature/profile vs OS container access.
 4. Hoàn thành từng mục nâng cấp còn thiếu, cập nhật UPGRADE-PROGRESS sau mỗi mốc.
 
