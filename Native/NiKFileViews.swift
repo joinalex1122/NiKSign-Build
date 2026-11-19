@@ -26,7 +26,35 @@ struct NiKHubPreview: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Color(uiColor: .systemGroupedBackground))
-
+            if appState.kernelExploitRunning || appState.exploitStatus != .notStarted {
+               HStack(spacing: 8) {
+if appState.kernelExploitRunning {
+ProgressView().controlSize(.small)
+Text(t("Đang khởi tạo quyền 3105...", "Initializing 3105...")).font(.caption).foregroundStyle(.secondary)
+Spacer()
+    } else {
+switch appState.exploitStatus {
+case .success:
+Circle().fill(Color.green).frame(width: 8, height: 8)
+Text(t("3105 sẵn sàng", "3105 ready")).font(.caption).foregroundStyle(.secondary)
+Spacer()
+case .failed:
+Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.caption)
+Text(t("Khởi tạo 3105 thất bại", "3105 failed")).font(.caption).foregroundStyle(.red)
+Spacer()
+Button(t("Thử lại", "Retry")) { appState.runKernelExploitIfNeeded() }.font(.caption.weight(.semibold)).buttonStyle(.bordered).controlSize(.mini)
+case .unsupported(let msg):
+Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange).font(.caption)
+Text(msg).font(.caption).foregroundStyle(.orange).lineLimit(2)
+Spacer()
+case .notStarted:
+EmptyView()
+}
+}
+}
+.padding(.horizontal, 16).padding(.bottom, 8).background(Color(uiColor: .systemGroupedBackground))
+            }
+                
                 Group {
                     switch section {
                     case 0:
