@@ -12,6 +12,10 @@ Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` tro
 
 Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–23), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
 
+## Cập nhật mốc29 — worse_query đã được nối vào code
+
+Mốc29 tích hợp forcequitOS/worse_query GPL trong Vendor/WorseQuery + bridge, wrapper NiKWorseQueryAccess, ContainerStore overlay và DevicePatchService grants giữ qua transaction. Không cấp App Group giả. Cache gốc được bảo toàn bởi NiKGroupCacheTransaction (journal/identity/recovery), từ chối overwrite cache mới; dùng nhóm riêng để tránh tiến trình khác cùng ghi. Chính sách chỉ các container được hỗ trợ/OS đã chọn, không toàn root. Token release ở boundary. Linux safety tests PASS, nhưng native grant trên iPhone và Apple compile của mốc29 còn cần kiểm chứng. Mô tả mốc28 “chưa tích hợp” là trạng thái lịch sử, đã được thay thế về code, chưa thay thế về kết quả thiết bị.
+
 ## Cập nhật mốc28 — nguồn chênh lệch đã xác định
 
 Người dùng đưa ảnh3105 gốc2.2 Beta1 chạy27.2.0(24B119), backend worse_query/AppGroup Có, không cần ghép đôi hoặcVPN. Đã xác nhận patch gốc làm được trên máy. NiKSign thiếu backend này; không tiếp tục nói “bật Developer Mode” hoặc chỉ đổi SupportPolicy là xong. Đọc3105-27.2-ACCESS-FINDINGS.md. Mốc28 mới thêm chẩn đoán entitlement của app và ngăn chọn sai legacy kernel trên27.2, CHƯA tích hợp worse_query/CHƯA sửa xong patch. Cần AppGroup được provisioning/chữ ký cho phép và container thật; giữ BundleID riêng có thể được, không mặc định buộcMHA hayenterprise cho tuyến mới. Khi portPoC cần giữ cache/journal/recovery, không dọn cache gốc mù.

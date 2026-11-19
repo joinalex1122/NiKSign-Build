@@ -155,6 +155,7 @@ struct NiKSystemFiles: View {
     @State private var message = ""
     @State private var query = ""
     @State private var showHidden = false
+    @State private var accessHandle: Int64 = -1
     @State private var preview: NiKPreviewDocument?
 
     private var filtered: [URL] {
@@ -298,6 +299,7 @@ struct NiKSystemFiles: View {
         }
         .refreshable { reload() }
         .onAppear { reload() }
+        .onDisappear { NiKWorseQueryAccess.release(accessHandle); accessHandle = -1 }
         .sheet(item: $preview) { NiKQuickLook(url: $0.url) }
     }
 
@@ -312,6 +314,8 @@ struct NiKSystemFiles: View {
     }
 
     private func reload() {
+        NiKWorseQueryAccess.release(accessHandle)
+        accessHandle = NiKWorseQueryAccess.isApplicable ? NiKWorseQueryAccess.acquire(directory.path) : -1
         do {
             entries = try FileManager.default.contentsOfDirectory(
                 at: directory,

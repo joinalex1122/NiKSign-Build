@@ -108,5 +108,15 @@
     "status": "linked",
     "note": "Mã nguồn local tại Vendor/Zsign, dựa trên revision đã ghim; sửa điều kiện giữ provisioning profile. Hash gốc và bản sửa trong UPSTREAM.json.",
     "licenseFile": "Zsign-LICENSE.txt"
+  },
+  {
+    "name": "WorseQuery",
+    "repository": "https://github.com/forcequitOS/worse_query",
+    "ref": "pinned source",
+    "revision": "d1540e20cd82b974d891e0551ced6d6aeb570ac2",
+    "license": "GPL-3.0-or-later",
+    "status": "vendored",
+    "note": "worse_query, gọi theo container với App Group được cấp; NiKSign bảo toàn cache và nhả token.",
+    "licenseFile": "WorseQuery-LICENSE.txt"
   }
 ]

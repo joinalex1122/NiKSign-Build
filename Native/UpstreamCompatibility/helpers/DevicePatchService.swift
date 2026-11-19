@@ -85,6 +85,8 @@ enum DevicePatchService {
         operation: ([String: URL]) throws -> T
     ) throws -> T {
         var roots: [String: URL] = [:]
+        var handles: [Int64] = []
+        defer { handles.forEach { NiKWorseQueryAccess.release($0) } }
 
         for bundleID in bundleIDs {
             _ = try PatchPathValidator.canonicalBundleIdentifier(bundleID)
@@ -98,6 +100,11 @@ enum DevicePatchService {
                 },
                 validatePath: { ContainerStore.isApplicationContainerPath($0) },
                 probe: { root in
+                    if NiKWorseQueryAccess.isApplicable {
+                        let handle = NiKWorseQueryAccess.acquire(root.path)
+                        if handle >= 0 { handles.append(handle) }
+                        else { log("patch: " + (NiKWorseQueryAccess.lastError ?? "worse_query denied")) }
+                    }
                     _ = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
                 }
             )

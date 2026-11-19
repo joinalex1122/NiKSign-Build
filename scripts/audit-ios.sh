@@ -11,6 +11,8 @@ python3 Tests/minizip_test.py
 python3 Tests/patch_v9_test.py
 python3 Tests/verify_ipa_test.py
 node Tests/web.test.js
+xcrun swiftc Native/Services/NiKGroupCacheTransaction.swift Native/Models/NiKWorseQueryPolicy.swift Tests/WorseQuerySafetySmoke.swift -o /tmp/nik-wq-safety
+/tmp/nik-wq-safety
 python3 Tests/zsign_provisioning_test.py
 xcrun swiftc Native/Models/NiKOTAURLs.swift Tests/OTAURLsSmoke.swift -o /tmp/nik-ota-urls-test
 /tmp/nik-ota-urls-test

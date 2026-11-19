@@ -76,3 +76,7 @@ New source additions and build wiring are not yet Xcode/device validated.
 Zsign is built from Vendor/Zsign at claration/zsign c4ba9da4283031c07efa03bce42c4b8602d22e73 (MIT). One native condition in src/bundle.cpp is corrected so removeProvision=false embeds the selected profile before resource sealing, while true removes it. Original source hashes and the patch description are recorded in Vendor/Zsign/UPSTREAM.json. The MIT license is included in Vendor/Zsign/LICENSE.
 
 The Zsign portable Mach-O header also uses SDK CPU/VM definitions on Apple platforms to avoid duplicate macro definitions; portable definitions remain unchanged on other hosts. Header provenance is recorded separately in UPSTREAM.json.
+
+### worse_query
+
+Source: forcequitOS/worse_query by Taj C (forcequit), GPL-3.0-or-later, pinned source tree d1540e20cd82b974d891e0551ced6d6aeb570ac2. Original copyright/license notices retained in Vendor/WorseQuery. NiKSign fixes NSError NULL parameters and query cleanup on symlink failure; XPC objects use ARC ownership. Per-container integration preserves the App Group cache using NiKGroupCacheTransaction, rather than discarding user cache contents. This does not grant an App Group entitlement or override provisioning.

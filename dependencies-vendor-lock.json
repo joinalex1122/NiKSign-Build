@@ -70,5 +70,9 @@
   "Vendor/Zsign/src/common/fs.h": "b5fea7e789b87fe91b4cffec54ac5ad2c0edd685d364856a2ee0bf00373671dc",
   "Vendor/Zsign/src/common/timer.cpp": "c41d4cb63a8320567c9e9acb9e243c0efad42941d6719ec7b9701e4df23b2d94",
   "Vendor/Zsign/src/common/util.h": "d6db04871cf590fb4022092836fede20c39ba25054ffed6e4698870c805c3b5c",
-  "Vendor/Zsign/src/include/ZSign.h": "2a679ae2c55cfe694f8f7d2f42d94b030acccd69d800f7c8582ef3619cc3c98f"
+  "Vendor/Zsign/src/include/ZSign.h": "2a679ae2c55cfe694f8f7d2f42d94b030acccd69d800f7c8582ef3619cc3c98f",
+  "Vendor/WorseQuery/LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "Vendor/WorseQuery/worse_query.h": "02c919ddec399349ff0a8c1230fea01d590fd30880688da6edbb51ac38365408",
+  "Vendor/WorseQuery/UPSTREAM.json": "5e360e47194eacd897515534c68bd7638a8f7dd850f72e32ede6b777b4ade85f",
+  "Vendor/WorseQuery/worse_query.m": "887b1646d89eccd9ba684cba9f9f594dc31ab61836f45ca8837e9f838ff51603"
 }

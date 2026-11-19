@@ -15,11 +15,11 @@ struct NiK3105AccessView: View {
             }
             Section(t("Điều kiện App Group", "App Group Requirements")) {
                 if checked {
-                    switch NiK3105AccessAssessment.stage(groups: groups, accessible: accessible, backendAvailable: false) {
+                    switch NiK3105AccessAssessment.stage(groups: groups, accessible: accessible, backendAvailable: NiKWorseQueryAccess.isApplicable) {
                     case .unknownEntitlements: Text(t("Chưa đọc được quyền App Group của chữ ký.", "Unable to read signed App Group entitlements."))
                     case .missingAppGroup: Text(t("Chữ ký hiện không có App Group. Cần profile cho phép một App Group riêng và ký app với entitlement phù hợp.", "This signature has no App Group. A profile authorizing an App Group and corresponding signed entitlements are required."))
                     case .inaccessibleAppGroup: Text(t("Có khai báo App Group nhưng chưa mở được container. Cần kiểm tra profile và cách ký/cài.", "App Groups are declared but no container could be opened. Check provisioning and signing/installation."))
-                    case .missingBackend: Text(t("Đã có container App Group; bộ truy cập worse_query chưa được tích hợp trong bản NiKSign này.", "An App Group container is available; this NiKSign build does not yet integrate the worse_query backend."))
+                    case .missingBackend: Text(t("Đã có container App Group; phiên bản iOS này chưa có tuyến worse_query được chọn.", "An App Group is available; this iOS version has no selected worse_query route."))
                     case .candidate: Text(t("Đủ điều kiện để thử, chưa xác minh quyền dữ liệu ứng dụng khác.", "Prerequisites met for testing; access to other applications is not verified."))
                     }
                     ForEach(groups ?? [], id: \.self) { group in
@@ -31,7 +31,7 @@ struct NiK3105AccessView: View {
                 Button(t("Kiểm tra quyền thực tế", "Check Actual Entitlements")) { check() }
             }
             Section(t("Đối chiếu với 3105 2.2 Beta 1", "Comparison with 3105 2.2 Beta 1")) {
-                Text(t("Ảnh kiểm thử iOS 27.2 (24B119) dùng worse_query và báo App Group: Có. Đường này không cần ghép đôi/VPN. NiKSign hiện có bộ truy cập cũ; đổi nhãn hỗ trợ iOS hoặc bật Chế độ nhà phát triển không thay thế bộ truy cập đó.", "The tested iOS 27.2 (24B119) screenshot reports worse_query and an available App Group, without pairing/VPN. NiKSign currently uses the older backend; changing compatibility labels or enabling Developer Mode does not replace that backend."))
+                Text(t("Ảnh kiểm thử iOS 27.2 (24B119) dùng worse_query và báo App Group: Có. Đường này không cần ghép đôi/VPN. NiKSign dùng worse_query theo từng container khi App Group hợp lệ; bật Chế độ nhà phát triển không tự cấp quyền dữ liệu.", "The tested iOS 27.2 (24B119) screenshot reports worse_query and an available App Group, without pairing/VPN. NiKSign uses per-container worse_query grants with a valid App Group; Developer Mode alone does not grant data access."))
                 Text(t("Thêm khóa vào Info.plist hoặc đổi Bundle ID không tự cấp App Group. Màn này chỉ kiểm tra quyền của NiKSign, không chạy khai thác hoặc sửa tệp.", "Adding an Info.plist key or changing Bundle ID does not grant an App Group. This screen only checks NiKSign's own permissions; it does not invoke an exploit or modify files."))
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -42,7 +42,7 @@ struct NiK3105AccessView: View {
     private func check() {
         var detail: NSError?
         groups = NiKSignedAppGroupIdentifiers(&detail)
-        error = detail?.localizedDescription
+        error = detail?.localizedDescription ?? NiKWorseQueryAccess.lastError
         accessible = []
         for group in groups ?? [] {
             if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),

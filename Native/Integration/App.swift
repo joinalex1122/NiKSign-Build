@@ -154,7 +154,12 @@ class AppState: ObservableObject {
 
         guard kernelExploitApplicable else {
             if v.major == 27 && v.minor >= 2 {
-                exploitStatus = .unsupported("Cần worse_query và App Group hợp lệ; bộ truy cập này chưa được tích hợp trong NiKSign.")
+                var error: NSError?
+                let groups = NiKSignedAppGroupIdentifiers(&error) ?? []
+                exploitStatus = groups.isEmpty
+                    ? .unsupported("worse_query cần App Group được profile/chữ ký cho phép. Xem Cài đặt → Truy cập 3105.")
+                    : .notStarted // Grants are acquired and verified per container, not a global sandbox escape.
+
             }
             return
         }

@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib, json
 r = Path(__file__).resolve().parents[1]
 items = json.loads((r/'Native/Licenses/components.json').read_text())
-expected = {'OpenSSL','minizip','MachOKit','TrollFools','ArArchiveKit','ellekit','ZIPFoundation','SWCompression','optool','GCDWebServer','Zsign'}
+expected = {'OpenSSL','minizip','MachOKit','TrollFools','ArArchiveKit','ellekit','ZIPFoundation','SWCompression','optool','GCDWebServer','Zsign','WorseQuery'}
 assert {x['name'] for x in items} == expected
 config = (r/'project.yml').read_text()
 for e in items:
@@ -53,7 +53,7 @@ sys_feat = (r/'Native/Dependencies/NiKSystemFeaturesService.swift').read_text()
 assert 'LockScreenFootnote' in sys_feat and 'IsSupervised' in sys_feat and 'isCleanerInstalled' in sys_feat
 hub = (r/'Native/Dependencies/NiK3105V2HubView.swift').read_text()
 assert 'NiK3105V2HubView' in hub
-print('PASS: all 11 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')
+print('PASS: all 12 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')
 
 for original, replacement in json.loads((r/'server-overlays.json').read_text()).items():
     assert (r/original).is_file() and (r/replacement).is_file()

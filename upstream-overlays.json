@@ -10,5 +10,6 @@
   "kexploit/kexploit_opa334.m": "Native/UpstreamCompatibility/kexploit/kexploit_opa334.m",
   "helpers/Localization.swift": "Native/UpstreamCompatibility/helpers/Localization.swift",
   "helpers/PatchPackageCodec.swift": "Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift",
-  "helpers/DevicePatchService.swift": "Native/UpstreamCompatibility/helpers/DevicePatchService.swift"
+  "helpers/DevicePatchService.swift": "Native/UpstreamCompatibility/helpers/DevicePatchService.swift",
+  "helpers/ContainerStore.swift": "Native/UpstreamCompatibility/helpers/ContainerStore.swift"
 }

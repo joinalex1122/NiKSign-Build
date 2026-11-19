@@ -39,6 +39,7 @@ targets:
       - views/RepositoryHomeView.swift
       - helpers/PatchPackageCodec.swift
       - helpers/DevicePatchService.swift
+      - helpers/ContainerStore.swift
       - helpers/SupportPolicy.swift
       - helpers/Localization.swift
       - ContentView.swift
@@ -47,6 +48,10 @@ targets:
       - helpers/DisplayIdentityAttribution.swift
       - kexploit/krw.m
       - kexploit/kexploit_opa334.m
+    - path: Vendor/WorseQuery
+      excludes:
+      - LICENSE
+      - UPSTREAM.json
     - path: Vendor/minizip
       excludes:
       - MiniZip64_info.txt
