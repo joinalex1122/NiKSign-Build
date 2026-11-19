@@ -215,21 +215,24 @@ actor SigningService {
         // Step 5: Execute Zsign.
         try report(5, 0.84, "Đang ký chữ ký số bằng Zsign…")
         var completed = false
+        let embeddedProfile = app.appendingPathComponent("embedded.mobileprovision")
+        if fm.fileExists(atPath: embeddedProfile.path) {
+            try fm.removeItem(at: embeddedProfile)
+        }
+        try provData.write(to: embeddedProfile, options: .atomic)
         let accepted = Zsign.sign(
             appPath: app.path,
             provisionPath: profile.path,
             p12Path: p12.path,
             p12Password: password,
-            // Pinned Zsign c4ba9da: bRemoveProvision=true WRITES the profile in bundle.cpp.
-            // The Swift argument name is inverted relative to the native implementation.
-            removeProvision: true,
+            // Keep pre-copied embedded.mobileprovision intact by passing removeProvision: false.
+            removeProvision: false,
             completion: { completed = $0 }
         )
         guard accepted && completed && Zsign.checkSigned(appExecutable: executableURL.path) else {
             throw NiKError("Zsign báo lỗi. Kiểm tra chứng chỉ, profile, Bundle ID và entitlement.")
         }
 
-        let embeddedProfile = app.appendingPathComponent("embedded.mobileprovision")
         guard fm.fileExists(atPath: embeddedProfile.path),
               try Data(contentsOf: embeddedProfile) == Data(contentsOf: profile) else {
             throw NiKError("Zsign chưa giữ đúng embedded.mobileprovision trong app đã ký. Không xuất IPA thiếu profile.")
