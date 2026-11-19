@@ -386,7 +386,7 @@ struct NiKLibraryView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 96)
+                
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle(t("Ký IPA", "Sign IPA"))
@@ -720,7 +720,7 @@ struct NiKIPADetail: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
-            .padding(.bottom, 96)
+            .padding(.bottom, 150)
         }
         .disabled(deleting)
         .overlay { if deleting { ProgressView(t("Đang chuyển vào Thùng rác…", "Moving to Trash…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
