@@ -7,6 +7,7 @@ case "$nik_audit_pass" in 1|2) ;; *) exit 2 ;; esac
 rm -rf build NiKSign.xcodeproj
 python3 scripts/check-integration.py
 python3 scripts/check-dependencies.py
+bash scripts/test-loopback-ota.sh
 python3 Tests/minizip_test.py
 python3 Tests/patch_v9_test.py
 python3 Tests/verify_ipa_test.py
@@ -65,7 +66,6 @@ xcrun swiftc Native/Services/NiKPatchContainerAccess.swift Tests/PatchContainerA
 xcrun swiftc Native/Services/NiKSignedFileAccess.swift Tests/SignedFileAccessSmoke.swift -o /tmp/nik-signed-file-test
 /tmp/nik-signed-file-test
 bash scripts/test-file-tools.sh
-bash scripts/test-loopback-ota.sh
 bash scripts/test-local-tls.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh

@@ -168,6 +168,9 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
     // falling back to a LAN interface or exposing anything except this one IPA.
     for (NSUInteger attempt = 0; attempt < 32; attempt++) {
         GCDWebServer *server = [GCDWebServer new];
+        [server addDefaultHandlerForMethod:@"GET" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+            return [GCDWebServerResponse responseWithStatusCode:404];
+        }];
         [server addHandlerForMethod:@"GET" path:@"/health" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
             return [GCDWebServerDataResponse responseWithData:[@"NiKSign Local Payload" dataUsingEncoding:NSUTF8StringEncoding] contentType:@"text/plain"];
         }];
