@@ -5,6 +5,8 @@ struct NiKHubPreview: View {
     @AppStorage("nik.language") private var language = "vi"
     @EnvironmentObject private var patchStore: PatchProjectStore
     @EnvironmentObject private var repositoryStore: PackageRepositoryStore
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var patchDraftCoordinator: PatchDraftCoordinator
     @State private var section = 0
     @State private var show3105Settings = false
     @State private var show3105Logs = false
@@ -12,7 +14,7 @@ struct NiKHubPreview: View {
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
 
     var body: some View {
-        NavigationStack {
+        
             VStack(spacing: 0) {
                 Picker(t("Nhóm", "Group"), selection: $section) {
                     Text(t("Kho 3105", "Store")).tag(0)
@@ -40,17 +42,23 @@ struct NiKHubPreview: View {
                     case 2:
                         PatchProjectsView()
                     default:
-                        NiK3105ToolsDashboardView()
+                        NavigationStack {
+                                         NiK3105ToolsDashboardView()
+                        .navigationTitle("3105")
+                            .navigationBarTitleDisplayMode(.inline)
+                        }
                     }
                 }
             }
-            .navigationTitle("3105")
-            .navigationBarTitleDisplayMode(.inline)
+            
+            
             .sheet(isPresented: $show3105Settings) { SettingsView() }
             .sheet(isPresented: $show3105Logs) { LogView() }
             .patchStorePresentation(patchStore)
             .repositoryStorePresentation(repositoryStore, patchStore: patchStore)
-        }
+            .onAppear { appState.detectSupport() }
+        .onChange(of: patchDraftCoordinator.request?.id) { id in if id != nil { section = 2 } }
+        .onChange(of: patchDraftCoordinator.importRequest?.id) { id in if id != nil { section = 2 } }
     }
 }
 
