@@ -7,7 +7,7 @@ enum NiKOTAURLs {
         return URL(string: "https://127.0.0.1:\(port)/\(token)/manifest.plist")
     }
     static func install(manifest: URL) -> URL? {
-        guard manifest.scheme == "https", ((manifest.host == "127.0.0.1" && manifest.port != nil && manifest.user == nil && manifest.password == nil) || NiKSemiLocalOTA.isManifest(manifest)) else { return nil }
+        guard manifest.scheme == "https", (manifest.host == "127.0.0.1" && manifest.port != nil && manifest.user == nil && manifest.password == nil) else { return nil }
         var parts = URLComponents()
         parts.scheme = "itms-services"
         parts.host = "" // Required authority: itms-services://?action=..., not itms-services:?action=...

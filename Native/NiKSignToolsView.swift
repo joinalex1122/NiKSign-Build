@@ -14,19 +14,9 @@ struct NiKSignView: View {
     @StateObject private var certStore = NiKCertificateStore.shared
     @State private var selectedTab = 1
     @State private var showImporter = false
-    @State private var importKind = "document"
-    @State private var text = "{\n  \"appearance\": \"dark\",\n  \"enabled\": true\n}"
-    @State private var name = "config.json"
+    @State private var importKind = "ipa"
     @State private var message = ""
     @State private var busy = false
-    @State private var exportDocument: ExportDocument?
-    @State private var exporting = false
-    @State private var exportName = "config.json"
-    @State private var packageData: Data?
-    @State private var packageKey: Data?
-    @State private var pendingPackage: Data?
-    @State private var patchPassword = ""
-    @State private var initialDialerURL: URL?
 
     // Signing inputs & saved certificates
     @State private var useSavedCert = true
@@ -38,40 +28,30 @@ struct NiKSignView: View {
 
     // Signing customization & tweak injection options
     @State private var signingOptions = NiKSigningOptions()
-    @State private var signingProgress: NiKSigningProgress?
-    @State private var signedArtifact: NiKSignedArtifact?
-
-    // Local HTTP export server state
-    @State private var loopback = NiKLoopbackServer()
-    @State private var loopbackURL: URL?
-    @State private var manifestURL: URL?
-    @Environment(\.openURL) private var openURL
+    @ObservedObject private var queue = NiKSigningQueue.shared
+    @State private var trackedJobID: UUID?
+    private var trackedJob: NiKSigningJob? { queue.jobs.first { $0.id == trackedJobID } }
+    private var signedArtifact: NiKSignedArtifact? { trackedJob?.output }
+    private var signingProgress: NiKSigningProgress? {
+        guard let job = trackedJob, job.state.isActive else { return nil }
+        return NiKSigningProgress(step: job.state == .packaging ? 6 : 3, totalSteps: 6, fraction: job.fraction, description: job.step)
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            editorTab
-                .tabItem { Label("Trình sửa", systemImage: "doc.text") }
-                .tag(0)
             signingTab
                 .tabItem { Label("Ký IPA", systemImage: "signature") }
                 .tag(1)
             altSourceTab
                 .tabItem { Label("Kho IPA", systemImage: "shippingbox") }
                 .tag(2)
-            v2HubTab
-                .tabItem { Label("3105 2.0", systemImage: "sparkles.rectangle.stack") }
-                .tag(3)
             infoTab
                 .tabItem { Label("Thông tin", systemImage: "info.circle") }
                 .tag(4)
         }
-        .onDisappear { stopLoopback() }
         .disabled(busy)
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
             attempt { guard let url = try result.get().first else { return }; try receive(url) }
-        }
-        .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .data, defaultFilename: exportName) { result in
-            if case .failure(let error) = result { message = error.localizedDescription }
         }
         .task(id: initialURL) {
             guard let url = initialURL else { return }
@@ -80,11 +60,7 @@ struct NiKSignView: View {
             case "p12": importKind = "p12"; useSavedCert = false; selectedTab = 1
             case "mobileprovision": importKind = "profile"; useSavedCert = false; selectedTab = 1
             case "dylib", "deb": importKind = "tweak"; selectedTab = 1
-            case "3105pass":
-                initialDialerURL = url
-                selectedTab = 3
-                return
-            default: importKind = "document"; selectedTab = 0
+            default: message = "Chỉ hỗ trợ IPA, chứng chỉ và dylib/deb."; return
             }
             attempt { try receive(url) }
         }
@@ -93,43 +69,11 @@ struct NiKSignView: View {
         } message: { Text(message) }
     }
 
-    private var v2HubTab: some View {
-        NavigationStack {
-            NiK3105V2HubView(initialDialerURL: initialDialerURL)
-        }
-    }
-
-    private var editorTab: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                HStack {
-                    Button("Mở tệp") { pick("document") }
-                    Spacer()
-                    Button("Tệp mới") { resetDocument() }
-                    Button("Xuất") { exportEdited() }.disabled(pendingPackage != nil)
-                }
-                Text(name).font(.caption).foregroundStyle(.secondary)
-                Button("Tạo gói .3105 mẫu cho dữ liệu của bạn") { attempt { try newPackage() } }
-                if pendingPackage != nil {
-                    SecureField("Mật khẩu gói .3105", text: $patchPassword)
-                    Button("Mở khóa") { attempt { try unlockPackage() } }
-                }
-                if packageData != nil {
-                    Text("Gói .3105: sửa metadata và rules dạng JSON; replacementData là Base64. Giữ ID để xuất lại gói gốc.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                TextEditor(text: $text).font(.system(.footnote, design: .monospaced))
-                    .autocorrectionDisabled().textInputAutocapitalization(.never)
-                Text("Chỉ sửa bản sao bạn nhập. Xuất để lưu vào Tệp; không ghi vào app khác.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }.padding().navigationTitle("NiKSign · Tệp")
-        }
-    }
-
     private var signingTab: some View {
         NavigationStack {
             Form {
                 Section("1. Gói ứng dụng IPA") {
+                    NavigationLink("Hàng đợi ký") { NiKSigningQueueView(queue: queue) }
                     Button(ipa?.lastPathComponent ?? "Chọn tệp .ipa từ Tệp") { pick("ipa") }
                     Button("Duyệt & tải từ Kho AltSource") { selectedTab = 2 }
                         .font(.caption)
@@ -263,41 +207,11 @@ struct NiKSignView: View {
                         }
                         ShareLink("Chia sẻ / Lưu IPA đã ký", item: artifact.ipaURL)
 
-                        Text("Máy chủ nội bộ dùng HTTP để tải IPA và xem manifest. Cài OTA cần nơi lưu trữ HTTPS hợp lệ; bạn có thể chia sẻ IPA cho dịch vụ cài đặt đang dùng.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        NavigationLink("Cài qua HTTPS cục bộ") { NiKInstallIPAView(url: artifact.ipaURL) }
 
-                        Button("Bật tải IPA & xem Manifest cục bộ") {
-                            attempt {
-                                guard let url = loopback.start(
-                                    file: artifact.ipaURL,
-                                    bundleID: artifact.bundleID,
-                                    version: artifact.version,
-                                    title: artifact.displayName,
-                                    httpsHost: nil
-                                ) else {
-                                    if let error = loopback.lastError { throw error }
-                                    throw NiKError("Không khởi động được máy chủ nội bộ.")
-                                }
-                                loopbackURL = url
-                                manifestURL = loopback.manifestURL
-                            }
-                        }
                     }
 
-                    if let loopbackURL {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("IPA URL: \(loopbackURL.absoluteString)")
-                                .font(.caption2.monospaced())
-                                .textSelection(.enabled)
-                            if let manifestURL {
-                                Text("Manifest: \(manifestURL.absoluteString)")
-                                    .font(.caption2.monospaced())
-                                    .textSelection(.enabled)
-                            }
-                            Button("Dừng máy chủ nội bộ", role: .destructive) { stopLoopback() }
-                                .font(.caption)
-                        }
-                    }
+
                 }
             }.navigationTitle("Ký IPA")
         }
@@ -310,22 +224,12 @@ struct NiKSignView: View {
     private var infoTab: some View {
         NavigationStack {
             Form {
-                Section("Khả năng của bản 3.3") {
-                    Text("Các module bổ sung theo tài liệu 3105 2.0, cần kiểm thử trên thiết bị: Workspace v9 (Application + AppGroup + settings.json), bộ trộn Plist/JSON (%3105_Overwrite%, %3105_MatchPrefix%, %3105_Remove%), trình cài Dialer (.3105pass), Footnote màn hình khóa, Supervised và quản lý gói tính năng Cleaner.")
-                    Text("Quản lý nhiều bộ chứng chỉ .p12/.mobileprovision với mật khẩu lưu trong Keychain, đối chiếu chứng chỉ X.509 DER và kiểm tra hạn sử dụng.")
-                    Text("Tùy biến Info.plist, trích xuất .dylib từ .deb để gắn LC_LOAD_DYLIB vào binary Mach-O 64-bit, máy chủ HTTP nội bộ và manifest.plist và trình duyệt kho AltSource JSON.")
-                }
-                Section("Công cụ & giấy phép") {
+                Section("Công cụ ký IPA") {
+                    Text("Quản lý chứng chỉ trong Keychain, tùy chỉnh IPA, chèn dylib/deb và ký ứng dụng trên thiết bị.")
                     NavigationLink("Kiểm tra Mach-O / DEB / TAR") { NiKInspectView() }
                     NavigationLink("Giấy phép mã nguồn mở") { NiKLicensesView() }
                 }
-                Section("Nguồn tham khảo") {
-                    Link("3105 · YangJiiii · GPL-3.0", destination: URL(string: "https://github.com/YangJiiii/3105")!)
-                    Link("Feather · luồng ký IPA", destination: URL(string: "https://github.com/claration/feather")!)
-                    Link("Zsign · nhân ký MIT", destination: URL(string: "https://github.com/claration/zsign")!)
-                    Text("NiKSign 3.3 · mã sửa đổi GPL-3.0. Giấy phép và nguồn tương ứng đi kèm gói source.")
-                }
-            }.navigationTitle("Thông tin")
+            }.navigationTitle("NiKSign")
         }
     }
 
@@ -336,22 +240,11 @@ struct NiKSignView: View {
         return p12 != nil && profile != nil
     }
 
-    private func stopLoopback() {
-        loopback.stop()
-        loopbackURL = nil
-        manifestURL = nil
-    }
-
     private func attempt(_ action: () throws -> Void) {
         do { try action() } catch { message = error.localizedDescription }
     }
 
     private func pick(_ kind: String) { importKind = kind; showImporter = true }
-
-    private func resetDocument() {
-        packageData = nil; packageKey = nil; pendingPackage = nil; patchPassword = ""
-        name = "config.json"; text = "{\n  \"enabled\": true\n}"
-    }
 
     private func receive(_ url: URL) throws {
         let scoped = url.startAccessingSecurityScopedResource()
@@ -373,8 +266,9 @@ struct NiKSignView: View {
                 throw NiKError("Cần chọn tệp .dylib hoặc .deb.")
             }
             let safeName = url.lastPathComponent
-            let copy = FileManager.default.temporaryDirectory
-                .appendingPathComponent("\(UUID().uuidString)-\(safeName)")
+            let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Components", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let copy = directory.appendingPathComponent("\(UUID().uuidString)-\(safeName)")
             try FileManager.default.copyItem(at: url, to: copy)
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: copy.path)
             signingOptions.injectedFiles.append(copy)
@@ -391,8 +285,7 @@ struct NiKSignView: View {
             case "ipa":
                 if let ipa { try? FileManager.default.removeItem(at: ipa) }
                 ipa = copy
-                signedArtifact = nil
-                stopLoopback()
+                trackedJobID = nil
             case "p12":
                 if let p12 { try? FileManager.default.removeItem(at: p12) }
                 p12 = copy
@@ -403,64 +296,7 @@ struct NiKSignView: View {
             return
         }
 
-        let data = try Data(contentsOf: url)
-        if data.starts(with: Data("3105PATCH\0".utf8)) {
-            _ = try PatchPackageCodec.inspect(data)
-            packageData = nil; packageKey = nil; text = ""; name = url.lastPathComponent
-            pendingPackage = data; patchPassword = ""
-            if !(try PatchPackageCodec.inspect(data)).isPasswordProtected { try unlockPackage() }
-        } else {
-            let rendered: String
-            let newName: String
-            if let object = try? JSONSerialization.jsonObject(with: data) {
-                rendered = String(decoding: try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]), as: UTF8.self)
-                newName = url.deletingPathExtension().lastPathComponent + ".json"
-            } else {
-                let object = try PropertyListSerialization.propertyList(from: data, format: nil)
-                rendered = String(decoding: try PropertyListSerialization.data(fromPropertyList: object, format: .xml, options: 0), as: UTF8.self)
-                newName = url.deletingPathExtension().lastPathComponent + ".plist"
-            }
-            packageData = nil; packageKey = nil; pendingPackage = nil; patchPassword = ""
-            text = rendered; name = newName
-        }
-    }
-
-    private func unlockPackage() throws {
-        guard let pendingPackage else { return }
-        let decoded = try PatchPackageCodec.decode(pendingPackage, password: patchPassword)
-        guard !decoded.project.isPrivate else { throw NiKError("Gói riêng tư: bản này không mở để sửa nội dung.") }
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; encoder.dateEncodingStrategy = .iso8601
-        text = String(decoding: try encoder.encode(decoded.project), as: UTF8.self)
-        packageData = pendingPackage; packageKey = decoded.contentKey
-        self.pendingPackage = nil; patchPassword = ""
-    }
-
-    private func newPackage() throws {
-        let rule = PatchRule(bundleID: "app.niksign.example", relativePath: "Documents/config.json",
-            replacementFilename: "config.json", replacementData: Data("{\"appearance\":\"dark\"}".utf8))
-        let project = PatchProject(name: "MyAppearance", rules: [rule])
-        let encoded = try PatchPackageCodec.encodeNew(project: project, password: nil)
-        packageData = nil; packageKey = nil; patchPassword = ""
-        pendingPackage = encoded.data; name = "MyAppearance.3105"
-        try unlockPackage()
-    }
-
-    private func exportEdited() {
-        attempt {
-            let data: Data
-            if let packageData, let packageKey {
-                let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-                let project = try decoder.decode(PatchProject.self, from: Data(text.utf8))
-                data = try PatchPackageCodec.update(packageData, project: project, contentKey: packageKey)
-            } else if name.hasSuffix(".plist") {
-                let object = try PropertyListSerialization.propertyList(from: Data(text.utf8), format: nil)
-                data = try PropertyListSerialization.data(fromPropertyList: object, format: .xml, options: 0)
-            } else {
-                let object = try JSONSerialization.jsonObject(with: Data(text.utf8))
-                data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
-            }
-            exportName = name; exportDocument = ExportDocument(data: data); exporting = true
-        }
+        throw NiKError("Chỉ hỗ trợ IPA, p12, mobileprovision, dylib và deb.")
     }
 
     private func clearTemporaryCredentials() {
@@ -470,63 +306,26 @@ struct NiKSignView: View {
 
     private func sign() {
         guard let ipa else { return }
-        let activeP12: URL
-        let activeProfile: URL
-        let activePassword: String
-        let shouldCleanupTemp: Bool
-
-        do {
-            if useSavedCert, let saved = certStore.selectedProfile {
-                let creds = try certStore.credentials(for: saved)
-                activeP12 = creds.p12
-                activeProfile = creds.provision
-                activePassword = creds.password
-                shouldCleanupTemp = false
-            } else if let p12, let profile {
-                activeP12 = p12
-                activeProfile = profile
-                activePassword = p12Password
-                shouldCleanupTemp = true
-            } else {
-                return
-            }
-        } catch {
-            message = error.localizedDescription
-            return
-        }
-
-        let currentOptions = signingOptions
-        stopLoopback()
         busy = true
-        signedArtifact = nil
-        signingProgress = NiKSigningProgress(step: 1, totalSteps: 6, fraction: 0.05, description: "Khởi tạo tiến trình ký…")
-
         Task {
-            defer {
-                busy = false
-                signingProgress = nil
-                if shouldCleanupTemp {
-                    clearTemporaryCredentials()
-                }
-            }
+            defer { busy = false }
             do {
-                let artifact = try await SigningService.shared.signDetailed(
-                    ipa: ipa,
-                    p12: activeP12,
-                    profile: activeProfile,
-                    password: activePassword,
-                    options: currentOptions,
-                    onProgress: { stepProgress in
-                        Task { @MainActor in
-                            self.signingProgress = stepProgress
-                        }
-                    }
-                )
-                signedArtifact = artifact
-                message = "Đã ký thành công \(artifact.displayName) (\(artifact.bundleID) v\(artifact.version))."
-            } catch {
-                message = error.localizedDescription
-            }
+                let certificate: NiKCertificateProfile
+                if useSavedCert, let saved = certStore.selectedProfile { certificate = saved }
+                else if let p12, let profile {
+                    certificate = try certStore.importProfile(p12URL: p12, provisionURL: profile, password: p12Password, customName: customCertLabel)
+                    useSavedCert = true
+                    clearTemporaryCredentials()
+                } else { throw NiKError("Hãy nhập đủ chứng chỉ và profile.") }
+                guard var item = await NiKLibrary.shared.receiveItem(ipa) else { throw NiKError(NiKLibrary.shared.error) }
+                item.certificateID = certificate.id
+                item.options = signingOptions
+                guard NiKLibrary.shared.save(item) else { throw NiKError(NiKLibrary.shared.error) }
+                let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: certificate.id, options: signingOptions)
+                try queue.enqueue([job])
+                trackedJobID = job.id
+                message = "Đã thêm vào hàng đợi. Mở Hàng đợi ký để theo dõi."
+            } catch { message = error.localizedDescription }
         }
     }
 }

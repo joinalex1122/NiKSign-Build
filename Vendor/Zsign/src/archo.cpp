@@ -338,9 +338,51 @@ bool ZArchO::BuildCodeSignature(ZSignAsset* pSignAsset,
 	string strDerEntitlementsSlot;
 
 	string strEmptyEntitlements = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict/>\n</plist>\n";
+	// NiKSign: expand profile identity permissions for this executable, independently
+	// for the main application and each extension. Never mutate the asset template.
+	string strExecutableEntitlements = pSignAsset->m_strEntitleData;
+	bool allowsDebugging = false;
+	if (IsExecute() && !strExecutableEntitlements.empty()) {
+		jvalue entitlements;
+		if (!entitlements.read_plist(strExecutableEntitlements) || !entitlements.is_object()) {
+			ZLog::Error(">>> Invalid signing entitlements plist.\n");
+			return false;
+		}
+		if (!pSignAsset->m_bAdhoc) {
+			string prefix = pSignAsset->m_strTeamId;
+			size_t separator = pSignAsset->m_strApplicationId.find('.');
+			if (separator != string::npos && separator > 0) {
+				prefix = pSignAsset->m_strApplicationId.substr(0, separator);
+			}
+			const string applicationId = prefix + "." + strBundleId;
+			entitlements["application-identifier"] = applicationId;
+			if (entitlements.has("com.apple.application-identifier")) {
+				entitlements["com.apple.application-identifier"] = applicationId;
+			}
+			entitlements["com.apple.developer.team-identifier"] = pSignAsset->m_strTeamId;
+			if (entitlements.has("keychain-access-groups") && entitlements["keychain-access-groups"].is_array()) {
+				jvalue groups;
+				groups.read("[]");
+				for (size_t i = 0; i < entitlements["keychain-access-groups"].size(); i++) {
+					const jvalue& item = entitlements["keychain-access-groups"][i];
+					if (!item.is_string()) { return false; }
+					string group = item.as_string();
+					size_t wildcard = group.find('*');
+					if (wildcard == string::npos) {
+						groups.push_back(group);
+					} else if (wildcard == group.size() - 1 && applicationId.compare(0, wildcard, group, 0, wildcard) == 0) {
+						groups.push_back(applicationId);
+					}
+				}
+				entitlements["keychain-access-groups"] = groups;
+			}
+		}
+		allowsDebugging = entitlements.has("get-task-allow") && entitlements["get-task-allow"].is_bool() && entitlements["get-task-allow"].as_bool();
+		entitlements.style_write_plist(strExecutableEntitlements);
+	}
 	ZSign::SlotBuildRequirements(strBundleId, pSignAsset->m_strSubjectCN, strRequirementsSlot);
-	ZSign::SlotBuildEntitlements(IsExecute() ? pSignAsset->m_strEntitleData : strEmptyEntitlements, strEntitlementsSlot);
-	ZSign::SlotBuildDerEntitlements(IsExecute() ? pSignAsset->m_strEntitleData : "", strDerEntitlementsSlot);
+	ZSign::SlotBuildEntitlements(IsExecute() ? strExecutableEntitlements : strEmptyEntitlements, strEntitlementsSlot);
+	ZSign::SlotBuildDerEntitlements(IsExecute() ? strExecutableEntitlements : "", strDerEntitlementsSlot);
 
 	string strRequirementsSlotSHA1;
 	string strRequirementsSlotSHA256;
@@ -377,16 +419,9 @@ bool ZArchO::BuildCodeSignature(ZSignAsset* pSignAsset,
 		ZSign::GetCodeSignatureExistsCodeSlotsData(m_pSignBase, pCodeSlots1Data, uCodeSlots1DataLength, pCodeSlots256Data, uCodeSlots256DataLength);
 	}
 
-	uint64_t uExecSegFlags = 0;
-	if (MH_EXECUTE == m_uFileType) {
-		if (pSignAsset->m_bAdhoc || pSignAsset->m_bSingleBinary) {
-			uExecSegFlags = CS_EXECSEG_MAIN_BINARY;
-		}
-	}
-
-	if (NULL != strstr(strEntitlementsSlot.data() + 8, "<key>get-task-allow</key>")) {
-		// TODO: Check if get-task-allow is actually set to true
-		uExecSegFlags |= CS_EXECSEG_MAIN_BINARY | CS_EXECSEG_ALLOW_UNSIGNED;
+	uint64_t uExecSegFlags = MH_EXECUTE == m_uFileType ? CS_EXECSEG_MAIN_BINARY : 0;
+	if (MH_EXECUTE == m_uFileType && allowsDebugging) {
+		uExecSegFlags |= CS_EXECSEG_ALLOW_UNSIGNED;
 	}
 
 	string strCodeDirectorySlot;

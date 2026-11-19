@@ -6,7 +6,7 @@ trap 'rm -rf "$cert_test_dir"' EXIT
 mkdir -p "$cert_test_dir/Sources" "$cert_test_dir/fixtures"
 cp Tests/Certificates/Package.swift "$cert_test_dir/Package.swift"
 cp -R Tests/Certificates/OpenSSL "$cert_test_dir/OpenSSL"
-cp Tests/Certificates/main.swift Native/Dependencies/NiKCertificateStore.swift Native/Dependencies/NiKLocalTLSIdentity.swift Native/Services/NiKTLSServerCertificate.swift Native/Dependencies/NiKOTAProfile.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKPlistValue.swift Native/Services/NiKCertificateRevocation.swift "$cert_test_dir/Sources/"
+cp Tests/Certificates/main.swift Native/Dependencies/NiKCertificateStore.swift Native/Dependencies/NiKLocalTLSIdentity.swift Native/Services/NiKTLSServerCertificate.swift Native/Dependencies/NiKOTAProfile.swift Native/Models/NiKRevocationSchedule.swift Native/Models/NiKCertificateModels.swift Native/Models/NiKPlistValue.swift Native/Services/NiKCertificateRevocation.swift "$cert_test_dir/Sources/"
 cert_openssl="$(brew --prefix openssl@3)/bin/openssl"
 "$cert_openssl" req -x509 -newkey rsa:2048 -noenc -keyout "$cert_test_dir/fixtures/key.pem" -out "$cert_test_dir/fixtures/cert.pem" -days 1 -subj '/CN=NiKSign Synthetic Test' 2>/dev/null
 "$cert_openssl" pkcs12 -export -inkey "$cert_test_dir/fixtures/key.pem" -in "$cert_test_dir/fixtures/cert.pem" -out "$cert_test_dir/fixtures/modern.p12" -passout 'pass: test password '

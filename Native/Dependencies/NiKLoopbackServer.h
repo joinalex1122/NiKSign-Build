@@ -13,11 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
                     httpsHost:(nullable NSString *)httpsHost
     NS_SWIFT_NAME(start(file:bundleID:version:title:httpsHost:));
 - (nullable NSURL *)startTrustProfile:(NSData *)profileData NS_SWIFT_NAME(startTrustProfile(data:));
-/// Local HTTP payload for the pinned public HTTPS manifest. No directory handlers.
-@property(nonatomic, copy, nullable) void (^onIPARequest)(void);
 @property(nonatomic, copy, nullable) void (^onStopped)(void);
 @property(nonatomic, readonly, getter=isRunning) BOOL running;
-- (nullable NSURL *)startStaticOTAFile:(NSURL *)fileURL NS_SWIFT_NAME(startStaticOTA(file:));
 - (void)stop;
 @end
 NS_ASSUME_NONNULL_END

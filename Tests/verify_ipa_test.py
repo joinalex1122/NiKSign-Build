@@ -27,7 +27,7 @@ class IPAValidationTests(unittest.TestCase):
 
     def make_ipa(self, cpu=0x100000c, duplicate=False, binary_bytes=4096):
         info = {'CFBundleIdentifier': BUNDLE, 'CFBundleExecutable': 'NiKSign',
-                'CFBundleURLTypes': [{'CFBundleURLSchemes': ['niksign', 'threeoneosfive']}]}
+                'CFBundleURLTypes': [{'CFBundleURLSchemes': ['niksign']}]}
         header = struct.pack('<8I', 0xfeedfacf, cpu, 0, 2, 1, 8, 0, 0)
         with zipfile.ZipFile(self.ipa, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.writestr(ROOT + 'Info.plist', plistlib.dumps(info))

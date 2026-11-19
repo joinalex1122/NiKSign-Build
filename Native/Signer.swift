@@ -80,7 +80,7 @@ actor SigningService {
         for entry in archive {
             count += 1
             let path = entry.path.hasSuffix("/") ? String(entry.path.dropLast()) : entry.path
-            _ = try PatchPathValidator.canonicalRelativePath(path)
+            _ = try NiKPathValidator.canonicalRelativePath(path)
             guard paths.insert(path).inserted, entry.type != .symlink else {
                 throw NiKError("IPA có đường dẫn trùng hoặc symbolic link không hỗ trợ.")
             }
@@ -119,17 +119,17 @@ actor SigningService {
         let effectiveBundleID = trimmedCustomBundleID.isEmpty ? originalBundleID : trimmedCustomBundleID
 
         guard !effectiveBundleID.isEmpty,
-              (!effectiveBundleID.hasPrefix("com.apple.") || effectiveBundleID == "com.apple.mobile.MobileHouseArrest"),
+              !effectiveBundleID.lowercased().hasPrefix("com.apple."),
               let executable = plist["CFBundleExecutable"] as? String,
               !executable.isEmpty, !executable.contains("/"), !executable.contains("\\"),
               executable != ".", executable != ".." else {
-            throw NiKError("Bundle ID hoặc executable không hợp lệ. Chỉ chấp nhận Bundle ID ứng dụng hoặc ID MHA của 3105.")
+            throw NiKError("Bundle ID hoặc executable không hợp lệ. Không chấp nhận Bundle ID thuộc không gian com.apple.")
         }
         if !trimmedCustomBundleID.isEmpty {
-            _ = try PatchPathValidator.canonicalBundleIdentifier(trimmedCustomBundleID)
+            _ = try NiKPathValidator.canonicalBundleIdentifier(trimmedCustomBundleID)
         }
 
-        _ = try PatchPathValidator.canonicalBundleIdentifier(effectiveBundleID)
+        _ = try NiKPathValidator.canonicalBundleIdentifier(effectiveBundleID)
         let descriptor = NiKCertificateProfile(id: UUID(), name: provInfo.name, certSummary: certInfo.summary,
             teamName: provInfo.teamName, teamID: provInfo.teamID, appIDName: provInfo.appIDName,
             bundleIDPattern: provInfo.bundleIDPattern, creationDate: provInfo.creationDate,
@@ -219,6 +219,18 @@ actor SigningService {
 
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
+        // Stage profiles BEFORE sealing resources, including retained extensions/Watch apps.
+        var signingBundles = [app]
+        if let walker = fm.enumerator(at: app, includingPropertiesForKeys: [.isDirectoryKey]) {
+            for case let candidate as URL in walker where ["app", "appex"].contains(candidate.pathExtension.lowercased()) {
+                guard try candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { continue }
+                signingBundles.append(candidate)
+            }
+        }
+        for bundle in signingBundles {
+            try provData.write(to: bundle.appendingPathComponent("embedded.mobileprovision"), options: .atomic)
+        }
+
         // Step 5: Execute Zsign.
         try report(5, 0.84, "Đang ký chữ ký số bằng Zsign…")
         var completed = false
@@ -235,10 +247,22 @@ actor SigningService {
             throw NiKError("Zsign báo lỗi. Kiểm tra chứng chỉ, profile, Bundle ID và entitlement.")
         }
 
-        let embeddedProfile = app.appendingPathComponent("embedded.mobileprovision")
-        guard fm.fileExists(atPath: embeddedProfile.path),
-              try Data(contentsOf: embeddedProfile) == provData else {
-            throw NiKError("Zsign chưa giữ đúng embedded.mobileprovision trong app đã ký. Không xuất IPA thiếu profile.")
+        guard let templateID = provInfo.entitlements["application-identifier"]?.foundationValue as? String,
+              let seed = templateID.split(separator: ".").first else { throw NiKError("Profile thiếu application-identifier.") }
+        for bundle in signingBundles {
+            let embedded = bundle.appendingPathComponent("embedded.mobileprovision")
+            guard fm.fileExists(atPath: embedded.path), try Data(contentsOf: embedded) == provData else {
+                throw NiKError("Thiếu/sai profile trong " + bundle.lastPathComponent + ". Không xuất IPA chưa đủ chữ ký.")
+            }
+            let info = try Data(contentsOf: bundle.appendingPathComponent("Info.plist"))
+            guard let metadata = try PropertyListSerialization.propertyList(from: info, format: nil) as? [String: Any],
+                  let identifier = metadata["CFBundleIdentifier"] as? String,
+                  let executable = metadata["CFBundleExecutable"] as? String,
+                  !executable.contains("/"), !executable.contains("\\"), executable != ".", executable != "..", !executable.isEmpty else {
+                throw NiKError("Metadata bundle con không hợp lệ: " + bundle.lastPathComponent)
+            }
+            try NiKBinaryInspector.requireSignedIdentity(at: bundle.appendingPathComponent(executable),
+                applicationID: String(seed) + "." + identifier, teamID: provInfo.teamID)
         }
 
         // Step 6: Repackage signed IPA.

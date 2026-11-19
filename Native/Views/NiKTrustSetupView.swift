@@ -14,7 +14,7 @@ struct NiKTrustSetupView: View {
             Section {
                 Label(t("Chuẩn bị cài IPA đã ký", "Prepare to Install Signed IPAs"), systemImage: "checkmark.shield.fill")
                     .font(.headline)
-                Text(t("Cài Tiêu chuẩn không cần hồ sơ HTTPS localhost. Thiết lập dưới đây chỉ dành cho phương thức HTTPS nội bộ tùy chọn. Chứng nhận HTTPS khác với chứng chỉ ký ứng dụng.", "Standard installation does not need a localhost HTTPS profile. The setup below is only for the optional Local HTTPS method. HTTPS and app signing certificates are separate."))
+                Text(t("Cài OTA cục bộ cần tin cậy chứng nhận HTTPS của máy này. Chứng nhận HTTPS khác với chứng chỉ ký ứng dụng. Bạn có thể thiết lập sau và vẫn xuất IPA đã ký.", "Local OTA requires trusting this device’s HTTPS certificate. HTTPS and app signing certificates are separate. You can set this up later and still export signed IPAs."))
             }
             Section(t("Trạng thái", "Status")) {
                 switch install.trustState {
@@ -40,7 +40,7 @@ struct NiKTrustSetupView: View {
             }
             if let onContinue {
                 Section {
-                    Button((install.method == .standard || install.trustState == .trusted) ? t("Tiếp tục", "Continue") : t("Để sau", "Later"), action: onContinue)
+                    Button((install.trustState == .trusted) ? t("Tiếp tục", "Continue") : t("Để sau", "Later"), action: onContinue)
                         .frame(maxWidth: .infinity)
                     Text(t("Bạn có thể mở lại tại Cài đặt → Tin cậy & Cài IPA.", "You can return in Settings → Trust & IPA Installation."))
                         .font(.caption).foregroundStyle(.secondary)
@@ -48,7 +48,7 @@ struct NiKTrustSetupView: View {
             }
         }
         .navigationTitle(t("Tin cậy & Cài IPA", "Trust & IPA Installation"))
-        .task { if install.method == .localHTTPS { await install.checkTrust() } }
+        .task { await install.checkTrust() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, downloaded { Task { await install.checkTrust() } }
         }

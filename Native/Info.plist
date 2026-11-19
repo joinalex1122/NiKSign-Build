@@ -8,37 +8,13 @@
 		<true/>
 	</dict>
 	<key>AppReleaseDisplayVersion</key>
-	<string>3.3.0</string>
+	<string>3.4.0</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>NiKSign</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>3105 Patch Package</string>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.yangjiii.3105.patch-package</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>3105 Dialer Package</string>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.yangjiii.3105.dialer-package</string>
-			</array>
-		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>NiKSign Files</string>
@@ -65,21 +41,20 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.3.0</string>
+	<string>3.4.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.yangjiii.3105.patch-import</string>
+			<string>com.niksign.import</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>threeoneosfive</string>
 				<string>niksign</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>330</string>
+	<string>340</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
@@ -87,9 +62,7 @@
 	<key>MinimumOSVersion</key>
 	<string>17.0</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>3105 needs access to documents.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>3105 needs access to photos for wallpaper customization.</string>
+	<string>NiKSign imports IPA files, signing certificates and dylib/deb files you select.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -111,46 +84,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>3105 Patch Package</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.yangjiii.3105.patch-package</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>3105</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>application/x-3105-patch</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>3105 Dialer Package</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.yangjiii.3105.dialer-package</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>3105pass</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>application/x-3105-dialer</string>
-			</dict>
-		</dict>
-	</array>
+	<array/>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

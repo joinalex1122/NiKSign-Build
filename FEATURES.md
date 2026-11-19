@@ -1,26 +1,19 @@
-# Phạm vi NiKSign 3.3-dev — đối chiếu nguồn thực tế & phần bổ sung 3105 2.0
+# Chức năng NiKSign
 
-Đã ghép toàn bộ 66 đơn vị biên dịch Swift/Objective-C/C trong cây nguồn công
-khai của 3105 tại commit `a72617ed4c764a65d8aac1e91aca95231e72a2cb`, kết hợp
-các module Sign IPA 3.2 và bổ sung các module tham khảo 3105 2.0; chưa xác nhận tương đương đầy đủ theo đặc
-tả tại `Vendor/3105/docs/PATCH_GUIDE.vi.md` và `Vendor/3105/README.vi.md`.
+| Mục | Hành vi |
+|---|---|
+| Thư viện IPA | Nhập từ Files/Open In, kiểm tra ZIP/CRC, đọc metadata và biểu tượng, giữ bản gốc |
+| Chứng chỉ | Nhiều bộ p12/profile; mật khẩu Keychain; chọn theo từng IPA/công việc |
+| Hàng đợi | Snapshot chứng chỉ/tùy chọn; chạy tuần tự; hủy an toàn; thử lại từ gốc; xóa lịch sử/toàn bộ; không tự ký lại khi mở app |
+| Tùy chỉnh | Tên, Bundle ID, phiên bản, Minimum iOS, chia sẻ tệp, UISupportedDevices, App Extensions/Watch |
+| Chèn thư viện | Dylib hoặc trích dylib từ deb; liên kết thường/yếu; vẫn cần IPA không mã hóa và quyền hợp lệ |
+| Nguồn IPA | AltSource/Feather JSON, tải có giới hạn/hủy, kiểm tra SHA-256 và Bundle ID của nguồn, nhập hoặc tải & xếp hàng |
+| Kết quả | Mục Ứng dụng đã ký; xuất/chia sẻ; cài HTTPS từ kết quả và hàng đợi |
+| OTA | Manifest riêng theo metadata thật, snapshot IPA bất biến, HTTPS loopback, kiểm tra tin cậy, trang Safari, QR/link, bộ đếm yêu cầu |
+| Trạng thái chứng chỉ | OCSP trực tuyến thủ công và định kỳ khi app hoạt động; tốt/thu hồi/chưa xác minh; đếm ngược và cảnh báo dưới 7 ngày |
+| Tệp | Duyệt Documents/IPALibrary/Signed của NiKSign, xem/sửa tệp nhập, khôi phục/thùng rác |
+| Giao diện | Ba tab Ký IPA/Tệp/Cài đặt, sáng/tối/hệ thống, tiếng Việt/Anh |
 
-| Nhóm chức năng | Mã được nối vào app | Trạng thái |
-|---|---|---|
-| Trang chủ, Mới, Nguồn, Tìm kiếm, Đã cài | ContentView, RepositoryHomeView, RepositorySourcesView, RepositoryMarketplaceView, PackageRepositoryStore | Đã tích hợp nguồn và navigation |
-| Duyệt data container ứng dụng | ContainerStore, ContainerIdentityResolver, ContainerBrowserLogic, AppDataBrowserView | Đã tích hợp; phụ thuộc quyền thiết bị |
-| Workspace, nhiều tab tệp, thao tác file/folder, ZIP | FileManagerService, FileOperationCoordinator, FileBrowserView, FilesTabControls, ZIPArchiveWriter/Extractor | Đã tích hợp |
-| Dự án patch, draft từ tệp/folder, nhập/xuất | PatchProjectStore/Library, PatchDraftService/Coordinator, PatchProjectsView, PatchProjectEditorView | Đã tích hợp |
-| Gói 3105PATCH và mật khẩu/Keychain | PatchPackageCodec, PatchKeyStore, PatchProjectModels | Đã tích hợp nguyên bản upstream |
-| Áp dụng thay tệp, sao lưu, restore, reset, rollback | DevicePatchService, PatchTransaction | Đã tích hợp; chưa thử ghi dữ liệu thật |
-| Cleaner giới hạn theo danh mục & cài/gỡ tính năng | CleanerCatalog, LimitedCleanerService, CleanerView, NiKSystemFeaturesStore | Đã tích hợp đầy đủ (3.3) |
-| Wallpaper/.tendies | WallpaperLabService/Models/View, WallpaperInstaller, SecureZIPArchive, wallpaper_zip.c | Đã tích hợp |
-| Hỗ trợ iOS, MHA-C2 và kernel path upstream | SupportPolicy, KernelExploit, SBX, MG, exploit/, kexploit/ | Giữ nguyên nguồn upstream |
-| Workspace Application/AppGroup, settings.json, schema v9, merge plist/JSON (`%3105_Overwrite%`, `%3105_MatchPrefix%`, `%3105_Remove%`) | NiKPatchV9Engine, NiKDynamicPayloadMerger, NiKWorkspaceV9Service, NiKContainerResolver | Đã triển khai theo đặc tả PATCH_GUIDE.vi.md (3.3) |
-| Dialer `.3105pass` (nhận diện Sáng / Tối / Chữ đậm, sao lưu & khôi phục) | NiKDialerService, NiK3105V2HubView, Info.plist UTType | Đã triển khai (3.3) |
-| Footnote màn hình khóa & Supervised | NiKSystemFeaturesStore, NiK3105V2HubView | Đã triển khai (3.3) |
-| Quản lý nhiều chứng chỉ `.p12`/`.mobileprovision` & Keychain | NiKCertificateStore, NiKCertificateKeychain | Đã tích hợp (3.2) |
-| Ký IPA Zsign, tùy biến Info.plist & tiến trình 6 bước | Signer, NiKSignToolsView | Đã tích hợp (3.2) |
-| Chèn Tweak `.dylib` & giải nén `.deb` | NiKDylibInjector | Đã tích hợp (3.2) |
-| Xuất IPA và `manifest.plist` qua HTTP nội bộ | NiKLoopbackServer.h/.m | Chưa có TLS/OTA; không tạo liên kết cài đặt không hoạt động |
-| Trình duyệt kho AltSource JSON & tải IPA | NiKAltSourceStore, NiKAltSourceView | Đã tích hợp (3.2) |
+Profile không khớp Bundle ID tạo cảnh báo, không chặn riêng bước ký. Các lỗi khóa riêng, chứng chỉ/profile hết hạn, ZIP hỏng, mã hóa hoặc chữ ký đầu ra thiếu dữ liệu vẫn phải xử lý. Khả năng cài đặt do iOS quyết định; app không tạo quyền ngoài provisioning.
+
+Kiểm tra OCSP tự động: lần đầu khi chọn chứng chỉ, sau đó tối đa mỗi 6 giờ với trạng thái tốt; thử lại sau 15 phút khi chưa xác minh/lỗi mạng; trạng thái thu hồi kiểm tra lại sau 24 giờ. Kiểm tra chỉ chạy khi app đang hoạt động. Dữ liệu OCSP tốt quá 24 giờ hiển thị chưa xác minh.

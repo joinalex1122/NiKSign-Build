@@ -4,7 +4,6 @@ struct NiKSettingsView: View {
     @ObservedObject var certificates: NiKCertificateStore
     @ObservedObject var library: NiKLibrary
     @AppStorage("nik.language") private var language = "vi"
-    @AppStorage("nik.mode") private var mode = "both"
     @AppStorage("nik.theme") private var theme = "system"
     @AppStorage("nik.interfaceMode") private var interfaceMode = "basic"
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
@@ -48,7 +47,7 @@ struct NiKSettingsView: View {
                 NiKBrand()
                 VStack(alignment: .leading, spacing: 4) {
                     Text("NiKSign").font(.title2.bold())
-                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.3.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "330"))")
+                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "3.4.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "340"))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -61,12 +60,6 @@ struct NiKSettingsView: View {
                     Button("Tiếng Việt") { language = "vi" }
                     Button("English") { language = "en" }
                 } label: { row("globe", .blue, t("Ngôn ngữ", "Language"), language == "en" ? "English" : "Tiếng Việt") }
-                Divider()
-                Menu {
-                    Button(t("Chỉ ký IPA", "Sign IPA only")) { mode = "sign" }
-                    Button(t("Chỉ 3105", "3105 only")) { mode = "tools" }
-                    Button(t("Cả hai", "Both")) { mode = "both" }
-                } label: { row("slider.horizontal.3", .indigo, t("Chế độ", "Mode"), mode == "sign" ? "IPA" : mode == "tools" ? "3105" : "IPA + 3105") }
                 Divider()
                 Menu {
                     Button(t("Cơ bản", "Basic")) { interfaceMode = "basic" }
@@ -96,16 +89,15 @@ struct NiKSettingsView: View {
                     row("globe", .teal, t("Trang web & Mã nguồn", "Website & Source Code"), "github.com/joinalex1122/NiKSign-Build")
                 }
                 Divider()
-                NavigationLink { schemes } label: { row("link", .green, "URL Scheme", "niksign:// · threeoneosfive://") }
+                NavigationLink { schemes } label: { row("link", .green, "URL Scheme", "niksign://") }
                 Divider()
-                NavigationLink { NiK3105AccessView() } label: { row("checkmark.shield", .blue, t("Truy cập 3105", "3105 Access"), t("Kiểm tra App Group và bộ truy cập đang có", "Check App Groups and available access backend")) }
                 NavigationLink { NiKDiagnosticsView() } label: { row("stethoscope", .gray, t("Chẩn đoán & Báo cáo", "Diagnostics & Report"), t("Xem trước và xuất trạng thái đã ẩn thông tin riêng", "Preview and export status without private details")) }
             }
         }
     }
     private var schemes: some View {
         List {
-            ForEach(["niksign://", "threeoneosfive://"], id: \.self) { scheme in
+            ForEach(["niksign://"], id: \.self) { scheme in
                 Button { UIPasteboard.general.string = scheme } label: { Label(scheme, systemImage: "doc.on.doc") }
             }
             Text(t("Dùng các URL này để mở ứng dụng. Để nhập IPA, dùng nút Nhập hoặc Chia sẻ → NiKSign trong ứng dụng Tệp.", "Use these URLs to open the app. Import an IPA using Import or Share → NiKSign in Files."))

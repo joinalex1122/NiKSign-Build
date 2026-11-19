@@ -1,41 +1,18 @@
-# NiKSign 3.2-dev — thư viện tích hợp, Tweak Injection & xuất IPA
+# Dependency của NiKSign
 
-Ngày đối chiếu: 2026-11-16. Danh mục máy đọc được, commit, trạng thái và giấy
-phép đầy đủ nằm trong `Native/Licenses/components.json` và các file cạnh đó.
-**Kết quả build/test theo GitHub Actions của từng commit; chưa kiểm chứng chạy trên iPhone.**
+Các revision và giấy phép đầy đủ nằm ở `Native/Licenses/components.json`. `project.yml` ghim các package; `dependencies-vendor-lock.json` kiểm tra byte nguồn native và `server-overlays.json` chỉ rõ thay thế tương thích máy chủ.
 
-| Thư viện | Phần đã thêm & nâng cấp ở 3.2 | Giới hạn/trạng thái |
-|---|---|---|
-| OpenSSL | Ghim package 3.6.5000 thay cho phụ thuộc transitive không ghim; Zsign dùng crypto | Apache-2.0; SwiftPM tải XCFramework upstream khi build |
-| minizip | Nhúng unzip/ioapi từ zlib v1.3.1; kiểm tra metadata trước khi ZIPFoundation giải nén IPA | Không mở archive mã hóa; kiểm tra CRC/path vẫn do bước giải nén hiện có |
-| MachOKit | Parse Mach-O/fat; đọc trạng thái mã hóa, RPATH, số load command; chặn ký lại binary còn mã hóa; kết hợp `NiKDylibInjector` kiểm tra dylib | Không giải mã FairPlay binary |
-| ArArchiveKit | Đọc danh mục `.deb`/`.ar` tên ngắn và tách `data.tar.*` trong `NiKDylibInjector` để lấy `.dylib` | Hỗ trợ `.deb` chuẩn tên ngắn (tối đa 64 MB khi chèn tweak) |
-| SWCompression | Đọc metadata `.tar` và giải nén `data.tar.{gz,xz,lzma,tar}` trong `NiKDylibInjector` | Giữ 4.8.6 hỗ trợ iOS 17 |
-| ZIPFoundation | Giữ 0.9.20 để giải nén/đóng IPA | Kết hợp với preflight minizip |
-| GCDWebServer | Phục vụ IPA và manifest động qua HTTP loopback; giữ background task ngắn hạn | Chưa có TLS/OTA. Đổi domain hoặc scheme không biến máy chủ HTTP thành HTTPS |
-| Zsign | Giữ revision c4ba9da… của nhánh Swift Package đã kiểm tra | Ký lại ứng dụng chính, App Extensions và các `.dylib` đã chèn |
-| TrollFools | Nguồn tham khảo canonical, revision, giấy phép | Tham khảo; NiKSign dùng `NiKDylibInjector` riêng cho IPA |
-| ellekit | Nguồn tham khảo `tealbathingsuit/ellekit`, revision và license | Người dùng có thể chèn `libellekit.dylib` qua mục Chèn Tweak |
-| optool | Nguồn tham khảo BSD-2-Clause | Logic chèn `LC_LOAD_DYLIB` / `LC_LOAD_WEAK_DYLIB` 64-bit đã được viết native bằng Swift trong `NiKDylibInjector.swift` |
+| Thư viện | Vai trò |
+|---|---|
+| Zsign (MIT) | Ký Mach-O/CMS và resource seal; nguồn local ghim tại `Vendor/Zsign` |
+| OpenSSL (Apache-2.0) | Mật mã cho signer, PKCS12 và chứng nhận HTTPS cục bộ |
+| minizip (Zlib) | Kiểm tra ZIP trước khi giải nén |
+| ZIPFoundation (MIT) | Giải nén/đóng gói IPA với CRC |
+| MachOKit (MIT) | Đọc Mach-O, cờ mã hóa, chữ ký/entitlements |
+| ArArchiveKit (MIT) | Đọc archive deb/ar |
+| SWCompression (MIT) | Giải nén/đọc tar trong deb |
+| GCDWebServer (BSD-3-Clause) | HTTP loopback cho tải hồ sơ tin cậy và chia sẻ tệp; HTTPS OTA dùng Network.framework |
 
-## Truy cập các phần mới trong 3.2
+BitByteData 2.0.4 là dependency bắc cầu của SWCompression được ghim để giữ tương thích iOS 17. Framework Apple dùng Foundation, SwiftUI/UIKit, Security, Network, CoreImage và CryptoKit từ SDK.
 
-Trang chủ → **NiKSign · Ký IPA & sửa tệp**:
-
-- Tab **Ký IPA**:
-  - **Quản lý chứng chỉ**: Lưu nhiều cặp `.p12` + `.mobileprovision`, mật khẩu lưu trong Keychain, tự động kiểm tra khớp chứng chỉ X.509 DER và đếm ngược ngày hết hạn.
-  - **Tùy biến gói IPA**: Đổi Bundle ID (kèm cập nhật đồng bộ App Extensions), đổi tên hiển thị, phiên bản, `MinimumOSVersion`, bật `UIFileSharingEnabled`, xóa `UISupportedDevices` và gỡ `PlugIns`/`Watch`.
-  - **Chèn Tweak (`.dylib` / `.deb`)**: Chọn trực tiếp tệp `.dylib` hoặc gói `.deb`; tự động giải nén `data.tar.*`, sao chép `.dylib` vào `Frameworks/` và chèn `LC_LOAD_DYLIB` vào Mach-O 64-bit.
-  - **Xuất HTTP nội bộ & Manifest**: Tạo `/<token>/manifest.plist` và tải IPA. Không tạo liên kết OTA khi chưa có nơi lưu trữ HTTPS hợp lệ.
-- Tab **Kho IPA**:
-  - Thêm nguồn JSON theo chuẩn AltStore / Feather Source, tìm kiếm và bấm **Tải & Ký** để đưa thẳng IPA sang tab **Ký IPA**.
-- Tab **Thông tin**:
-  - **Kiểm tra Mach-O / DEB / TAR** và **Giấy phép mã nguồn mở**.
-
-## Kiểm tra
-
-```bash
-python3 scripts/check-integration.py
-python3 scripts/check-dependencies.py
-python3 Tests/minizip_test.py
-```
+Zsign có các thay đổi native được ghi rõ hash gốc, hash sau sửa và replacements trong `Vendor/Zsign/UPSTREAM.json`: giữ profile trước khi seal, tạo application-identifier cụ thể cho từng bundle từ App ID seed trong profile, XML/DER nhất quán, kiểm tra đúng giá trị get-task-allow, dùng CPU/VM macro SDK trên Apple. Không đổi wildcard hợp lệ của quyền không liên quan. Kiểm tra dependency khôi phục các byte gốc để so hash.

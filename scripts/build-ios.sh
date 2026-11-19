@@ -2,6 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BUNDLE_ID="${NIKSIGN_BUNDLE_ID:-com.niksign.app}"
+python3 - "$BUNDLE_ID" <<'PYID'
+import sys
+value=sys.argv[1]
+if value.lower().startswith('com.apple.') or not all(c.isalnum() or c in '.-' for c in value) or len(value.split('.')) < 2:
+    raise SystemExit('Bundle ID must use your own valid namespace.')
+PYID
 command -v xcodebuild >/dev/null || { echo 'Cần macOS + Xcode hoặc GitHub Actions macOS.' >&2; exit 1; }
 python3 scripts/check-integration.py
 python3 scripts/check-dependencies.py

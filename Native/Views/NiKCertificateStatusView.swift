@@ -15,6 +15,9 @@ struct NiKCertificateStatusView: View {
                     if seconds == 0 {
                         Text(t("Đã hết hạn", "Expired")).foregroundStyle(.red)
                     } else {
+                        if seconds <= 7 * 24 * 3600 {
+                            Label(t("Sắp hết hạn — chuẩn bị chứng chỉ thay thế", "Expiring soon — prepare a replacement"), systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                        }
                         let hours = Int(ceil(seconds / 3600))
                         Text(t("Còn \(hours / 24) ngày \(hours % 24) giờ", "\(hours / 24) days \(hours % 24) hours remaining"))
                         Text(t("Tính theo hạn sớm hơn của chứng chỉ và profile.", "Uses the earlier certificate/profile expiry."))
@@ -42,7 +45,7 @@ struct NiKCertificateStatusView: View {
                     else { Text(t("Kiểm tra thu hồi trực tuyến", "Check revocation online")) }
                 }
                 .disabled(store.revocationChecks.contains(profile.id))
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error = error ?? store.revocationErrors[profile.id] { Text(error).foregroundStyle(.red) }
             }.font(.caption)
         }
     }

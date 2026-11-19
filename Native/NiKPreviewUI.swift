@@ -53,8 +53,11 @@ import ImageIO
         try indexStore.restoreFromTrash(snapshot); items = indexStore.items
     }
     @discardableResult func receive(_ url: URL, expectedBundleID: String? = nil) async -> Bool {
-        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return false }
-        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return false }
+        await receiveItem(url, expectedBundleID: expectedBundleID) != nil
+    }
+    func receiveItem(_ url: URL, expectedBundleID: String? = nil) async -> NiKLibraryItem? {
+        guard indexStore != nil else { error = loadFailure ?? "Index thư viện chưa sẵn sàng; giữ nguyên để khôi phục."; return nil }
+        guard !receiving else { error = "Đang nhập một IPA khác. Hãy đợi hoàn tất rồi thử lại."; return nil }
         error = ""
         receiving = true
         var stagedItem: NiKLibraryItem?
@@ -72,11 +75,11 @@ import ImageIO
             let item = try await withTaskCancellationHandler(operation: { try await importing.value }, onCancel: { importing.cancel() })
             stagedItem = item
             try Task.checkCancellation()
-            guard save(item) else { return false }
+            guard save(item) else { return nil }
             committed = true
             notice = "Đã nhập \(item.title) vào thư viện IPA."
-            return true
-        } catch { self.error = error.localizedDescription; return false }
+            return item
+        } catch { self.error = error.localizedDescription; return nil }
     }
     nonisolated static func importIPA(_ url: URL, expectedBundleID: String? = nil) throws -> NiKLibraryItem {
         guard url.pathExtension.lowercased() == "ipa" else { throw NiKError("Hãy chọn tệp IPA.") }
@@ -158,23 +161,18 @@ struct NiKBrand: View {
 }
 
 struct NiKPreviewRoot: View {
-    @AppStorage("nik.mode") private var mode = ""
     @AppStorage("nik.theme") private var theme = "system"
     @AppStorage("nik.language") private var language = "vi"
     @AppStorage("nik.certPrompted") private var certPrompted = false
     @AppStorage("nik.otaTrustIntro.v1") private var trustIntroAcknowledged = false
     @StateObject private var library = NiKLibrary.shared
     @StateObject private var certificates = NiKCertificateStore.shared
-    @State private var choice = "both"
     @State private var tab = 0
     @State private var prompt = false
-    @EnvironmentObject private var appState: AppState
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
-    private var hasSigner: Bool { mode == "sign" || mode == "both" }
     var body: some View {
         Group {
-            if mode.isEmpty { welcome }
-            else if hasSigner && !trustIntroAcknowledged {
+            if !trustIntroAcknowledged {
                 NavigationStack { NiKTrustSetupView(onContinue: { trustIntroAcknowledged = true }) }
             } else {
                activeTabView
@@ -186,44 +184,18 @@ struct NiKPreviewRoot: View {
         .tint(.cyan)
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
         .onAppear { configure() }
-        .onChange(of: mode) { _, _ in configure() }
         .onChange(of: trustIntroAcknowledged) { _, _ in configure() }
-        .onChange(of: library.notice) { _, notice in if !notice.isEmpty && hasSigner { tab = 0 } }
+        .onChange(of: library.notice) { _, notice in if !notice.isEmpty { tab = 0 } }
         .alert(t("Không nhập được IPA", "IPA Import Failed"), isPresented: Binding(
             get: { !library.error.isEmpty }, set: { if !$0 { library.error = "" } }
         )) { Button("OK", role: .cancel) {} } message: { Text(library.error) }
         .alert(t("Thêm chứng chỉ ký?", "Add Signing Certificate?"), isPresented: $prompt) {
-            Button(t("Nhập chứng chỉ", "Import Certificate")) { tab = 3 }
+            Button(t("Nhập chứng chỉ", "Import Certificate")) { tab = 2 }
             Button(t("Để sau", "Later"), role: .cancel) {}
         } message: { Text(t("Quản lý nhiều chứng chỉ tại Cài đặt. Bạn có thể chọn riêng cho từng IPA.", "Manage multiple certificates in Settings. You can choose one for each IPA.")) }
     }
     private func configure() {
-        guard !mode.isEmpty else { return }
-        if mode == "tools" && tab == 0 { tab = 1 }
-        if mode == "sign" && tab == 1 { tab = 0 }
-        if mode != "sign" { appState.detectSupport() }
-        if hasSigner && trustIntroAcknowledged && !certPrompted { certPrompted = true; prompt = true }
-    }
-    private var welcome: some View {
-        VStack(spacing: 22) {
-            Spacer(); NiKBrand()
-            Text("Chào mừng đến NiKSign").font(.largeTitle.bold()).multilineTextAlignment(.center)
-            Text(t("Chọn cách bạn muốn sử dụng", "Choose how you want to use it")).foregroundStyle(.secondary)
-            ForEach(["sign", "tools", "both"], id: \.self) { value in
-                Button { choice = value } label: {
-                    HStack {
-                        Image(systemName: value == "sign" ? "signature" : "square.stack.3d.up").font(.title2)
-                        VStack(alignment: .leading) {
-                            Text(value == "sign" ? t("Ký IPA", "Sign IPA") : value == "tools" ? "3105" : "Cả hai").font(.headline)
-                            Text(value == "sign" ? "Quản lý, tùy chỉnh và ký ứng dụng" : value == "tools" ? "Dự án, ứng dụng và công cụ" : "Đầy đủ tính năng NiKSign").font(.caption).foregroundStyle(.secondary)
-                        }; Spacer(); Image(systemName: choice == value ? "checkmark.circle.fill" : "circle")
-                    }.padding().background(choice == value ? Color.cyan.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-                }.buttonStyle(.plain)
-            }
-            Text("Bạn có thể đổi trong Cài đặt.").font(.footnote).foregroundStyle(.secondary)
-            Button("Tiếp tục") { mode = choice }.buttonStyle(.borderedProminent).controlSize(.large)
-            Spacer()
-        }.padding(24).frame(maxWidth: .infinity).background(Color(uiColor: .systemGroupedBackground))
+        if trustIntroAcknowledged && !certPrompted { certPrompted = true; prompt = true }
     }
     private var settings: some View {
         NiKSettingsView(certificates: certificates, library: library)
@@ -234,8 +206,6 @@ struct NiKPreviewRoot: View {
             case 0:
                 NiKLibraryView(library: library, certificates: certificates)
             case 1:
-                NiKHubPreview()
-            case 2:
                 NiKFilesHome()
             default:
                 settings
@@ -246,14 +216,9 @@ struct NiKPreviewRoot: View {
     @ViewBuilder
     private var liquidGlassTabBar: some View {
         HStack(spacing: 4) {
-            if hasSigner {
-                tabBarButton(index: 0, title: t("Ký IPA", "Sign IPA"), icon: "signature")
-            }
-            if mode != "sign" {
-                tabBarButton(index: 1, title: "3105", icon: "square.stack.3d.up")
-            }
-            tabBarButton(index: 2, title: t("Tệp", "Files"), icon: "folder.fill")
-            tabBarButton(index: 3, title: t("Cài đặt", "Settings"), icon: "gearshape.fill")
+            tabBarButton(index: 0, title: t("Ký IPA", "Sign IPA"), icon: "signature")
+            tabBarButton(index: 1, title: t("Tệp", "Files"), icon: "folder.fill")
+            tabBarButton(index: 2, title: t("Cài đặt", "Settings"), icon: "gearshape.fill")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -531,6 +496,14 @@ struct NiKLibraryView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Menu(t("Thêm vào hàng đợi", "Add to Queue")) {
+                ForEach(certificates.profiles) { cert in
+                    Button(cert.name) { enqueue(item, certificate: cert) }
+                }
+                if certificates.profiles.isEmpty { Text(t("Nhập chứng chỉ trong Cài đặt", "Import a certificate in Settings")) }
+            }
+        }
     }
 
 @ViewBuilder
@@ -611,6 +584,16 @@ Image(systemName: "chevron.right")
 .font(.caption.weight(.semibold))
 .foregroundStyle(.tertiary)
 }
+}
+
+private func enqueue(_ item: NiKLibraryItem, certificate: NiKCertificateProfile) {
+    do {
+        var snapshot = item.options
+        snapshot.targetDeviceUDID = UserDefaults.standard.string(forKey: "nik.deviceUDID") ?? ""
+        let job = NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: certificate.id, options: snapshot)
+        try NiKSigningQueue.shared.enqueue([job])
+        errorMessage = t("Đã thêm vào hàng đợi ký.", "Added to the signing queue.")
+    } catch { errorMessage = error.localizedDescription }
 }
 
 private func installSigned(_ item: NiKLibraryItem) {
@@ -934,6 +917,9 @@ struct NiKIPADetail: View {
     private var signActionCard: some View {
         let signDisabled = activeCertificate == nil || activeJob != nil || certificateAssessment?.canSign == false
         VStack(spacing: 10) {
+            Button(t("Thêm vào hàng đợi", "Add to Queue")) {
+                Task { await sign(showProgress: false) }
+            }.disabled(signDisabled)
             Button {
                 Task { await sign(autoInstall: false) }
             } label: {
@@ -1105,7 +1091,7 @@ saveStatusMessage = error.localizedDescription
         return activeJob
     }
 
-    private func sign(autoInstall: Bool = false) async {
+    private func sign(autoInstall: Bool = false, showProgress: Bool = true) async {
         guard let cert = activeCertificate else {
             errorMessage = t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate.")
             return
@@ -1118,7 +1104,7 @@ saveStatusMessage = error.localizedDescription
             trackedJobID = job.id
             autoInstallAfterSigning = autoInstall
             try signingQueue.enqueue([job])
-            showSigningProgressSheet = true
+            showSigningProgressSheet = showProgress
         } catch {
             autoInstallAfterSigning = false
             errorMessage = error.localizedDescription

@@ -1,9 +1,9 @@
-"""Validate screenshot registry, source hashes, licenses, build references, 3.2 signer upgrades and 3.3 3105-v2.0 completions."""
+"""Validate actual signer dependencies, vendored provenance and licenses."""
 from pathlib import Path
 import hashlib, json
 r = Path(__file__).resolve().parents[1]
 items = json.loads((r/'Native/Licenses/components.json').read_text())
-expected = {'OpenSSL','minizip','MachOKit','TrollFools','ArArchiveKit','ellekit','ZIPFoundation','SWCompression','optool','GCDWebServer','Zsign','WorseQuery'}
+expected = {'OpenSSL','minizip','MachOKit','ArArchiveKit','ZIPFoundation','SWCompression','GCDWebServer','Zsign'}
 assert {x['name'] for x in items} == expected
 config = (r/'project.yml').read_text()
 for e in items:
@@ -18,6 +18,11 @@ for e in items:
                 value = (r/'Vendor/Zsign'/name).read_bytes()
                 if name == 'src/bundle.cpp':
                     value = value.replace(b'if (!bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', b'if (bRemoveProvision) {\n\t\t\tif (!ZFile::WriteFileV(pSignAsset->m_strProvData', 1)
+                if name == 'src/archo.cpp':
+                    for replacement in provenance['entitlementsPatch']['replacements']:
+                        after, before = replacement['after'].encode(), replacement['before'].encode()
+                        assert value.count(after) == 1
+                        value = value.replace(after, before, 1)
                 if name == 'src/common/mach-o.h':
                     prefix = b'// Use SDK CPU/VM definitions on Apple; portable definitions remain for other hosts.\n#if defined(__APPLE__)\n#include <mach/machine.h>\n#include <mach/vm_prot.h>\n#else\n'
                     value = value.replace(prefix, b'', 1).replace(b'#endif // NiKSign portable CPU/VM definitions\n\n', b'', 1)
@@ -45,16 +50,8 @@ assert 'lcLoadDylib' in injector and 'extractDylibsFromDeb' in injector
 altsource = (r/'Native/Dependencies/NiKAltSourceView.swift').read_text()
 assert 'NiKAltSourceStore' in altsource and 'NiKSourceDownloadService' in altsource
 assert 'struct NiKAltSourceFeed' in (r/'Native/Models/NiKAltSourceModels.swift').read_text()
-v9_engine = (r/'Native/Dependencies/NiKPatchV9Engine.swift').read_text()
-assert '%3105_Overwrite%' in v9_engine and '%3105_MatchPrefix%' in v9_engine and '%3105_Remove%' in v9_engine and 'AppGroup' in v9_engine
-dialer = (r/'Native/Dependencies/NiKDialerService.swift').read_text()
-assert '3105pass' in dialer and 'TelephonyUI' in dialer
-sys_feat = (r/'Native/Dependencies/NiKSystemFeaturesService.swift').read_text()
-assert 'LockScreenFootnote' in sys_feat and 'IsSupervised' in sys_feat and 'isCleanerInstalled' in sys_feat
-hub = (r/'Native/Dependencies/NiK3105V2HubView.swift').read_text()
-assert 'NiK3105V2HubView' in hub
-print('PASS: all 12 components, 3.2 Signer upgrades, and 3.3 3105-v2.0 source wiring (Workspace v9/AppGroup/settings.json/Merge Plist-JSON, Dialer .3105pass, Footnote/Supervised, Cleaner feature) found; this does not verify device behavior.')
-
 for original, replacement in json.loads((r/'server-overlays.json').read_text()).items():
     assert (r/original).is_file() and (r/replacement).is_file()
     assert original.removeprefix('Vendor/GCDWebServer/') in config
+
+print('PASS: 8 signer components, licenses, pinned native hashes, reversible Zsign patches and server overlays.')

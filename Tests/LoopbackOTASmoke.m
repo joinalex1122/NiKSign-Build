@@ -8,9 +8,7 @@ int main(int argc, const char *argv[]) {
         NSURL *file = [NSURL fileURLWithPath:@(argv[1])];
         NSString *stopPath = @(argv[2]);
         NiKLoopbackServer *server = [NiKLoopbackServer new];
-        __block NSUInteger requests = 0;
-        server.onIPARequest = ^{ requests++; };
-        NSURL *endpoint = [server startStaticOTAFile:file];
+        NSURL *endpoint = [server startFile:file];
         if (!endpoint || !server.isRunning) { return 3; }
         printf("HTTP_READY %s\n", endpoint.absoluteString.UTF8String);
         fflush(stdout);
@@ -20,7 +18,7 @@ int main(int argc, const char *argv[]) {
         }
         [server stop];
         if (server.isRunning || server.fileURL) { return 4; }
-        printf("HTTP_STOPPED %lu\n", (unsigned long)requests);
+        printf("HTTP_STOPPED\n");
         fflush(stdout);
     }
     return 0;

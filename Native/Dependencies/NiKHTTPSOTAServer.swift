@@ -12,6 +12,10 @@ final class NiKHTTPSOTAServer: ObservableObject {
     @Published private(set) var manifestRequests = 0
     @Published private(set) var ipaRequests = 0
     var manifestURL: URL? { NiKOTAURLs.manifest(port: port, token: token) }
+    var landingURL: URL? {
+        guard isServingIPA else { return nil }
+        return URL(string: "https://127.0.0.1:\(port)/\(token)/install")
+    }
     @Published private(set) var acceptedConnections = 0
     @Published private(set) var connectionError: String?
     var healthURL: URL? {
@@ -218,6 +222,9 @@ private func receiveRequest(connection: NWConnection, buffer: Data) {
             let path = String(parts[1]), head = parts[0] == "HEAD"
             if path == "/\(self.token)/health" {
                 self.sendResponse(on: connection, status: "200 OK", contentType: "text/plain", body: Data("NiKSign Local HTTPS".utf8), head: head)
+            } else if path == "/\(self.token)/install", self.ipaURL != nil, let link = self.itmsInstallURL {
+                let html = NiKOTALandingPage.html(title: self.displayTitle, bundleID: self.bundleIdentifier, installURL: link)
+                self.sendResponse(on: connection, status: "200 OK", contentType: "text/html; charset=utf-8", body: Data(html.utf8), head: head)
             } else if path == "/\(self.token)/manifest.plist", self.ipaURL != nil {
                 self.manifestRequests += 1
                 do {

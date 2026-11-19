@@ -32,10 +32,7 @@ def verify_ipa(path: str, expected_bundle_id: str) -> None:
                 f'Expected Bundle ID {expected_bundle_id}')
         schemes = {scheme for item in info.get('CFBundleURLTypes', [])
                    for scheme in item.get('CFBundleURLSchemes', [])}
-        require({'threeoneosfive', 'niksign'} <= schemes, 'Missing URL schemes')
-        for language in ['en', 'vi', 'zh-Hans']:
-            require(root + language + '.lproj/Localizable.strings' in names,
-                    f'Missing localization: {language}')
+        require(schemes == {'niksign'}, 'Unexpected or missing URL schemes')
         exe = info.get('CFBundleExecutable')
         require(isinstance(exe, str) and bool(exe) and '/' not in exe and
                 '\\' not in exe and exe not in ('.', '..'), 'Invalid executable name')
@@ -64,7 +61,7 @@ def main() -> None:
         verify_ipa(args.ipa, bundle_id)
     except (ValueError, KeyError, OSError, zipfile.BadZipFile, plistlib.InvalidFileException) as error:
         parser.exit(1, f'IPA validation failed: {error}\n')
-    print(f'Verified arm64 executable, ZIP CRCs, Bundle ID ({bundle_id}) and localizations. IPA remains unsigned.')
+    print(f'Verified arm64 executable, ZIP CRCs, Bundle ID ({bundle_id}) and signer URL scheme. IPA remains unsigned.')
 
 
 if __name__ == '__main__':

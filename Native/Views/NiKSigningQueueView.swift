@@ -3,6 +3,7 @@ import SwiftUI
 struct NiKSigningQueueView: View {
     @ObservedObject var queue: NiKSigningQueue
     @AppStorage("nik.language") private var language = "vi"
+    @State private var installTarget: NiKPreviewDocument?
     @State private var pendingRemoval: Set<UUID> = []
     @State private var confirmRemoval = false
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
@@ -25,6 +26,7 @@ struct NiKSigningQueueView: View {
         }
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 100) }
         .navigationTitle(t("Hàng đợi ký", "Signing Queue"))
+        .sheet(item: $installTarget) { NiKInstallIPAView(url: $0.url) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -66,6 +68,7 @@ struct NiKSigningQueueView: View {
                 Button(t("Thử lại từ bản gốc", "Retry from Original")) { queue.retry(job.id) }
             }
             if let output = job.output {
+                Button(t("Cài qua HTTPS", "Install via HTTPS")) { installTarget = NiKPreviewDocument(url: output.ipaURL) }
                 ShareLink(item: output.ipaURL) { Label(t("Xuất kết quả", "Export Result"), systemImage: "square.and.arrow.up") }
             }
         }.padding(.vertical, 6)
@@ -92,6 +95,7 @@ struct NiKBatchSigningView: View {
     @AppStorage("nik.deviceUDID") private var targetDeviceUDID = ""
     @AppStorage("nik.language") private var language = "vi"
     @State private var selected: Set<UUID> = []
+    @State private var overrides: [UUID: UUID] = [:]
     @State private var certificateChoice: UUID?
     @State private var notice: String?
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
@@ -115,6 +119,13 @@ struct NiKBatchSigningView: View {
                             Image(systemName: selected.contains(item.id) ? "checkmark.circle.fill" : "circle")
                         }
                     }
+                    Picker(t("Chứng chỉ cho", "Certificate for") + " " + item.title, selection: Binding<UUID?>(
+                        get: { overrides[item.id] },
+                        set: { overrides[item.id] = $0 }
+                    )) {
+                        Text(t("Theo IPA / mặc định", "IPA / Default")).tag(nil as UUID?)
+                        ForEach(certificates.profiles) { Text($0.name).tag(Optional($0.id)) }
+                    }
                 }
             }
             Section {
@@ -132,7 +143,7 @@ struct NiKBatchSigningView: View {
         do {
             let fallback = certificateChoice ?? UUID(uuidString: defaultCertificate) ?? certificates.selectedProfile?.id
             let jobs = try library.items.filter { selected.contains($0.id) }.map { item -> NiKSigningJob in
-                guard let id = item.certificateID ?? fallback, certificates.profiles.contains(where: { $0.id == id }) else {
+                guard let id = overrides[item.id] ?? item.certificateID ?? fallback, certificates.profiles.contains(where: { $0.id == id }) else {
                     throw NiKError(item.title + ": " + t("Hãy chọn chứng chỉ hợp lệ.", "Choose an available certificate."))
                 }
                 var snapshot = item.options

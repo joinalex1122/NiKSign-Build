@@ -30,16 +30,6 @@
     "licenseFile": "MachOKit-LICENSE.txt"
   },
   {
-    "name": "TrollFools",
-    "repository": "https://github.com/Lessica/TrollFools",
-    "ref": "main",
-    "revision": "c5c87b859a9ee34d215548377273eddd34a7c7f6",
-    "license": "MIT",
-    "status": "reference",
-    "note": "Ứng dụng riêng phụ thuộc môi trường TrollStore; chưa tích hợp engine.",
-    "licenseFile": "TrollFools-LICENSE.txt"
-  },
-  {
     "name": "ArArchiveKit",
     "repository": "https://github.com/LebJe/ArArchiveKit",
     "ref": "main",
@@ -48,16 +38,6 @@
     "status": "linked",
     "note": "Đọc danh mục tệp .deb/.ar dạng tên ngắn.",
     "licenseFile": "ArArchiveKit-LICENSE.txt"
-  },
-  {
-    "name": "ellekit",
-    "repository": "https://github.com/tealbathingsuit/ellekit",
-    "ref": "main",
-    "revision": "1017a0d09606ea49ba8bc4d6cccc530d372e640e",
-    "license": "MIT",
-    "status": "reference",
-    "note": "Runtime hooking; chưa tích hợp hoặc inject vào ứng dụng.",
-    "licenseFile": "ellekit-LICENSE.txt"
   },
   {
     "name": "ZIPFoundation",
@@ -80,16 +60,6 @@
     "licenseFile": "SWCompression-LICENSE.txt"
   },
   {
-    "name": "optool",
-    "repository": "https://github.com/alexzielenski/optool",
-    "ref": "master",
-    "revision": "2898b51da0c0f2f5d7302af5ec82b858ebd4013c",
-    "license": "BSD-2-Clause",
-    "status": "reference",
-    "note": "CLI sửa load command; chưa chạy/ghép vào bản iOS.",
-    "licenseFile": "optool-LICENSE.txt"
-  },
-  {
     "name": "GCDWebServer",
     "repository": "https://github.com/swisspol/GCDWebServer",
     "ref": "master",
@@ -108,15 +78,5 @@
     "status": "linked",
     "note": "Mã nguồn local tại Vendor/Zsign, dựa trên revision đã ghim; sửa điều kiện giữ provisioning profile. Hash gốc và bản sửa trong UPSTREAM.json.",
     "licenseFile": "Zsign-LICENSE.txt"
-  },
-  {
-    "name": "WorseQuery",
-    "repository": "https://github.com/forcequitOS/worse_query",
-    "ref": "pinned source",
-    "revision": "d1540e20cd82b974d891e0551ced6d6aeb570ac2",
-    "license": "GPL-3.0-or-later",
-    "status": "vendored",
-    "note": "worse_query, gọi theo container với App Group được cấp; NiKSign bảo toàn cache và nhả token.",
-    "licenseFile": "WorseQuery-LICENSE.txt"
   }
 ]

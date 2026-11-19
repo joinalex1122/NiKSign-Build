@@ -64,6 +64,16 @@ final class NiKCertificateStore: ObservableObject {
     var recoveryIndexURL: URL { indexURL }
 
     @Published private(set) var revocationChecks: Set<UUID> = []
+    @Published private(set) var revocationErrors: [UUID: String] = [:]
+    private var revocationAttempts: [UUID: Date] = [:]
+
+    func checkSelectedRevocationIfDue(at date: Date = Date()) async {
+        guard let profile = selectedProfile,
+              NiKRevocationSchedule.isDue(status: profile.revocationStatus, checkedAt: profile.revocationCheckedAt,
+                                          attemptedAt: revocationAttempts[profile.id], now: date) else { return }
+        do { try await checkRevocation(profile) }
+        catch { revocationErrors[profile.id] = error.localizedDescription }
+    }
 
     private let rootDirectory: URL
     private let indexURL: URL
@@ -171,7 +181,9 @@ final class NiKCertificateStore: ObservableObject {
     func checkRevocation(_ profile: NiKCertificateProfile) async throws {
         guard loadFailure == nil, !revocationChecks.contains(profile.id),
               profiles.contains(where: { $0.id == profile.id }) else { return }
+        revocationAttempts[profile.id] = Date()
         let credentials = try credentials(for: profile)
+        revocationErrors[profile.id] = nil
         revocationChecks.insert(profile.id)
         defer { revocationChecks.remove(profile.id) }
         let result = try await Task.detached {

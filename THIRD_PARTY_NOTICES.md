@@ -1,82 +1,55 @@
-# NiKSign 3.1-dev — source and attribution
+# Third-party notices
 
-Integration changes dated 2026-11-16. New NiKSign integration source is GPL-3.0.
-Preserve the complete corresponding source and applicable notices when
-redistributing binaries.
+NiKSign integration source remains GPL-3.0; retain LICENSE and corresponding source when distributing. Third-party components retain their respective licenses and copyright notices. Apple frameworks are provided by the iOS SDK.
 
-## 3105 — YangJiii / YangJiiii and contributors
+## OpenSSL — Apache-2.0
 
-https://github.com/YangJiiii/3105
-Commit: a72617ed4c764a65d8aac1e91aca95231e72a2cb
+Source: https://github.com/krzyzanowskim/OpenSSL
 
-The full published application source, Xcode project, resources, documentation,
-LICENSE and THIRD_PARTY_NOTICES.md are retained under Vendor/3105, unchanged.
-`upstream-lock.json` records the SHA-256 of every vendored file.
+Revision: `0a6149bff4fb00921ce0ec1811f726b166638095` (ref `3.6.5000`). Full notice: `Native/Licenses/OpenSSL-LICENSE.txt`.
 
-The compiled integration substitutes two files, with notices in their headers:
-- Native/Integration/App.swift: NiKSign entry name, file URL routing, signer
-  sheet, and disabling upstream-app update offers in this independently named app.
-- Native/Integration/RepositoryHomeView.swift: NiKSign title and tool button.
+## minizip — Zlib
 
-The remaining 64 upstream translation units are included without modifications.
-Upstream display attribution and credits remain in the app. Its current icon
-is retained as an upstream asset; this build has not been given a new icon.
+Source: https://github.com/madler/zlib
 
-The upstream GPL-3.0 license applies to original 3105 portions. Third-party
-material retains its own terms. Read Vendor/3105/THIRD_PARTY_NOTICES.md,
-including its note that a repository license for FilzaSlop was not exposed
-when the upstream notice was prepared. This integration does not establish
-additional rights over those third-party portions or remove their notices.
+Revision: `51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf` (ref `v1.3.1`). Full notice: `Native/Licenses/minizip-LICENSE.txt`.
 
-## Zsign — MIT
+## MachOKit — MIT
 
-https://github.com/claration/zsign
-Revision: c4ba9da4283031c07efa03bce42c4b8602d22e73
-Fetched by SwiftPM. Native/Licenses/Zsign-LICENSE.txt contains the notice.
-Feather (https://github.com/claration/feather, GPL-3.0) was consulted for the
-signing flow; no ESign source was verified or copied.
+Source: https://github.com/p-x9/MachOKit
+
+Revision: `86e3a0734c9f7fbb959ccbd4be233b378ed59815` (ref `main`). Full notice: `Native/Licenses/MachOKit-LICENSE.txt`.
+
+## ArArchiveKit — MIT
+
+Source: https://github.com/LebJe/ArArchiveKit
+
+Revision: `12f86d0cf86ebfc50e0139c99e423b703848a65c` (ref `main`). Full notice: `Native/Licenses/ArArchiveKit-LICENSE.txt`.
 
 ## ZIPFoundation — MIT
 
-https://github.com/weichsel/ZIPFoundation, exact version 0.9.20.
-Notice: Native/Licenses/ZIPFoundation-LICENSE.txt.
+Source: https://github.com/weichsel/ZIPFoundation
 
-## OpenSSL
+Revision: `22787ffb59de99e5dc1fbfe80b19c97a904ad48d` (ref `0.9.20`). Full notice: `Native/Licenses/ZIPFoundation-LICENSE.txt`.
 
-https://github.com/krzyzanowskim/OpenSSL, transitive Zsign dependency.
-OpenSSL is now pinned to 3.6.5000; Native/Licenses/OpenSSL-LICENSE.txt was fetched from that tag.
-Preserve the actual Package.resolved and exact distribution notices from a
-successful macOS build; the build-evidence workflow artifact captures that
-resolved dependency list when available. SwiftPM resolution has not run here.
+## SWCompression — MIT
 
-## Historical notices
+Source: https://github.com/tsolomko/SWCompression
 
-`docs/history/` records the narrower 2.1 integration and validation. Claims in
-those files about the absence of backend code no longer describe 3.0-dev;
-FEATURES.md and this notice describe the current integration.
+Revision: `390e0b0af8dd19a600005a242a89e570ff482e09` (ref `4.8.6`). Full notice: `Native/Licenses/SWCompression-LICENSE.txt`.
 
-## Additional components in 3.1
+## GCDWebServer — BSD-3-Clause
 
-See Native/Licenses/components.json for all 11 requested components, canonical
-URLs, exact revisions and full license text filenames. MachOKit, ArArchiveKit
-and SWCompression are SwiftPM dependencies. Original minizip reader/ioapi
-source and GCDWebServer Core/Requests/Responses are vendored unchanged, with
-hashes in dependencies-vendor-lock.json. NiKSign wrappers are original
-integration code. minizip retains its zlib license; GCDWebServer retains BSD-3.
+Source: https://github.com/swisspol/GCDWebServer
 
-TrollFools, ellekit and optool license notices are included as references;
-their engines have not been linked or executed. The optional source-fetch
-script checks out the named snapshots without running them. Their presence
-in the license screen must not be interpreted as operational features.
+Revision: `c6d118f4ecc1d9c2c6130fe8522b50889e78524b` (ref `master`). Full notice: `Native/Licenses/GCDWebServer-LICENSE.txt`.
 
-New source additions and build wiring are not yet Xcode/device validated.
+## Zsign — MIT
 
-### Local Zsign correction (2026-11-18)
+Source: https://github.com/claration/zsign
 
-Zsign is built from Vendor/Zsign at claration/zsign c4ba9da4283031c07efa03bce42c4b8602d22e73 (MIT). One native condition in src/bundle.cpp is corrected so removeProvision=false embeds the selected profile before resource sealing, while true removes it. Original source hashes and the patch description are recorded in Vendor/Zsign/UPSTREAM.json. The MIT license is included in Vendor/Zsign/LICENSE.
+Revision: `c4ba9da4283031c07efa03bce42c4b8602d22e73` (ref `package`). Full notice: `Native/Licenses/Zsign-LICENSE.txt`.
 
-The Zsign portable Mach-O header also uses SDK CPU/VM definitions on Apple platforms to avoid duplicate macro definitions; portable definitions remain unchanged on other hosts. Header provenance is recorded separately in UPSTREAM.json.
+Zsign is built locally from the pinned source. Local changes and original hashes are recorded in Vendor/Zsign/UPSTREAM.json. GCDWebServer compatibility substitutions are recorded in server-overlays.json. All vendored hashes are checked by scripts/check-dependencies.py.
 
-### worse_query
-
-Source: forcequitOS/worse_query by Taj C (forcequit), GPL-3.0-or-later, pinned source tree d1540e20cd82b974d891e0551ced6d6aeb570ac2. Original copyright/license notices retained in Vendor/WorseQuery. NiKSign fixes NSError NULL parameters and query cleanup on symlink failure; XPC objects use ARC ownership. Per-container integration preserves the App Group cache using NiKGroupCacheTransaction, rather than discarding user cache contents. This does not grant an App Group entitlement or override provisioning.
+Historical development notices under docs/history describe earlier source snapshots, not the current binary or feature set.

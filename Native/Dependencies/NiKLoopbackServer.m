@@ -39,7 +39,7 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
 
 - (nullable NSURL *)startFile:(NSURL *)fileURL {
     return [self startFile:fileURL
-                  bundleID:@"com.apple.mobile.MobileHouseArrest"
+                  bundleID:@"com.niksign.app"
                    version:@"1.0"
                      title:@"NiKSign App"
                  httpsHost:nil];
@@ -72,7 +72,7 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
 
     // Serve only the selected IPA file and its generated OTA manifest; never expose directories, .p12 or profiles.
     [server addHandlerForMethod:@"GET" path:ipaRoute requestClass:[GCDWebServerRequest class] processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
-        return [GCDWebServerFileResponse responseWithFile:fileURL.path isAttachment:YES]
+        return [GCDWebServerFileResponse responseWithFile:fileURL.path byteRange:request.byteRange isAttachment:YES]
             ?: [GCDWebServerResponse responseWithStatusCode:404];
     }];
 
@@ -158,48 +158,6 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
 
 - (BOOL)isRunning { return self.server.isRunning; }
 
-- (nullable NSURL *)startStaticOTAFile:(NSURL *)fileURL {
-    [self stop];
-    self.lastError = nil;
-    NSNumber *regular = nil;
-    [fileURL getResourceValue:&regular forKey:NSURLIsRegularFileKey error:NULL];
-    if (!fileURL.isFileURL || !regular.boolValue) { return nil; }
-    // Static manifests are available for these ports. Retry occupied ports without
-    // falling back to a LAN interface or exposing anything except this one IPA.
-    for (NSUInteger attempt = 0; attempt < 32; attempt++) {
-        GCDWebServer *server = [GCDWebServer new];
-        [server addDefaultHandlerForMethod:@"GET" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
-            return [GCDWebServerResponse responseWithStatusCode:404];
-        }];
-        [server addHandlerForMethod:@"GET" path:@"/health" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
-            return [GCDWebServerDataResponse responseWithData:[@"NiKSign Local Payload" dataUsingEncoding:NSUTF8StringEncoding] contentType:@"text/plain"];
-        }];
-        __weak typeof(self) weakSelf = self;
-        __weak GCDWebServer *weakServer = server;
-        [server addHandlerForMethod:@"GET" path:@"/ota-me" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                typeof(self) strongSelf = weakSelf;
-                if (strongSelf.server == weakServer && strongSelf.onIPARequest) { strongSelf.onIPARequest(); }
-            });
-            GCDWebServerFileResponse *response = [GCDWebServerFileResponse responseWithFile:fileURL.path byteRange:request.byteRange isAttachment:NO];
-            return response ?: [GCDWebServerResponse responseWithStatusCode:416];
-        }];
-        NSUInteger port = 4000 + arc4random_uniform(5000);
-        NSError *error = nil;
-        if (![server startWithOptions:NiKLoopbackOptions(port) error:&error]) {
-            self.lastError = error;
-            continue;
-        }
-        self.server = server;
-        self.lastError = nil;
-        self.fileURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%lu/ota-me", (unsigned long)server.port]];
-#if TARGET_OS_IPHONE
-        self.bgTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"NiKSignLocalPayload" expirationHandler:^{ [self stop]; }];
-#endif
-        return self.fileURL;
-    }
-    return nil;
-}
 
 - (void)stop {
     [self.server stop];

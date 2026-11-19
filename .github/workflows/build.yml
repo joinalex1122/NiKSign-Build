@@ -21,14 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Verify source, dependencies and Patch v9 rules
+      - name: Verify signer source and dependencies
         run: |
           python3 scripts/check-integration.py
           python3 scripts/check-dependencies.py
           python3 Tests/minizip_test.py
-          python3 Tests/patch_v9_test.py
           python3 Tests/verify_ipa_test.py
-          node Tests/web.test.js
           bash -n scripts/*.sh
   ios:
     needs: source-checks
@@ -45,12 +43,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p audit-results
-          bash scripts/audit-ios.sh 1 2>&1 | tee audit-results/pass1.log
-          python3 scripts/check-build-log.py audit-results/pass1.log
+          bash scripts/audit-ios.sh 2>&1 | tee audit-results/build.log
+          python3 scripts/check-build-log.py audit-results/build.log
       - name: Package source archive
         run: |
           mkdir -p dist
-          /usr/bin/zip -qry dist/NiKSign-3.3-source.zip Native Vendor Tests scripts web docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md upstream-lock.json dependencies-vendor-lock.json upstream-overlays.json server-overlays.json
+          /usr/bin/zip -qry dist/NiKSign-3.4-source.zip Native Vendor Tests scripts docs project.yml .github README.md LICENSE THIRD_PARTY_NOTICES.md VALIDATION.md FEATURES.md DEPENDENCIES.md dependencies-vendor-lock.json server-overlays.json
       # Retry transient artifact service/DNS failures without rebuilding the app.
       - name: Upload IPA and source
         id: upload_ipa
@@ -59,8 +57,8 @@ jobs:
         with: &ipa_artifact
           name: NiKSign-unsigned-IPA-macos-15-intel
           path: |
-            audit-results/pass1/NiKSign-unsigned.ipa
-            dist/NiKSign-3.3-source.zip
+            audit-results/build/NiKSign-unsigned.ipa
+            dist/NiKSign-3.4-source.zip
           if-no-files-found: error
           overwrite: true
       - name: Wait before retrying IPA upload

@@ -79,7 +79,8 @@ final class NiKAltSourceStore: ObservableObject {
 
 struct NiKAltSourceView: View {
     @ObservedObject var store: NiKAltSourceStore
-    var onSelectDownloadedIPA: (URL, NiKAltSourceApp) async throws -> Void
+    var onSelectDownloadedIPA: (URL, NiKAltSourceApp, UUID?) async throws -> Void
+    @ObservedObject private var certificates = NiKCertificateStore.shared
 
     @AppStorage("nik.language") private var language = "vi"
     private func t(_ vi: String, _ en: String) -> String { language == "en" ? en : vi }
@@ -185,7 +186,7 @@ struct NiKAltSourceView: View {
                                 }
                                 Spacer()
                                 Button {
-                                    downloadAndQueue(app)
+                                    downloadAndQueue(app, certificateID: nil)
                                 } label: {
                                     if downloadingAppID == app.id {
                                         ProgressView()
@@ -195,6 +196,13 @@ struct NiKAltSourceView: View {
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .disabled(downloadingAppID != nil)
+                                Menu {
+                                    ForEach(certificates.profiles) { certificate in
+                                        Button(certificate.name) { downloadAndQueue(app, certificateID: certificate.id) }
+                                    }
+                                    if certificates.profiles.isEmpty { Text(t("Nhập chứng chỉ trong Cài đặt", "Import a certificate in Settings")) }
+                                } label: { Label(t("Tải & xếp hàng ký", "Download & Queue"), systemImage: "signature") }
                                 .disabled(downloadingAppID != nil)
                             }
                             if !app.localizedDescription.isEmpty {
@@ -222,7 +230,7 @@ struct NiKAltSourceView: View {
         }
     }
 
-    private func downloadAndQueue(_ app: NiKAltSourceApp) {
+    private func downloadAndQueue(_ app: NiKAltSourceApp, certificateID: UUID?) {
         guard downloadingAppID == nil else { return }
         downloadingAppID = app.id; receivedBytes = 0; expectedBytes = nil
         statusMessage = t("Đang tải", "Downloading") + " \(app.name) (v\(app.version))…"
@@ -238,8 +246,9 @@ struct NiKAltSourceView: View {
                 defer { try? downloaded.discard() }
                 try Task.checkCancellation()
                 statusMessage = t("Đang kiểm tra và nhập IPA…", "Validating and importing IPA…")
-                try await onSelectDownloadedIPA(downloaded.url, app)
-                statusMessage = t("Đã nhập", "Imported") + " \(app.name). SHA-256: \(downloaded.sha256)"
+                try await onSelectDownloadedIPA(downloaded.url, app, certificateID)
+                statusMessage = certificateID == nil ? t("Đã nhập", "Imported") : t("Đã thêm hàng đợi ký", "Added to signing queue")
+                statusMessage += " \(app.name). SHA-256: \(downloaded.sha256)"
             } catch is CancellationError { statusMessage = t("Đã hủy tải.", "Download cancelled.") }
             catch { statusMessage = error.localizedDescription }
         }
@@ -251,10 +260,18 @@ struct NiKSourceLibraryView: View {
     @StateObject private var sources = NiKAltSourceStore()
     @AppStorage("nik.language") private var language = "vi"
     var body: some View {
-        NiKAltSourceView(store: sources) { url, app in
-            guard await library.receive(url, expectedBundleID: app.bundleIdentifier) else {
+        NiKAltSourceView(store: sources) { url, app, certificateID in
+            guard var item = await library.receiveItem(url, expectedBundleID: app.bundleIdentifier) else {
                 try Task.checkCancellation()
                 throw NiKError(library.error.isEmpty ? "Không nhập được IPA." : library.error)
+            }
+            if let certificateID {
+                guard NiKCertificateStore.shared.profiles.contains(where: { $0.id == certificateID }) else { throw NiKError("Chứng chỉ đã bị xóa; IPA vẫn nằm trong thư viện.") }
+                item.certificateID = certificateID
+                guard library.save(item) else { throw NiKError(library.error) }
+                var options = item.options
+                options.targetDeviceUDID = UserDefaults.standard.string(forKey: "nik.deviceUDID") ?? ""
+                try NiKSigningQueue.shared.enqueue([NiKSigningJob(libraryID: item.id, title: item.title, input: item.ipaURL, certificateID: certificateID, options: options)])
             }
         }.navigationTitle(language == "en" ? "IPA Sources" : "Nguồn IPA")
     }

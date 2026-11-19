@@ -25,12 +25,10 @@ with tempfile.TemporaryDirectory() as directory:
         assert line.startswith('HTTP_READY '), line
         endpoint = line.split(' ', 1)[1]
         parts = urlsplit(endpoint)
-        assert parts.hostname == '127.0.0.1' and 4000 <= parts.port <= 8999 and parts.path == '/ota-me'
+        assert parts.hostname == '127.0.0.1' and parts.port > 0 and parts.path.endswith('/app.ipa') and len(parts.path.split('/')[1]) == 36
         origin = f'http://127.0.0.1:{parts.port}'
         # Proxy settings must not send loopback requests outside the host.
         client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with client.open(origin + '/health', timeout=5) as response:
-            assert response.read() == b'NiKSign Local Payload'
         with client.open(endpoint, timeout=5) as response:
             assert response.status == 200 and response.read() == payload
         request = urllib.request.Request(endpoint, headers={'Range': 'bytes=3-9'})
@@ -47,13 +45,12 @@ with tempfile.TemporaryDirectory() as directory:
                 assert error.code == 404, (path, error.code)
         stop.touch()
         output, _ = process.communicate(timeout=5)
-        assert process.returncode == 0 and 'HTTP_STOPPED ' in output, output
-        assert int(output.split('HTTP_STOPPED ', 1)[1].strip()) >= 2
+        assert process.returncode == 0 and 'HTTP_STOPPED' in output, output
         with socket.socket() as connection:
             connection.settimeout(1)
             assert connection.connect_ex(('127.0.0.1', parts.port)) != 0, 'Listener stayed open'
         assert source.read_bytes() == payload
-        print('PASS: actual loopback server full/range/HEAD transfers, health, route isolation, counters, stop and unchanged IPA')
+        print('PASS: actual loopback server full/range/HEAD transfers, route isolation, stop and unchanged IPA')
     finally:
         if process.poll() is None:
             process.kill()

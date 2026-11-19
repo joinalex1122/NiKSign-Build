@@ -34,11 +34,11 @@
   "Vendor/GCDWebServer/Requests/GCDWebServerDataRequest.h": "87626702fbb5e51a6ae7834cc26c920fa5fe3a052886d049e0c4e76e3ab5b58c",
   "Vendor/GCDWebServer/Requests/GCDWebServerFileRequest.h": "24ba26eea5edf7782fb41f4a9660ea6f52632dd0254355e1db499aaec427e49c",
   "Vendor/Zsign/LICENSE": "57a50ade7eafe84091e7f97169e2c555980513e5d425ba8b21c76ce7458f602c",
-  "Vendor/Zsign/UPSTREAM.json": "8b87405ba5146fa0918c1113d11c035a2dadbd469ff7bce745f1ca58360f0905",
+  "Vendor/Zsign/UPSTREAM.json": "ed065dc6e15cdaae6d993daf56873d7ca575bfd6a38af0c85631d6a12ac91a1f",
   "Vendor/Zsign/Package.swift": "9c6df47b301a41ba3198c9588acf14b9b87558f092f689fd4312cef8e7e74f34",
   "Vendor/Zsign/src/bundle.h": "a043438fe48093c9756d287ee9cead92bd4390016146df02defc6c2545bf562b",
   "Vendor/Zsign/src/openssl.cpp": "bfa17a0c5e3f7397b3e3d9d0b4603065729bd7e4a68db52872d21b4895d2a9ef",
-  "Vendor/Zsign/src/archo.cpp": "3178e11b3cbff62dc00e5825cf7c4a94705dee97a29ce685dbdf2034df81a211",
+  "Vendor/Zsign/src/archo.cpp": "9e2cd9ad6df145a71ba56710ce9d65f3a77993eeaa77e3123c0997d8e54b57b0",
   "Vendor/Zsign/src/metadata.h": "26e9e8592fef51e4dc445e39ab7139780cc523d97a675ff9a7238c617d263c64",
   "Vendor/Zsign/src/macho.cpp": "67ce63e7c24f28e568d5d38cca7453e5bebf0da6882f44808ae377ff3d27bf3a",
   "Vendor/Zsign/src/macho.h": "5f4e875ed3bc4f7fc3a851db5a63a704202800178063afdfdc850c60154d1ba3",
@@ -70,9 +70,5 @@
   "Vendor/Zsign/src/common/fs.h": "b5fea7e789b87fe91b4cffec54ac5ad2c0edd685d364856a2ee0bf00373671dc",
   "Vendor/Zsign/src/common/timer.cpp": "c41d4cb63a8320567c9e9acb9e243c0efad42941d6719ec7b9701e4df23b2d94",
   "Vendor/Zsign/src/common/util.h": "d6db04871cf590fb4022092836fede20c39ba25054ffed6e4698870c805c3b5c",
-  "Vendor/Zsign/src/include/ZSign.h": "2a679ae2c55cfe694f8f7d2f42d94b030acccd69d800f7c8582ef3619cc3c98f",
-  "Vendor/WorseQuery/LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  "Vendor/WorseQuery/worse_query.h": "02c919ddec399349ff0a8c1230fea01d590fd30880688da6edbb51ac38365408",
-  "Vendor/WorseQuery/UPSTREAM.json": "5e360e47194eacd897515534c68bd7638a8f7dd850f72e32ede6b777b4ade85f",
-  "Vendor/WorseQuery/worse_query.m": "887b1646d89eccd9ba684cba9f9f594dc31ab61836f45ca8837e9f838ff51603"
+  "Vendor/Zsign/src/include/ZSign.h": "2a679ae2c55cfe694f8f7d2f42d94b030acccd69d800f7c8582ef3619cc3c98f"
 }
