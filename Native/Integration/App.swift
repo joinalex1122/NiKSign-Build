@@ -94,6 +94,10 @@ struct NiKSignApp: App {
                 guard phase == .active, !showOnboarding, !nikMode.isEmpty, nikMode != "sign" else { return }
                 appState.detectSupport()
             }
+            .onChange(of: nikMode) { _, newMode in
+                        guard !showOnboarding, !newMode.isEmpty, newMode != "sign" else { return }
+                              appState.detectSupport()
+                               }                        
             .sheet(item: $toolImport) { request in
                 NiKToolsSheet(initialURL: request.url)
             }
