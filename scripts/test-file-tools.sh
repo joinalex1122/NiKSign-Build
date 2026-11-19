@@ -5,5 +5,5 @@ file_tools_dir=$(mktemp -d)
 trap 'rm -rf "$file_tools_dir"' EXIT
 mkdir -p "$file_tools_dir/Sources"
 cp Tests/FileTools/Package.swift "$file_tools_dir/Package.swift"
-cp Tests/FileTools/main.swift Native/NiKArchive.swift Native/NiKCertZipHelper.swift Native/Services/NiKSignedOutputValidator.swift Native/Services/NiKInstallMetadata.swift Native/Services/NiKSignedApps.swift Native/Services/NiKSignedFileAccess.swift "$file_tools_dir/Sources/"
+cp Tests/FileTools/main.swift Native/NiKArchive.swift Native/NiKCertZipHelper.swift Native/Services/NiKSignedOutputValidator.swift Native/Services/NiKInstallMetadata.swift Native/Services/NiKInstallationPayload.swift Native/Services/NiKSignedApps.swift Native/Services/NiKSignedFileAccess.swift "$file_tools_dir/Sources/"
 swift run --package-path "$file_tools_dir" FileToolsSmoke

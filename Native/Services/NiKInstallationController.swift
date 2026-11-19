@@ -31,18 +31,20 @@ import UIKit
     @Published private(set) var fileURL: URL?
     let server = NiKHTTPSOTAServer.shared
     private let profileServer = NiKLoopbackServer()
+    private var payload: NiKInstallationPayload?
     private var lease: NiKFileMutationReservations.Lease?
 
-    init() {
+    private init() {
+        NiKInstallationPayload.recoverAbandoned()
         server.onStop = { [weak self] in
             guard let self, self.method == .localHTTPS else { return }
-            self.releaseLease()
+            self.releaseLease(); self.payload?.discard(); self.payload = nil
         }
         payloadServer.onStopped = { [weak self] in
             guard let self else { return }
             self.payloadRunning = false
             guard self.method == .standard else { return }
-            self.releaseLease()
+            self.releaseLease(); self.payload?.discard(); self.payload = nil
         }
         payloadServer.onIPARequest = { [weak self] in self?.localIPARequests += 1 }
     }
@@ -52,6 +54,7 @@ import UIKit
     func stop() {
         deliveryTask?.cancel(); deliveryTask = nil; deliveryNotice = nil
         profileServer.stop(); payloadServer.stop(); server.stop(); releaseLease()
+        payload?.discard(); payload = nil
         publicManifestURL = nil; manifestVerified = false; localIPARequests = 0
         phase = .idle
     }
@@ -65,24 +68,29 @@ import UIKit
             let held = try NiKFileMutationReservations.shared.reserve([local])
             var transferred = false
             defer { if !transferred { NiKFileMutationReservations.shared.release(held) } }
-            let worker = Task.detached { try NiKInstallMetadata.read(local) }
-            let info = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
+            let worker = Task.detached { try NiKInstallationPayload.prepare(local) }
+            let snapshot = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
+            var adopted = false
+            defer { if !adopted { snapshot.discard() } }
             try Task.checkCancellation()
+            let info = snapshot.metadata
             guard method == selectedMethod else { throw CancellationError() }
             metadata = info
             if method == .standard {
-                guard let endpoint = payloadServer.startStaticOTA(file: local), let port = endpoint.port,
+                guard let endpoint = payloadServer.startStaticOTA(file: snapshot.url), let port = endpoint.port,
                       let manifest = NiKSemiLocalOTA.manifest(port: port) else {
                     throw NiKError(payloadServer.lastError?.localizedDescription ?? "Không mở được máy chủ IPA nội bộ.")
                 }
+                payload = snapshot; adopted = true
                 payloadRunning = true
                 publicManifestURL = manifest
                 lease = held; transferred = true
                 await probeStandard()
                 return
             }
-            server.configure(ipaURL: local, bundleIdentifier: info.bundleID, bundleVersion: info.version, title: info.title)
+            server.configure(ipaURL: snapshot.url, bundleIdentifier: info.bundleID, bundleVersion: info.version, title: info.title)
             try server.start()
+            payload = snapshot; adopted = true
             lease = held; transferred = true
             try await server.waitUntilReady()
             try Task.checkCancellation()

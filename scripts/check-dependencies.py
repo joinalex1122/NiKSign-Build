@@ -30,7 +30,7 @@ for name in ['MachOKit','ArArchiveKit','SWCompression']:
     assert any('import '+name in p.read_text() for p in (r/'Native').rglob('*.swift'))
 server = (r/'Native/Dependencies/NiKLoopbackServer.m').read_text()
 assert 'GCDWebServerOption_BindToLocalhost:@YES' in server
-assert 'GCDWebServerOption_Port:@0' in server
+assert 'GCDWebServerOption_Port:@(port)' in server and 'NiKLoopbackOptions(0)' in server
 assert 'manifest.plist' in server and 'self.itmsInstallURL = nil;' in server
 assert 'https://%@:%lu' not in server
 assert 'beginBackgroundTaskWithName' in server

@@ -7,6 +7,14 @@
 #import <UIKit/UIKit.h>
 #endif
 
+static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
+    NSMutableDictionary *options = [@{GCDWebServerOption_Port:@(port), GCDWebServerOption_BindToLocalhost:@YES} mutableCopy];
+#if TARGET_OS_IPHONE
+    options[GCDWebServerOption_AutomaticallySuspendInBackground] = @NO;
+#endif
+    return options;
+}
+
 @interface NiKLoopbackServer ()
 @property(nonatomic, strong) GCDWebServer *server;
 @property(nonatomic, strong, readwrite, nullable) NSError *lastError;
@@ -101,9 +109,7 @@
         return [GCDWebServerDataResponse responseWithData:plistData contentType:@"application/xml"];
     }];
 
-    NSDictionary *options = @{GCDWebServerOption_Port:@0,
-        GCDWebServerOption_BindToLocalhost:@YES,
-        GCDWebServerOption_AutomaticallySuspendInBackground:@NO};
+    NSDictionary *options = NiKLoopbackOptions(0);
     NSError *error = nil;
     if (![server startWithOptions:options error:&error]) {
         self.lastError = error;
@@ -139,8 +145,7 @@
         return [GCDWebServerDataResponse responseWithData:profileData contentType:@"application/x-apple-aspen-config"];
     }];
     NSError *error = nil;
-    if (![server startWithOptions:@{GCDWebServerOption_BindToLocalhost:@YES, GCDWebServerOption_Port:@0,
-                                   GCDWebServerOption_AutomaticallySuspendInBackground:@NO} error:&error]) {
+    if (![server startWithOptions:NiKLoopbackOptions(0) error:&error]) {
         self.lastError = error; return nil;
     }
     self.server = server;
@@ -178,8 +183,7 @@
         }];
         NSUInteger port = 4000 + arc4random_uniform(5000);
         NSError *error = nil;
-        if (![server startWithOptions:@{GCDWebServerOption_Port:@(port), GCDWebServerOption_BindToLocalhost:@YES,
-                                       GCDWebServerOption_AutomaticallySuspendInBackground:@NO} error:&error]) {
+        if (![server startWithOptions:NiKLoopbackOptions(port) error:&error]) {
             self.lastError = error;
             continue;
         }
