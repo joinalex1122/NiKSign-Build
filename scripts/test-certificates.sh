@@ -17,7 +17,7 @@ NIK_TEST_OPENSSL="$cert_openssl" PKG_CONFIG_PATH="$(brew --prefix openssl@3)/lib
 "$cert_openssl" verify -CAfile "$cert_test_dir/fixtures/local-ota.pem" "$cert_test_dir/fixtures/local-ota.pem"
 
 "$cert_openssl" x509 -inform DER -in "$cert_test_dir/fixtures/local-server.cer" -out "$cert_test_dir/fixtures/local-server.pem"
-"$cert_openssl" verify -CAfile "$cert_test_dir/fixtures/local-ota.pem" -verify_ip 127.0.0.1 -purpose sslserver "$cert_test_dir/fixtures/local-server.pem"
+"$cert_openssl" verify -x509_strict -CAfile "$cert_test_dir/fixtures/local-ota.pem" -verify_ip 127.0.0.1 -purpose sslserver "$cert_test_dir/fixtures/local-server.pem"
 
 python3 - "$cert_test_dir/fixtures" "$cert_openssl" <<'PYTLS'
 from pathlib import Path
@@ -28,6 +28,7 @@ assert 'CA:TRUE' in ca and 'Certificate Sign, CRL Sign' in ca and '2048 bit' in 
 leaf=subprocess.check_output([cli,'x509','-in',str(root/'local-server.pem'),'-noout','-text'],text=True)
 assert 'CA:FALSE' in leaf and 'TLS Web Server Authentication' in leaf and 'IP Address:127.0.0.1' in leaf and 'DNS:localhost' in leaf
 assert '2048 bit' in leaf and 'sha256WithRSAEncryption' in leaf
+assert all('Subject Key Identifier' in cert and 'Authority Key Identifier' in cert for cert in [ca,leaf])
 dates=subprocess.check_output([cli,'x509','-in',str(root/'local-server.pem'),'-noout','-dates'],text=True).splitlines()
 a,b=[ssl.cert_time_to_seconds(x.split('=',1)[1]) for x in dates]
 assert 0 < b-a <= 825*86400

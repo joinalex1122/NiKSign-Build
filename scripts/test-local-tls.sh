@@ -17,8 +17,8 @@ fi
 swiftc -I Tests/Certificates/OpenSSL "${tls_flags[@]}" Native/Services/NiKTLSServerCertificate.swift Tests/TLSServerCertificateSmoke.swift -o "$tls_test_dir/test"
 "$tls_test_dir/test" "$tls_test_dir"
 "$tls_openssl" x509 -inform DER -in "$tls_test_dir/leaf.cer" -out "$tls_test_dir/leaf.pem"
-"$tls_openssl" verify -CAfile "$tls_test_dir/ca.pem" -verify_ip 127.0.0.1 -purpose sslserver "$tls_test_dir/leaf.pem"
-"$tls_openssl" verify -CAfile "$tls_test_dir/ca.pem" -verify_hostname localhost -purpose sslserver "$tls_test_dir/leaf.pem"
+"$tls_openssl" verify -x509_strict -CAfile "$tls_test_dir/ca.pem" -verify_ip 127.0.0.1 -purpose sslserver "$tls_test_dir/leaf.pem"
+"$tls_openssl" verify -x509_strict -CAfile "$tls_test_dir/ca.pem" -verify_hostname localhost -purpose sslserver "$tls_test_dir/leaf.pem"
 if "$tls_openssl" verify -CAfile "$tls_test_dir/ca.pem" -verify_hostname example.com -purpose sslserver "$tls_test_dir/leaf.pem" >/dev/null 2>&1; then
     echo 'FAIL: wrong hostname accepted'; exit 1
 fi
@@ -32,6 +32,7 @@ root = pathlib.Path(sys.argv[1])
 assert (root/'chain.pem').read_text().count('BEGIN CERTIFICATE') == 2
 text = subprocess.check_output([sys.argv[2], 'x509', '-in', str(root/'leaf.pem'), '-noout', '-text'], text=True)
 assert 'CA:FALSE' in text and 'TLS Web Server Authentication' in text
+assert 'Subject Key Identifier' in text and 'Authority Key Identifier' in text
 assert '2048 bit' in text and 'sha256WithRSAEncryption' in text
 dates=subprocess.check_output([sys.argv[2], 'x509', '-in', str(root/'leaf.pem'), '-noout', '-dates'],text=True).splitlines()
 a,b=[ssl.cert_time_to_seconds(x.split('=',1)[1]) for x in dates]

@@ -25,6 +25,8 @@ enum NiKTLSServerCertificate {
             guard X509_check_ca(certificate) > 0,
                   X509_get_ext_by_NID(certificate, NID_basic_constraints, -1) >= 0,
                   X509_get_ext_by_NID(certificate, NID_key_usage, -1) >= 0,
+                  X509_get_ext_by_NID(certificate, NID_subject_key_identifier, -1) >= 0,
+                  X509_get_ext_by_NID(certificate, NID_authority_key_identifier, -1) >= 0,
                   X509_get_key_usage(certificate) & requiredUsage == requiredUsage,
                   let key = X509_get0_pubkey(certificate), EVP_PKEY_get_bits(key) >= 2048,
                   X509_get_signature_nid(certificate) == NID_sha256WithRSAEncryption else { return false }
@@ -82,6 +84,8 @@ enum NiKTLSServerCertificate {
         X509V3_set_ctx(&extContext, caCert, cert, nil, nil, 0)
         for (nid, value) in [
             (NID_basic_constraints, "critical,CA:FALSE"),
+            (NID_subject_key_identifier, "hash"),
+            (NID_authority_key_identifier, "keyid:always"),
             (NID_key_usage, "critical,digitalSignature,keyEncipherment"),
             (NID_ext_key_usage, "serverAuth"),
             (NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1")

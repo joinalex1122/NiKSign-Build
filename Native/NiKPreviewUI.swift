@@ -825,7 +825,7 @@ struct NiKIPADetail: View {
                    certificateAssessment?.issues.contains(where: { $0.code == "bundle.mismatch" }) == true {
                     Text(t("Bundle ID trong profile: ", "Profile Bundle ID: ") + certificate.bundleIDPattern)
                         .font(.caption.monospaced()).textSelection(.enabled)
-                    Text(t("NiKSign vẫn ký và giữ nguyên Bundle ID nếu bạn không sửa. Đổi ID bên dưới là tùy chọn; có thể ảnh hưởng đăng nhập, thông báo và nhóm ứng dụng.", "NiKSign can sign and keep the original Bundle ID. Changing it below is optional and can affect sign-in, notifications and app groups."))
+                    Text(t("Giữ Bundle ID gốc khi profile cho phép. Nếu không khớp, chọn profile khác hoặc đổi ID bên dưới; đổi ID có thể ảnh hưởng đăng nhập, thông báo và nhóm ứng dụng.", "Keep the original Bundle ID when the profile allows it. Otherwise choose another profile or change the ID below; changing it can affect sign-in, notifications and app groups."))
                         .font(.caption).foregroundStyle(.secondary)
                     if !certificate.bundleIDPattern.contains("*") && !certificate.bundleIDPattern.isEmpty {
                         Button(t("Dùng Bundle ID của profile cho IPA này", "Use the profile Bundle ID for this IPA")) {

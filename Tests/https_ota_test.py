@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory() as d:
         config=plistlib.loads((root/'trust.mobileconfig').read_bytes())
         ca=config['PayloadContent'][0]['PayloadContent']
         context=ssl.create_default_context(cadata=ssl.DER_cert_to_PEM_cert(ca))
+        context.verify_flags |= ssl.VERIFY_X509_STRICT
         def request(path,method='GET',headers=None):
             c=http.client.HTTPSConnection(origin,port,context=context,timeout=10)
             c.request(method,path,headers=headers or {})

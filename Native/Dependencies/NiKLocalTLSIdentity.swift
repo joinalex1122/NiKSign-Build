@@ -125,6 +125,8 @@ X509V3_set_ctx(&extCtx, x509, x509, nil, nil, 0)
 
 let extensions: [(Int32, String)] = [
 (NID_basic_constraints, "critical,CA:TRUE"),
+(NID_subject_key_identifier, "hash"),
+(NID_authority_key_identifier, "keyid:always"),
 (NID_key_usage, "critical,keyCertSign,cRLSign"),
 (NID_ext_key_usage, "serverAuth"),
 (NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1")
