@@ -44,6 +44,8 @@ targets:
       product: Zsign
     - package: ZIPFoundation
     - sdk: libz.tbd
+    # Xcode 16 metadata extraction expects this public SDK framework.
+    - sdk: AppIntents.framework
     - package: MachOKit
     - package: ArArchiveKit
     - package: SWCompression

@@ -280,3 +280,6 @@ Các file production mới: `NiKPathValidator.swift` (bundle/path riêng), `NiKR
 ## Theo dõi CI
 
 - 44533181646 / 0c5c163: source-checks PASS; macOS audit phát hiện fallback HTTP trả 501 thay vì 404. Đã thêm handler mặc định trước token routes ở cả server tệp và bootstrap profile. Chờ CI bản sửa; chưa xác nhận Xcode.
+
+- 44533648315 / 30df10a: toàn bộ regression macOS (kể cả native CMS, QueueRemoval, PKCS12/Keychain) PASS; xcodegen PASS, Xcode BUILD SUCCEEDED và IPA arm64/CRC PASS. QA chặn một cảnh báo metadata vì thiếu AppIntents.framework; đã thêm liên kết framework public của SDK. Không khôi phục mã truy cập ngoài sandbox.
+- Đã đối chiếu main 39d17db và giữ hai chỉnh sửa padding của người dùng. Các thay đổi Apple identity/trạng thái exploit được thay thế theo scope Sign-only; profile pre-copy và single build đã giữ. Merge history main vào nhánh CI trước khi chạy kiểm chứng bản cuối.
