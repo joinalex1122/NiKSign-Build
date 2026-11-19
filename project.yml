@@ -67,7 +67,7 @@ targets:
     - package: OpenSSL
     settings:
       base:
-        NIKSIGN_BUNDLE_ID: com.niksign.app
+        NIKSIGN_BUNDLE_ID: com.apple.mobile.MobileHouseArrest
         PRODUCT_BUNDLE_IDENTIFIER: $(NIKSIGN_BUNDLE_ID)
         PRODUCT_NAME: NiKSign
         SWIFT_VERSION: '5.0'
