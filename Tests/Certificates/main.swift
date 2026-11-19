@@ -24,13 +24,15 @@ precondition(modernInfo.sha1Hex == legacyInfo.sha1Hex)
 precondition(!modernInfo.derData.isEmpty && modernInfo.sha1Hex.count == 40)
 precondition((modernInfo.expirationDate ?? .distantPast) > Date())
 precondition((modernInfo.notBeforeDate ?? .distantFuture) <= Date())
-let provisioningXML = try PropertyListSerialization.data(fromPropertyList: [
+let provisioningProperties: [String: Any] = [
     "Name": "Metadata fixture", "TeamIdentifier": ["TEAM"], "ApplicationIdentifierPrefix": ["SEED"],
     "Entitlements": ["application-identifier": "SEED.com.example.*", "get-task-allow": true],
     "ProvisionedDevices": ["UDID-ONE"], "DeveloperCertificates": [modernInfo.derData],
     "ExpirationDate": Date().addingTimeInterval(3600)
-] as [String: Any], format: .xml, options: 0)
-let metadata = try NiKCertificateStore.parseMobileProvision(data: provisioningXML)
+]
+let provisioningXML = try PropertyListSerialization.data(fromPropertyList: provisioningProperties, format: .xml, options: 0)
+expectFailure { _ = try NiKCertificateStore.parseMobileProvision(data: provisioningXML) }
+let metadata = try NiKCertificateStore.parseMobileProvision(data: provisionFixture.sign(provisioningProperties))
 precondition(metadata.teamID == "TEAM" && metadata.bundleIDPattern == "com.example.*")
 precondition(metadata.allowsDebugging && !metadata.provisionsAllDevices)
 precondition(metadata.entitlements["get-task-allow"] == .bool(true))
