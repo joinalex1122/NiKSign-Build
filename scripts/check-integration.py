@@ -34,7 +34,7 @@ assert '../Vendor/3105/ThreeOneOSFive/ThreeOneOSFive-Bridging-Header.h' in (r/'N
 for language in ['en', 'vi', 'zh-Hans']:
     assert (source/f'{language}.lproj/Localizable.strings').is_file()
 info = plistlib.loads((r/'Native/Info.plist').read_bytes())
-assert info['CFBundleIdentifier'] == 'com.niksign.app'
+assert info['CFBundleIdentifier'] == 'com.apple.mobile.MobileHouseArrest'
 assert info['CFBundleDisplayName'] == 'NiKSign'
 assert set(info['CFBundleURLTypes'][0]['CFBundleURLSchemes']) == {'threeoneosfive','niksign'}
 assert info['UTExportedTypeDeclarations'][0]['UTTypeTagSpecification']['public.filename-extension'] == ['3105']
