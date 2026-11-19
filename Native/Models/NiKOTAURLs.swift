@@ -7,11 +7,14 @@ enum NiKOTAURLs {
         return URL(string: "https://127.0.0.1:\(port)/\(token)/manifest.plist")
     }
     static func install(manifest: URL) -> URL? {
-        guard manifest.scheme == "https", manifest.host == "127.0.0.1", manifest.port != nil else { return nil }
+        guard manifest.scheme == "https", ((manifest.host == "127.0.0.1" && manifest.port != nil && manifest.user == nil && manifest.password == nil) || NiKSemiLocalOTA.isManifest(manifest)) else { return nil }
         var parts = URLComponents()
         parts.scheme = "itms-services"
         parts.host = "" // Required authority: itms-services://?action=..., not itms-services:?action=...
-        parts.queryItems = [URLQueryItem(name: "action", value: "download-manifest"), URLQueryItem(name: "url", value: manifest.absoluteString)]
+        // Encode the nested URL as one parameter, including reserved : / ? & characters.
+        let encoded = manifest.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
+        guard let encoded else { return nil }
+        parts.percentEncodedQuery = "action=download-manifest&url=" + encoded
         return parts.url
     }
 }

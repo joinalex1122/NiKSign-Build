@@ -151,12 +151,56 @@
     return self.fileURL;
 }
 
+- (BOOL)isRunning { return self.server.isRunning; }
+
+- (nullable NSURL *)startStaticOTAFile:(NSURL *)fileURL {
+    [self stop];
+    self.lastError = nil;
+    NSNumber *regular = nil;
+    [fileURL getResourceValue:&regular forKey:NSURLIsRegularFileKey error:NULL];
+    if (!fileURL.isFileURL || !regular.boolValue) { return nil; }
+    // Static manifests are available for these ports. Retry occupied ports without
+    // falling back to a LAN interface or exposing anything except this one IPA.
+    for (NSUInteger attempt = 0; attempt < 32; attempt++) {
+        GCDWebServer *server = [GCDWebServer new];
+        [server addHandlerForMethod:@"GET" path:@"/health" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+            return [GCDWebServerDataResponse responseWithData:[@"NiKSign Local Payload" dataUsingEncoding:NSUTF8StringEncoding] contentType:@"text/plain"];
+        }];
+        __weak typeof(self) weakSelf = self;
+        __weak GCDWebServer *weakServer = server;
+        [server addHandlerForMethod:@"GET" path:@"/ota-me" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                typeof(self) strongSelf = weakSelf;
+                if (strongSelf.server == weakServer && strongSelf.onIPARequest) { strongSelf.onIPARequest(); }
+            });
+            GCDWebServerFileResponse *response = [GCDWebServerFileResponse responseWithFile:fileURL.path byteRange:request.byteRange isAttachment:NO];
+            return response ?: [GCDWebServerResponse responseWithStatusCode:416];
+        }];
+        NSUInteger port = 4000 + arc4random_uniform(5000);
+        NSError *error = nil;
+        if (![server startWithOptions:@{GCDWebServerOption_Port:@(port), GCDWebServerOption_BindToLocalhost:@YES,
+                                       GCDWebServerOption_AutomaticallySuspendInBackground:@NO} error:&error]) {
+            self.lastError = error;
+            continue;
+        }
+        self.server = server;
+        self.lastError = nil;
+        self.fileURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%lu/ota-me", (unsigned long)server.port]];
+#if TARGET_OS_IPHONE
+        self.bgTask = [UIApplication.sharedApplication beginBackgroundTaskWithName:@"NiKSignLocalPayload" expirationHandler:^{ [self stop]; }];
+#endif
+        return self.fileURL;
+    }
+    return nil;
+}
+
 - (void)stop {
     [self.server stop];
     self.server = nil;
     self.fileURL = nil;
     self.manifestURL = nil;
     self.itmsInstallURL = nil;
+    if (self.onStopped) { self.onStopped(); }
 #if TARGET_OS_IPHONE
     if (self.bgTask != UIBackgroundTaskInvalid) {
         [[UIApplication sharedApplication] endBackgroundTask:self.bgTask];

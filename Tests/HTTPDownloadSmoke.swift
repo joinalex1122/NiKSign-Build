@@ -20,6 +20,7 @@ import Foundation
         precondition(receipt.bytes == 5 && data == Data("hello".utf8))
         try receipt.discard()
         precondition(!fm.fileExists(atPath: receipt.directory.path))
+        await fails { _ = try await NiKHTTPDownload.download(base.appendingPathComponent("redirect"), limit: 100, allowRedirects: false) }
         let redirected = try await NiKHTTPDownload.download(base.appendingPathComponent("redirect"), limit: 100)
         precondition(redirected.bytes == 5)
         try redirected.discard()

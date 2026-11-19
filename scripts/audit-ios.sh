@@ -14,7 +14,7 @@ node Tests/web.test.js
 xcrun swiftc Native/Services/NiKGroupCacheTransaction.swift Native/Models/NiKWorseQueryPolicy.swift Tests/WorseQuerySafetySmoke.swift -o /tmp/nik-wq-safety
 /tmp/nik-wq-safety
 python3 Tests/zsign_provisioning_test.py
-xcrun swiftc Native/Models/NiKOTAURLs.swift Tests/OTAURLsSmoke.swift -o /tmp/nik-ota-urls-test
+xcrun swiftc Native/Models/NiKOTAURLs.swift Native/Models/NiKSemiLocalOTA.swift Tests/OTAURLsSmoke.swift -o /tmp/nik-ota-urls-test
 /tmp/nik-ota-urls-test
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/CodecSmoke.swift -o /tmp/nik-codec-test
 xcrun swiftc Vendor/3105/ThreeOneOSFive/helpers/PatchProjectModels.swift Native/UpstreamCompatibility/helpers/PatchPackageCodec.swift Native/Services/NiKPatchSchema9Compatibility.swift Native/Services/NiKFileDigest.swift Tests/PatchSchema9Smoke.swift -o /tmp/nik-schema9-test
@@ -65,6 +65,7 @@ xcrun swiftc Native/Services/NiKPatchContainerAccess.swift Tests/PatchContainerA
 xcrun swiftc Native/Services/NiKSignedFileAccess.swift Tests/SignedFileAccessSmoke.swift -o /tmp/nik-signed-file-test
 /tmp/nik-signed-file-test
 bash scripts/test-file-tools.sh
+bash scripts/test-loopback-ota.sh
 bash scripts/test-local-tls.sh
 bash scripts/test-certificates.sh
 bash scripts/build-ios.sh

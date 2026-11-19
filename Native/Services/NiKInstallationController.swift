@@ -4,7 +4,21 @@ import UIKit
 
 @MainActor final class NiKInstallationController: ObservableObject {
     static let shared = NiKInstallationController()
-    enum Phase { case idle, preparing, trustRequired, ready, requestSent, failed }
+    enum Phase { case idle, preparing, consentRequired, trustRequired, ready, requestSent, failed }
+    enum Method: String { case standard, localHTTPS }
+    @Published var method: Method = Method(rawValue: UserDefaults.standard.string(forKey: "nik.install.method.v2") ?? "") ?? .standard {
+        didSet {
+            if method != oldValue { stop(); UserDefaults.standard.set(method.rawValue, forKey: "nik.install.method.v2") }
+        }
+    }
+    @Published private(set) var payloadRunning = false
+    @Published private(set) var localIPARequests = 0
+    @Published private(set) var manifestVerified = false
+    var isInstallerRunning: Bool { method == .standard ? (payloadRunning && payloadServer.isRunning) : server.isServingIPA }
+    private let payloadServer = NiKLoopbackServer()
+    private var publicManifestURL: URL?
+    private var consent: Bool { UserDefaults.standard.bool(forKey: "nik.install.staticManifestConsent.v1") }
+    func allowPublicManifest() { UserDefaults.standard.set(true, forKey: "nik.install.staticManifestConsent.v1") }
     enum TrustState { case unknown, checking, trusted, required, unavailable }
     @Published private(set) var trustState: TrustState = .unknown
     @Published private(set) var trustError: String?
@@ -19,18 +33,32 @@ import UIKit
     private let profileServer = NiKLoopbackServer()
     private var lease: NiKFileMutationReservations.Lease?
 
-    init() { server.onStop = { [weak self] in self?.releaseLease() } }
+    init() {
+        server.onStop = { [weak self] in
+            guard let self, self.method == .localHTTPS else { return }
+            self.releaseLease()
+        }
+        payloadServer.onStopped = { [weak self] in
+            guard let self else { return }
+            self.payloadRunning = false
+            guard self.method == .standard else { return }
+            self.releaseLease()
+        }
+        payloadServer.onIPARequest = { [weak self] in self?.localIPARequests += 1 }
+    }
     private func releaseLease() {
         if let lease { NiKFileMutationReservations.shared.release(lease); self.lease = nil }
     }
     func stop() {
         deliveryTask?.cancel(); deliveryTask = nil; deliveryNotice = nil
-        profileServer.stop(); server.stop(); releaseLease()
+        profileServer.stop(); payloadServer.stop(); server.stop(); releaseLease()
+        publicManifestURL = nil; manifestVerified = false; localIPARequests = 0
         phase = .idle
     }
     func prepare(_ url: URL) async {
         guard !busy else { return }
         busy = true; defer { busy = false }
+        let selectedMethod = method
         stop(); fileURL = url; metadata = nil; error = nil; phase = .preparing
         do {
             guard let local = NiKSignedFileAccess.available(url.path) else { throw NiKError("Không tìm thấy IPA trong Signed. Khôi phục tệp hoặc ký lại.") }
@@ -40,7 +68,19 @@ import UIKit
             let worker = Task.detached { try NiKInstallMetadata.read(local) }
             let info = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
             try Task.checkCancellation()
+            guard method == selectedMethod else { throw CancellationError() }
             metadata = info
+            if method == .standard {
+                guard let endpoint = payloadServer.startStaticOTA(file: local), let port = endpoint.port,
+                      let manifest = NiKSemiLocalOTA.manifest(port: port) else {
+                    throw NiKError(payloadServer.lastError?.localizedDescription ?? "Không mở được máy chủ IPA nội bộ.")
+                }
+                payloadRunning = true
+                publicManifestURL = manifest
+                lease = held; transferred = true
+                await probeStandard()
+                return
+            }
             server.configure(ipaURL: local, bundleIdentifier: info.bundleID, bundleVersion: info.version, title: info.title)
             try server.start()
             lease = held; transferred = true
@@ -52,9 +92,34 @@ import UIKit
     }
     func checkConnection() async {
         guard !busy, let fileURL else { return }
-        if !server.isServingIPA { await prepare(fileURL); return }
+        if !isInstallerRunning { await prepare(fileURL); return }
         busy = true; defer { busy = false }
-        await probeHTTPS()
+        if method == .standard { await probeStandard() } else { await probeHTTPS() }
+    }
+    private func probeStandard() async {
+        error = nil; manifestVerified = false
+        guard consent else { phase = .consentRequired; return }
+        do {
+            guard let local = payloadServer.fileURL, payloadServer.isRunning,
+                  let manifest = publicManifestURL, let port = local.port else { throw NiKError("Máy chủ IPA đã dừng. Hãy chuẩn bị lại.") }
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 10; config.timeoutIntervalForResource = 20
+            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            let session = URLSession(configuration: config)
+            defer { session.invalidateAndCancel() }
+            let health = local.deletingLastPathComponent().appendingPathComponent("health")
+            let (healthData, localResponse) = try await session.data(from: health)
+            guard (localResponse as? HTTPURLResponse)?.statusCode == 200, healthData == Data("NiKSign Local Payload".utf8) else { throw NiKError("Không truy cập được IPA trên máy chủ nội bộ.") }
+            let receipt = try await NiKHTTPDownload.download(manifest, limit: 65536, timeout: 20, allowRedirects: false)
+            defer { try? receipt.discard() }
+            let data = try Data(contentsOf: receipt.url)
+            try Task.checkCancellation()
+            try NiKSemiLocalOTA.validate(data, port: port)
+            manifestVerified = true; phase = .ready
+        } catch {
+            if Task.isCancelled { stop(); return }
+            phase = .failed; self.error = error.localizedDescription
+        }
     }
     private func probeHTTPS() async {
         error = nil
@@ -92,8 +157,13 @@ import UIKit
             phase = .failed; error = "Quay lại NiKSign rồi bấm Cài đặt khi ứng dụng đang mở."; return
         }
         busy = true; defer { busy = false }
-        server.resetRequestCounts()
-        if await server.openInstallURL() { phase = .requestSent; observeDelivery() }
+        localIPARequests = 0; server.resetRequestCounts()
+        let accepted: Bool
+        if method == .standard, let manifest = publicManifestURL, let link = NiKOTAURLs.install(manifest: manifest) {
+            accepted = await UIApplication.shared.open(link, options: [:])
+        } else if method == .localHTTPS { accepted = await server.openInstallURL() }
+        else { accepted = false }
+        if accepted { phase = .requestSent; observeDelivery() }
         else { phase = .failed; error = "iOS không nhận liên kết itms-services. Hãy kiểm tra giới hạn cài đặt/MDM trên thiết bị." }
     }
     func checkTrust() async {
@@ -131,6 +201,14 @@ import UIKit
         deliveryTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 15_000_000_000) } catch { return }
             guard let self, self.phase == .requestSent else { return }
+            if self.method == .standard {
+                if !self.payloadServer.isRunning {
+                    self.deliveryNotice = "Máy chủ IPA đã dừng. Mở NiKSign và chuẩn bị lại trước khi cài."
+                } else if self.localIPARequests == 0 {
+                    self.deliveryNotice = "iOS chưa yêu cầu tải IPA. Kiểm tra Internet/DNS/VPN; manifest công khai không dùng hồ sơ tin cậy localhost. Có thể thử tuyến HTTPS nội bộ trong mục Phương thức cài."
+                }
+                return
+            }
             if !self.server.isRunning {
                 self.deliveryNotice = "Máy chủ đã dừng trước khi hoàn tất tải. Quay lại NiKSign, chuẩn bị lại rồi cài."
             } else if self.server.manifestRequests == 0 {

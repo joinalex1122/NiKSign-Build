@@ -17,6 +17,7 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
         var errorDescription: String? { message }
     }
     private let limit: Int64
+    private let allowRedirects: Bool
     private let timeout: TimeInterval
     private let progress: @Sendable (Progress) -> Void
     private let lock = NSLock()
@@ -35,8 +36,8 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
     private var redirects = 0
     private var lastProgressTime: TimeInterval = 0
 
-    private init(limit: Int64, timeout: TimeInterval, progress: @escaping @Sendable (Progress) -> Void) {
-        self.limit = limit; self.timeout = timeout; self.progress = progress
+    private init(limit: Int64, timeout: TimeInterval, allowRedirects: Bool, progress: @escaping @Sendable (Progress) -> Void) {
+        self.limit = limit; self.timeout = timeout; self.allowRedirects = allowRedirects; self.progress = progress
     }
     static func validate(_ url: URL) throws {
         guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
@@ -44,13 +45,13 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
             throw Failure(message: "URL phải là HTTP/HTTPS và không chứa tài khoản/mật khẩu.")
         }
     }
-    static func download(_ url: URL, limit: Int64, timeout: TimeInterval = 60,
+    static func download(_ url: URL, limit: Int64, timeout: TimeInterval = 60, allowRedirects: Bool = true,
                          progress: @escaping @Sendable (Progress) -> Void = { _ in }) async throws -> Receipt {
         try validate(url)
         guard limit > 0, limit <= 1_073_741_824, timeout.isFinite, timeout > 0, timeout <= 3_600 else {
             throw Failure(message: "Giới hạn tải không hợp lệ.")
         }
-        let transfer = NiKHTTPDownload(limit: limit, timeout: timeout, progress: progress)
+        let transfer = NiKHTTPDownload(limit: limit, timeout: timeout, allowRedirects: allowRedirects, progress: progress)
         return try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { transfer.start(url, continuation: $0) }
@@ -148,6 +149,7 @@ final class NiKHTTPDownload: NSObject, URLSessionDataDelegate, @unchecked Sendab
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         lock.lock()
         do {
+            guard allowRedirects else { throw Failure(message: "Từ chối chuyển hướng của manifest cài đặt.") }
             redirects += 1
             guard redirects <= 5, let destination = request.url else { throw Failure(message: "Nguồn chuyển hướng quá 5 lần.") }
             try Self.validate(destination)

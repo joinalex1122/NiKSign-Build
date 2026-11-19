@@ -14,13 +14,13 @@ struct NiKTrustSetupView: View {
             Section {
                 Label(t("Chuẩn bị cài IPA đã ký", "Prepare to Install Signed IPAs"), systemImage: "checkmark.shield.fill")
                     .font(.headline)
-                Text(t("Thiết lập tin cậy HTTPS một lần để iOS có thể tải IPA từ NiKSign trên chính iPhone này. Chứng nhận HTTPS này khác với chứng chỉ dùng để ký ứng dụng.", "Set up HTTPS trust once so iOS can download IPAs from NiKSign on this iPhone. This HTTPS certificate is separate from your app signing certificate."))
+                Text(t("Cài Tiêu chuẩn không cần hồ sơ HTTPS localhost. Thiết lập dưới đây chỉ dành cho phương thức HTTPS nội bộ tùy chọn. Chứng nhận HTTPS khác với chứng chỉ ký ứng dụng.", "Standard installation does not need a localhost HTTPS profile. The setup below is only for the optional Local HTTPS method. HTTPS and app signing certificates are separate."))
             }
             Section(t("Trạng thái", "Status")) {
                 switch install.trustState {
                 case .unknown: Text(t("Chưa kiểm tra", "Not checked"))
                 case .checking: ProgressView(t("Đang kiểm tra HTTPS…", "Checking HTTPS…"))
-                case .trusted: Label(t("HTTPS được hệ thống tin cậy", "HTTPS is trusted by the system"), systemImage: "checkmark.shield")
+                case .trusted: Label(t("Kiểm tra HTTPS trong NiKSign: đạt", "HTTPS Check in NiKSign: Passed"), systemImage: "checkmark.shield")
                 case .required: Text(t("Cần cài hồ sơ và bật tin cậy đầy đủ", "Install the profile and enable full trust"))
                 case .unavailable: Text(t("Chưa kết nối được máy chủ nội bộ", "Cannot connect to the local server"))
                 }
@@ -40,7 +40,7 @@ struct NiKTrustSetupView: View {
             }
             if let onContinue {
                 Section {
-                    Button(install.trustState == .trusted ? t("Tiếp tục", "Continue") : t("Để sau", "Later"), action: onContinue)
+                    Button((install.method == .standard || install.trustState == .trusted) ? t("Tiếp tục", "Continue") : t("Để sau", "Later"), action: onContinue)
                         .frame(maxWidth: .infinity)
                     Text(t("Bạn có thể mở lại tại Cài đặt → Tin cậy & Cài IPA.", "You can return in Settings → Trust & IPA Installation."))
                         .font(.caption).foregroundStyle(.secondary)
@@ -48,7 +48,7 @@ struct NiKTrustSetupView: View {
             }
         }
         .navigationTitle(t("Tin cậy & Cài IPA", "Trust & IPA Installation"))
-        .task { await install.checkTrust() }
+        .task { if install.method == .localHTTPS { await install.checkTrust() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, downloaded { Task { await install.checkTrust() } }
         }

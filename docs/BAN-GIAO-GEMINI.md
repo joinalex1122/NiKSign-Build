@@ -12,9 +12,15 @@ Repo: https://github.com/joinalex1122/NiKSign-Build
 Nhánh làm việc: `codex/niksign-upgrades`.
 Checkpoint: `handoff/niksign-upgrade-checkpoints`.
 Main/PR cũ không phản ánh tiến độ mới; chưa merge main. Checkout nhánh nâng cấp, không reset về main.
-Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` trong gói bàn giao. Tài liệu được cập nhật tới mốc30; các trạng thái cũ bên dưới là lịch sử.
+Lấy SHA chính xác bằng `git rev-parse HEAD` hoặc `SOURCE-COMMIT.txt` trong gói bàn giao. Tài liệu được cập nhật tới mốc31; các trạng thái cũ bên dưới là lịch sử.
 
-Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–30), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
+Đọc tiếp `docs/UPGRADE-PROGRESS.md` (lịch sử mốc1–31), `docs/APPROVED-UPGRADE-SCOPE.md` (phạm vi đã duyệt). Mốc mới thay thế trạng thái cũ; ghi chú cũ “pending” không có nghĩa vẫn pending nếu đã có kết quả phía sau.
+
+## Cập nhật mốc31 — tuyến cài tiêu chuẩn qua public manifest
+
+Ảnh mới từ user xác nhận bản có counters vẫn 0 kết nối/manifest/IPA, iOS báo127.0.0.1. c289807/run44445164510 build một lượt success. Thay mặc định bằng HTTPS static manifest của SignTools + IPA HTTP loopback chỉ trên thiết bị, có consent lần đầu; không upload IPA/chứng chỉ/appmetadata. Palera dynamic generator được đối chiếu với Feather nhưng probe403/521 nên không dùng. Manifest parser pin port/URL/asset và contract com.foo.bar/Local app, max64KB/không redirect. UI giải thích prompt có thể hiện Local app dù metadata IPA giữ nguyên; iOS27.2 cần thử thực tế, không hứa mọi phiên bản hỗ trợ placeholder. Tuyến HTTPS nội bộ với metadata thật vẫn chọn được; local root không còn bắt buộc cho tuyến chuẩn. URL itms encode nested URL toàn bộ.
+
+Native GCDWebServer phục vụ duy nhất /ota-me và /health, loopback/cổng4000–8999, range/HEAD, held lease/background lifecycle. Đổi phương thức stop/release đúng listener. Không coi HTTP manifest counter0 là lỗi khi manifest thực nằm ở dịch vụ ngoài. Thêm actual ObjC/GCDWebServer host regression vào Apple audit (full/range/HEAD/routes/counters/stop); Linux model/download tests PASS, Apple gate mới pending. Không khẳng định đã cài thành công trên iPhone. Đọc UPGRADE-PROGRESS mốc31 và cần thử Signed→Install→Tiêu chuẩn→đồng ý→xác nhận Local app→xem request IPA, tách lỗi signature nếu file đã tải.
 
 ## Cập nhật mốc30 — tin cậy ngay lần mở đầu và ứng dụng đã ký
 
