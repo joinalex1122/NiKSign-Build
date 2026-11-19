@@ -62,6 +62,10 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
     }
 
     GCDWebServer *server = [GCDWebServer new];
+    // Register fallback first: subsequently registered token routes take priority.
+    [server addDefaultHandlerForMethod:@"GET" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+        return [GCDWebServerResponse responseWithStatusCode:404];
+    }];
     NSString *token = [NSUUID UUID].UUIDString;
     NSString *ipaRoute = [NSString stringWithFormat:@"/%@/app.ipa", token];
     NSString *manifestRoute = [NSString stringWithFormat:@"/%@/manifest.plist", token];
@@ -140,6 +144,10 @@ static NSDictionary *NiKLoopbackOptions(NSUInteger port) {
     self.lastError = nil;
     if (profileData.length == 0 || profileData.length > 65536) { return nil; }
     GCDWebServer *server = [GCDWebServer new];
+    // Register fallback first: subsequently registered token routes take priority.
+    [server addDefaultHandlerForMethod:@"GET" requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
+        return [GCDWebServerResponse responseWithStatusCode:404];
+    }];
     NSString *route = [NSString stringWithFormat:@"/%@/NiKSign-HTTPS.mobileconfig", [NSUUID UUID].UUIDString];
     [server addHandlerForMethod:@"GET" path:route requestClass:GCDWebServerRequest.class processBlock:^GCDWebServerResponse *(GCDWebServerRequest *request) {
         return [GCDWebServerDataResponse responseWithData:profileData contentType:@"application/x-apple-aspen-config"];

@@ -276,3 +276,7 @@ Chạy `bash scripts/audit-ios.sh` trên macOS (một lượt). Script chạy đ
 - `docs/history/pre-sign-only-ui-preview.md` — tài liệu lịch sử, không phải cấu hình/hướng dẫn hiện hành.
 
 Các file production mới: `NiKPathValidator.swift` (bundle/path riêng), `NiKRevocationSchedule.swift` (lịch/backoff OCSP), `NiKOTALandingPage.swift` (HTML cài đặt escape an toàn). Các test mới: `PathValidatorSmoke`, `RevocationScheduleSmoke`, `ZsignCMS/main.cpp`, `zsign_cms_test.py`.
+
+## Theo dõi CI
+
+- 44533181646 / 0c5c163: source-checks PASS; macOS audit phát hiện fallback HTTP trả 501 thay vì 404. Đã thêm handler mặc định trước token routes ở cả server tệp và bootstrap profile. Chờ CI bản sửa; chưa xác nhận Xcode.
