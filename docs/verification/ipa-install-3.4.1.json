@@ -1,0 +1,36 @@
+{
+  "commit": "00536006ae5c9ab2a367b8fff24c6b98ff4f9d04",
+  "run_id": 44557836533,
+  "ci_url": "https://github.com/joinalex1122/NiKSign-Build/actions/runs/44557836533",
+  "passes": [
+    {
+      "pass_name": "pass1",
+      "result": "PASS",
+      "build_succeeded": 1,
+      "compiler_diagnostics": 0,
+      "pass_markers": 55,
+      "sha256": "b4877a9e3ad6a525b29945109ec4e4ea10edeb0c93d8935f09e5feaf5580da1a",
+      "binary_info": "build/Build/Products/Release-iphoneos/NiKSign.app/NiKSign: Mach-O 64-bit executable arm64",
+      "live_https_test": true
+    },
+    {
+      "pass_name": "pass2",
+      "result": "PASS",
+      "build_succeeded": 1,
+      "compiler_diagnostics": 0,
+      "pass_markers": 55,
+      "sha256": "ee612e3a838ea793a66438edc6f12fe967c2333b713f3e0fea850e3966220f56",
+      "binary_info": "build/Build/Products/Release-iphoneos/NiKSign.app/NiKSign: Mach-O 64-bit executable arm64",
+      "live_https_test": true
+    }
+  ],
+  "version": "3.4.1",
+  "build": "341",
+  "bundle_id": "com.niksign.app",
+  "ipa_sha256": "998b331536d0bcc5c0aea80e97fb440e9f1619ded135245a32bef07f0e69e06f",
+  "source_sha256": "acae238d67e78ab5d0b496b68457963cf3e9017346ddd3fd2872b12743b7dde6",
+  "source_files_verified": 259,
+  "ipa_artifact_id": 14550288984,
+  "diagnostics_artifact_id": 14550859061,
+  "device_installation_verified": false
+}

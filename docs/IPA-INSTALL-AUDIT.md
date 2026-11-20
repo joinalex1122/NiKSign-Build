@@ -37,15 +37,29 @@ Base reviewed: `83aed63f168324f64bec0873f110b496f3f5c30a`. This report distingui
 
 ## Tests and verification
 
-Local: source/dependency checks, shell syntax, Swift syntax, minizip/IPA validator, actual native CMS/provisioning harnesses, archive/profile/range/extension models, queue revocation/removal and TLS certificate generator. Full macOS test suite, actual HTTPS listener and Xcode are pending CI.
+Verified source: `00536006ae5c9ab2a367b8fff24c6b98ff4f9d04`. [Full macOS CI run](https://github.com/joinalex1122/NiKSign-Build/actions/runs/44557836533) succeeded on macos-15-intel / Xcode 16.4, with two consecutive clean full-suite/arm64 device builds on 19 November 2026.
 
-CI is configured to run the entire clean suite and arm64 unsigned build twice consecutively on the same source. Both logs must contain BUILD SUCCEEDED and no compiler warning/error diagnostics. Only the second IPA is published. A failing pass prevents release and restarts the two-pass requirement after a source correction.
+| Verification | Pass 1 | Pass 2 |
+|---|---|---|
+| Complete regression suite (55 PASS groups per pass) | PASS | PASS |
+| Actual generated-root HTTPS/TLS listener and GET/HEAD/Range | PASS | PASS |
+| Source/dependency/provenance checks | PASS | PASS |
+| XcodeGen generation and Release iphoneos arm64 build | PASS | PASS |
+| Compiler warnings / errors | 0 / 0 | 0 / 0 |
+
+Both logs independently contain `** BUILD SUCCEEDED **` and pass `scripts/check-build-log.py`. Additional local shell syntax and Swift syntax checks pass. The downloaded source archive was compared byte for byte with all 259 packaged tracked files at the tested commit. The final IPA was checked for CRCs, executable mode, arm64 and metadata 3.4.1 (341), Bundle ID com.niksign.app. Only the second IPA is published.
+
+The first attempt reproduced a strict TLS handshake failure, `Missing Authority Key Identifier`; SKI/AKI and strict-chain tests fixed it. The second attempt passed live TLS but exposed an old bare-XML certificate test fixture; the fixture now uses signed CMS, with bare XML retained as a rejection test. Neither incomplete attempt counts toward the final two successful passes.
+
+See [verification data](verification/ipa-install-3.4.1.json) and [handoff](IPA-INSTALL-HANDOFF.md) for artifact hashes and retrieval links.
 
 ## Device/credential limits
 
 The profile CMS check authenticates its signed content, not its Apple issuer-chain trust. Certificate DER membership/date checks cannot grant provisioning permissions, reverse revocation or register an absent device. Actual Apple trust, UDID membership when not supplied, Developer Mode/MDM restrictions and iOS installation outcome still need the user's device/credentials. TLS bootstrap still requires installing the public CA profile and enabling full trust manually. No user p12 or private signing keys were supplied for an on-device install reproduction.
 
 ## Changed files
+
+No files were deleted by this installation audit. Earlier signer-only removals are documented in SIGN-ONLY-REFACTOR.md.
 
 - `.github/workflows/build.yml`
 - `FEATURES.md`
